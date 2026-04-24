@@ -1,0 +1,32 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+
+# Dependencies / build (root only — assets/vendor may ship bundled JS)
+/node_modules/
+/vendor/
+composer.lock
+
+# WordPress / local
+*.log
+wp-config-local.php
+.env
+.env.*
+
+# Archives / temp
+*.zip
+*.tar.gz
+
+# PHPUnit / coverage
+phpunit.xml
+.phpunit.result.cache
+coverage/
+
+# Language POT (optional: commit if you ship translations)
+# languages/*.pot

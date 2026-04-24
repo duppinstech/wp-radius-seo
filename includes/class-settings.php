@@ -1,0 +1,519 @@
+<?php
+/**
+ * Plugin options (batch sizes, integrations).
+ *
+ * @package Radius
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Settings API wrapper.
+ */
+class Radius_Settings {
+
+	const OPTION = 'localeforge_settings';
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public static function defaults() {
+		return array(
+			'deploy_batch'                    => 25,
+			'legacy_import_size'              => 25,
+			'legacy_import_skip_existing'     => 1,
+			'legacy_import_inter_batch_ms'    => 1200,
+			'enable_elementor'                => 1,
+			'service_anchors'                 => array(),
+			'site_replacements'               => array(),
+			/** @deprecated Use service_area_url_slug; kept for option merge. */
+			'landing_url_slug'                => 'service-area',
+			/** URL segment for service area hub pages only: example.com/{this}/place-slug/ */
+			'service_area_url_slug'           => 'service-area',
+			/** lf_template ID used when deploying “Service area pages” (separate from per-template landings). */
+			'service_area_template_id'        => 0,
+			'deploy_copy_meta_keys'           => '',
+			'integrate_yoast'                 => 1,
+			'deploy_copy_prefix_yoast'        => 1,
+			'deploy_copy_prefix_elementor'    => 0,
+			'deploy_copy_prefix_litespeed'    => 0,
+			'deploy_copy_prefix_rankmath'     => 0,
+			'deploy_copy_prefix_aioseo'       => 0,
+			'content_rotation_enabled'        => 0,
+			'content_rotation_interval_days'  => 30,
+			'content_rotation_batch'          => 25,
+			'dynamic_content_per_request'     => 0,
+			'api_key'                         => '',
+			'api_key_saved_at'                => '',
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public static function get() {
+		$v = get_option( self::OPTION, array() );
+		$v = wp_parse_args( is_array( $v ) ? $v : array(), self::defaults() );
+		if ( ! isset( $v['service_area_url_slug'] ) || (string) $v['service_area_url_slug'] === '' ) {
+			$v['service_area_url_slug'] = isset( $v['landing_url_slug'] ) && (string) $v['landing_url_slug'] !== ''
+				? (string) $v['landing_url_slug']
+				: (string) self::defaults()['service_area_url_slug'];
+		}
+		if ( ! isset( $v['service_area_template_id'] ) ) {
+			$v['service_area_template_id'] = 0;
+		}
+		return $v;
+	}
+
+	/**
+	 * URL prefix segment for lf_service_area pages only (not landings).
+	 *
+	 * @return string
+	 */
+	public static function get_service_area_url_slug() {
+		return self::sanitize_landing_url_slug( self::get()['service_area_url_slug'] );
+	}
+
+	/**
+	 * @param array<string,mixed> $data Sanitized subset.
+	 * @return void
+	 */
+	public static function update( array $data ) {
+		$cur     = self::get();
+		foreach ( $data as $key => $value ) {
+			if ( array_key_exists( $key, self::defaults() ) ) {
+				$cur[ $key ] = $value;
+			}
+		}
+		update_option( self::OPTION, $cur );
+	}
+
+	/**
+	 * @return void
+	 */
+	public static function register() {
+		register_setting(
+			'radius',
+			self::OPTION,
+			array(
+				'type'              => 'array',
+				'sanitize_callback' => array( __CLASS__, 'sanitize' ),
+				'default'           => self::defaults(),
+			)
+		);
+	}
+
+	/**
+	 * @param array $input Raw.
+	 * @return array
+	 */
+	public static function sanitize( $input ) {
+		$out  = self::get();
+		$defs = self::defaults();
+		if ( ! is_array( $input ) ) {
+			return $out;
+		}
+		if ( isset( $input['deploy_batch'] ) ) {
+			$out['deploy_batch'] = max( 1, min( 200, absint( $input['deploy_batch'] ) ) );
+		}
+		if ( isset( $input['legacy_import_size'] ) ) {
+			$out['legacy_import_size'] = max( 5, min( 100, absint( $input['legacy_import_size'] ) ) );
+		}
+		if ( isset( $input['legacy_import_skip_existing'] ) ) {
+			$out['legacy_import_skip_existing'] = ! empty( $input['legacy_import_skip_existing'] ) ? 1 : 0;
+		}
+		if ( isset( $input['legacy_import_inter_batch_ms'] ) ) {
+			$out['legacy_import_inter_batch_ms'] = max( 0, min( 30000, absint( $input['legacy_import_inter_batch_ms'] ) ) );
+		}
+		if ( isset( $input['enable_elementor'] ) ) {
+			$out['enable_elementor'] = ! empty( $input['enable_elementor'] ) ? 1 : 0;
+		}
+		if ( isset( $input['service_anchors'] ) && is_array( $input['service_anchors'] ) ) {
+			$out['service_anchors'] = self::sanitize_anchors( $input['service_anchors'] );
+		}
+		if ( isset( $input['site_replacements'] ) && is_array( $input['site_replacements'] ) ) {
+			$out['site_replacements'] = self::sanitize_site_replacements( $input['site_replacements'] );
+		}
+		if ( isset( $input['service_area_url_slug'] ) ) {
+			$out['service_area_url_slug'] = self::sanitize_landing_url_slug( $input['service_area_url_slug'] );
+			$out['landing_url_slug']        = $out['service_area_url_slug'];
+		} elseif ( isset( $input['landing_url_slug'] ) ) {
+			$out['service_area_url_slug'] = self::sanitize_landing_url_slug( $input['landing_url_slug'] );
+			$out['landing_url_slug']      = $out['service_area_url_slug'];
+		}
+		if ( isset( $input['service_area_template_id'] ) ) {
+			$tid = absint( $input['service_area_template_id'] );
+			if ( $tid > 0 && get_post_type( $tid ) !== 'lf_template' ) {
+				$tid = 0;
+			}
+			$out['service_area_template_id'] = $tid;
+		}
+		if ( isset( $input['deploy_copy_meta_keys'] ) ) {
+			$out['deploy_copy_meta_keys'] = self::sanitize_deploy_meta_keys_list( $input['deploy_copy_meta_keys'] );
+		}
+		if ( isset( $input['integrate_yoast'] ) ) {
+			$out['integrate_yoast'] = ! empty( $input['integrate_yoast'] ) ? 1 : 0;
+		}
+		foreach (
+			array(
+				'deploy_copy_prefix_yoast',
+				'deploy_copy_prefix_elementor',
+				'deploy_copy_prefix_litespeed',
+				'deploy_copy_prefix_rankmath',
+				'deploy_copy_prefix_aioseo',
+			) as $pfx_flag
+		) {
+			if ( isset( $input[ $pfx_flag ] ) ) {
+				$out[ $pfx_flag ] = ! empty( $input[ $pfx_flag ] ) ? 1 : 0;
+			}
+		}
+		if ( isset( $input['content_rotation_enabled'] ) ) {
+			$out['content_rotation_enabled'] = ! empty( $input['content_rotation_enabled'] ) ? 1 : 0;
+		}
+		if ( isset( $input['content_rotation_interval_days'] ) ) {
+			$out['content_rotation_interval_days'] = max( 1, min( 365, absint( $input['content_rotation_interval_days'] ) ) );
+		}
+		if ( isset( $input['content_rotation_batch'] ) ) {
+			$out['content_rotation_batch'] = max( 1, min( 200, absint( $input['content_rotation_batch'] ) ) );
+		}
+		if ( isset( $input['dynamic_content_per_request'] ) ) {
+			$out['dynamic_content_per_request'] = ! empty( $input['dynamic_content_per_request'] ) ? 1 : 0;
+		}
+		// Must apply when present: update_option() runs this callback and would otherwise drop api_key from $input.
+		if ( array_key_exists( 'api_key', $input ) ) {
+			$plain = Radius_API_License::sanitize_api_key( is_string( $input['api_key'] ) ? $input['api_key'] : '' );
+			$out['api_key'] = '' === $plain ? '' : Radius_API_License::encrypt_api_key_for_storage( $plain );
+		}
+		if ( array_key_exists( 'api_key_saved_at', $input ) ) {
+			$raw = is_string( $input['api_key_saved_at'] ) ? trim( $input['api_key_saved_at'] ) : '';
+			if ( $raw === '' ) {
+				$out['api_key_saved_at'] = '';
+			} elseif ( preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $raw ) ) {
+				$out['api_key_saved_at'] = $raw;
+			}
+		}
+
+		return array_merge( $defs, $out );
+	}
+
+	/**
+	 * One meta key per line (Yoast, WordProof, LiteSpeed, etc.); # starts a comment line.
+	 *
+	 * @param mixed $raw Raw textarea.
+	 * @return string
+	 */
+	public static function sanitize_deploy_meta_keys_list( $raw ) {
+		$s = is_string( $raw ) ? $raw : '';
+		$lines = preg_split( '/\r\n|\r|\n/', $s );
+		$out   = array();
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+			if ( $line === '' || strpos( $line, '#' ) === 0 ) {
+				continue;
+			}
+			if ( strlen( $line ) > 191 ) {
+				continue;
+			}
+			if ( preg_match( '/^[A-Za-z0-9_:\.-]+$/', $line ) ) {
+				$out[] = $line;
+			}
+		}
+		$out = array_unique( $out );
+		return implode( "\n", $out );
+	}
+
+	/**
+	 * Meta key prefixes to copy from template → landing when the matching setting is enabled.
+	 *
+	 * @return string[] Non-empty prefixes (e.g. _yoast_wpseo).
+	 */
+	public static function get_active_deploy_meta_prefixes() {
+		$s   = self::get();
+		$map = array(
+			'deploy_copy_prefix_yoast'     => '_yoast_wpseo',
+			'deploy_copy_prefix_elementor' => '_elementor',
+			'deploy_copy_prefix_litespeed' => '_litespeed',
+			'deploy_copy_prefix_rankmath'  => '_rank_math',
+			'deploy_copy_prefix_aioseo'    => '_aioseo',
+		);
+		$out = array();
+		foreach ( $map as $opt => $prefix ) {
+			if ( ! empty( $s[ $opt ] ) && is_string( $prefix ) && $prefix !== '' ) {
+				$out[] = $prefix;
+			}
+		}
+		/**
+		 * Add or adjust which meta key prefixes are copied on deploy (template → landing).
+		 *
+		 * @param string[] $prefixes Meta key prefixes.
+		 * @param array    $settings Full Radius settings array.
+		 */
+		$filtered = apply_filters( 'radius_deploy_meta_copy_prefixes', $out, $s );
+		return is_array( $filtered ) ? array_values( array_unique( array_filter( array_map( 'strval', $filtered ) ) ) ) : $out;
+	}
+
+	/**
+	 * URL segment for published landings: example.com/{slug}/city-keyword/
+	 *
+	 * @param mixed $raw Raw POST value.
+	 * @return string
+	 */
+	public static function sanitize_landing_url_slug( $raw ) {
+		$s = sanitize_title( trim( (string) $raw ) );
+		if ( $s === '' ) {
+			return (string) self::defaults()['service_area_url_slug'];
+		}
+		$s = substr( $s, 0, 40 );
+		$blocked = array(
+			'wp-admin',
+			'wp-json',
+			'wp-login',
+			'wp-content',
+			'feed',
+			'embed',
+			'admin',
+			'login',
+			'page',
+			'author',
+			'category',
+			'tag',
+			'search',
+			'robots',
+			'favicon',
+		);
+		if ( in_array( $s, $blocked, true ) ) {
+			return (string) self::defaults()['service_area_url_slug'];
+		}
+		return $s;
+	}
+
+	/**
+	 * Site-wide replacement tokens (phone, company name, …) with optional per–service-area values.
+	 *
+	 * @param array<int,mixed> $rows Raw rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function sanitize_site_replacements( $rows ) {
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $rows as $row ) {
+			if ( ! is_array( $row ) || empty( $row['key'] ) ) {
+				continue;
+			}
+			$key = sanitize_key( (string) $row['key'] );
+			if ( $key === '' ) {
+				continue;
+			}
+			$vals = array();
+			if ( ! empty( $row['values'] ) && is_array( $row['values'] ) ) {
+				foreach ( $row['values'] as $v ) {
+					$vals[] = sanitize_textarea_field( is_string( $v ) ? $v : (string) $v );
+				}
+			} elseif ( isset( $row['value'] ) ) {
+				$vals[] = sanitize_textarea_field( (string) $row['value'] );
+			}
+			if ( empty( $vals ) ) {
+				$vals = array( '' );
+			}
+			$ao_in = array();
+			if ( ! empty( $row['area_overrides'] ) && is_array( $row['area_overrides'] ) ) {
+				$ao_in = $row['area_overrides'];
+			} elseif ( ! empty( $row['set_overrides'] ) && is_array( $row['set_overrides'] ) ) {
+				$ao_in = $row['set_overrides'];
+			}
+			$area_overrides = array();
+			foreach ( $ao_in as $o ) {
+				if ( ! is_array( $o ) ) {
+					continue;
+				}
+				$ac = '';
+				if ( ! empty( $o['area'] ) ) {
+					$ac = sanitize_key( (string) $o['area'] );
+				} elseif ( ! empty( $o['set'] ) ) {
+					$ac = sanitize_key( (string) $o['set'] );
+				}
+				if ( $ac === '' ) {
+					continue;
+				}
+				$rawv = isset( $o['value'] ) ? (string) $o['value'] : '';
+				if ( current_user_can( 'unfiltered_html' ) ) {
+					$val = $rawv;
+				} else {
+					$val = wp_kses_post( $rawv );
+				}
+				$area_overrides[] = array(
+					'area'  => $ac,
+					'value' => $val,
+				);
+			}
+			$out[] = array(
+				'key'            => $key,
+				'values'         => $vals,
+				'area_overrides' => $area_overrides,
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * @param string               $base     Preferred slug prefix (e.g. sa-city-name).
+	 * @param array<string,bool>   $reserved In/out: assigned codes as keys.
+	 * @return string
+	 */
+	private static function reserve_unique_service_area_code( $base, array &$reserved ) {
+		$base = sanitize_key( (string) $base );
+		if ( $base === '' ) {
+			$base = 'sa-area';
+		}
+		if ( strlen( $base ) > 40 ) {
+			$base = substr( $base, 0, 40 );
+		}
+		$c = $base;
+		$n = 2;
+		while ( isset( $reserved[ $c ] ) ) {
+			$suf = '-' . $n;
+			$c   = sanitize_key( substr( $base, 0, max( 1, 48 - strlen( $suf ) ) ) . $suf );
+			++$n;
+		}
+		$reserved[ $c ] = true;
+		return $c;
+	}
+
+	/**
+	 * Normalize service-area anchors: prefer library place + radius; legacy lat/lng still supported.
+	 * Each saved anchor gets a stable auto-generated `location_code` (sa-…) reused when place+radius match a previous save.
+	 *
+	 * @param array $rows Raw rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function sanitize_anchors( $rows ) {
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+		$previous   = self::get()['service_anchors'];
+		$prev_codes = array();
+		foreach ( (array) $previous as $pr ) {
+			if ( ! is_array( $pr ) || empty( $pr['location_code'] ) ) {
+				continue;
+			}
+			$radk = isset( $pr['radius_miles'] ) ? (string) round( (float) $pr['radius_miles'], 4 ) : '0';
+			$lc   = sanitize_key( (string) $pr['location_code'] );
+			if ( $lc === '' ) {
+				continue;
+			}
+			if ( ! empty( $pr['place_id'] ) ) {
+				$pk = 'p:' . (int) $pr['place_id'] . ':' . $radk;
+			} elseif ( isset( $pr['lat'], $pr['lng'] ) ) {
+				$pk = 'l:' . round( (float) $pr['lat'], 5 ) . ':' . round( (float) $pr['lng'], 5 ) . ':' . $radk;
+			} else {
+				continue;
+			}
+			$prev_codes[ $pk ] = $lc;
+		}
+
+		$global_taken = array();
+		foreach ( (array) $previous as $pr ) {
+			if ( is_array( $pr ) && ! empty( $pr['location_code'] ) ) {
+				$c = sanitize_key( (string) $pr['location_code'] );
+				if ( $c !== '' ) {
+					$global_taken[ $c ] = true;
+				}
+			}
+		}
+
+		$out = array();
+		foreach ( $rows as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$rad = isset( $row['radius_miles'] ) ? (float) $row['radius_miles'] : 0.0;
+			if ( ! is_finite( $rad ) || $rad <= 0 ) {
+				continue;
+			}
+			$rad  = max( 0.1, min( 500.0, $rad ) );
+			$radk = (string) round( $rad, 4 );
+
+			if ( ! empty( $row['place_id'] ) ) {
+				$pid = absint( $row['place_id'] );
+				if ( $pid <= 0 ) {
+					continue;
+				}
+				$term = get_term( $pid, Radius_Place_Taxonomy::TAXONOMY );
+				if ( ! $term || is_wp_error( $term ) ) {
+					continue;
+				}
+				$label = isset( $row['label'] ) ? sanitize_text_field( (string) $row['label'] ) : '';
+				if ( $label === '' ) {
+					$label = $term->name;
+				}
+				$pk = 'p:' . $pid . ':' . $radk;
+				$lc = isset( $prev_codes[ $pk ] ) ? $prev_codes[ $pk ] : '';
+				if ( $lc === '' || ! isset( $global_taken[ $lc ] ) ) {
+					$base = 'sa-' . $term->slug;
+					if ( sanitize_key( $base ) === '' ) {
+						$base = 'sa-' . (string) $pid;
+					}
+					$lc = self::reserve_unique_service_area_code( $base, $global_taken );
+				}
+				$out[] = array(
+					'place_id'       => $pid,
+					'radius_miles'   => $rad,
+					'label'          => $label,
+					'location_code'  => $lc,
+				);
+				continue;
+			}
+
+			$label = isset( $row['label'] ) ? sanitize_text_field( (string) $row['label'] ) : '';
+			$lat   = isset( $row['lat'] ) ? (float) $row['lat'] : 0.0;
+			$lng   = isset( $row['lng'] ) ? (float) $row['lng'] : 0.0;
+			if ( ! is_finite( $lat ) || ! is_finite( $lng ) ) {
+				continue;
+			}
+			$pk = 'l:' . round( $lat, 5 ) . ':' . round( $lng, 5 ) . ':' . $radk;
+			$lc = isset( $prev_codes[ $pk ] ) ? $prev_codes[ $pk ] : '';
+			if ( $lc === '' || ! isset( $global_taken[ $lc ] ) ) {
+				$base = 'sa-legacy-' . substr( md5( (string) $lat . '|' . (string) $lng ), 0, 8 );
+				$lc   = self::reserve_unique_service_area_code( $base, $global_taken );
+			}
+			$out[] = array(
+				'label'         => $label,
+				'lat'           => $lat,
+				'lng'           => $lng,
+				'radius_miles'  => $rad,
+				'location_code' => $lc,
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * First service-area row that references a library place (lf_place term), for template front-end preview.
+	 *
+	 * @return int Term ID or 0.
+	 */
+	public static function get_first_service_anchor_place_id() {
+		$anchors = self::get()['service_anchors'];
+		if ( ! is_array( $anchors ) ) {
+			return 0;
+		}
+		foreach ( $anchors as $row ) {
+			if ( ! is_array( $row ) || empty( $row['place_id'] ) ) {
+				continue;
+			}
+			$pid = absint( $row['place_id'] );
+			if ( $pid <= 0 ) {
+				continue;
+			}
+			$term = get_term( $pid, Radius_Place_Taxonomy::TAXONOMY );
+			if ( $term && ! is_wp_error( $term ) ) {
+				return $pid;
+			}
+		}
+		return 0;
+	}
+}

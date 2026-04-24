@@ -1,0 +1,300 @@
+<?php
+/**
+ * Admin AJAX (place search for service-area settings).
+ *
+ * @package Radius
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * JSON endpoints for the admin UI.
+ */
+class Radius_Ajax {
+
+	/**
+	 * @return void
+	 */
+	public static function init() {
+		add_action( 'wp_ajax_radius_search_places', array( __CLASS__, 'search_places' ) );
+		add_action( 'wp_ajax_radius_legacy_places_batch', array( __CLASS__, 'legacy_places_batch' ) );
+		add_action( 'wp_ajax_radius_deploy_batch', array( __CLASS__, 'deploy_batch' ) );
+		add_action( 'wp_ajax_radius_purge_places_batch', array( __CLASS__, 'purge_places_batch' ) );
+		add_action( 'wp_ajax_radius_dedupe_places_batch', array( __CLASS__, 'dedupe_places_batch' ) );
+	}
+
+	/**
+	 * Search lf_place terms by name (for combobox).
+	 *
+	 * @return void
+	 */
+	public static function search_places() {
+		check_ajax_referer( 'radius_admin', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$q = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
+		if ( strlen( $q ) < 2 ) {
+			wp_send_json_success( array( 'places' => array() ) );
+		}
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
+				'hide_empty' => false,
+				'number'     => 25,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+				'search'     => $q,
+			)
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			wp_send_json_success( array( 'places' => array() ) );
+		}
+
+		$out = array();
+		foreach ( $terms as $t ) {
+			$tid = (int) $t->term_id;
+			$lat = (string) get_term_meta( $tid, 'lf_lat', true );
+			$lng = (string) get_term_meta( $tid, 'lf_lng', true );
+			$out[] = array(
+				'id'   => $tid,
+				'name' => $t->name,
+				'slug' => $t->slug,
+				'lat'  => $lat,
+				'lng'  => $lng,
+			);
+		}
+
+		wp_send_json_success( array( 'places' => $out ) );
+	}
+
+	/**
+	 * One batch of legacy → lf_place import (chained from JS until complete).
+	 *
+	 * @return void
+	 */
+	public static function legacy_places_batch() {
+		check_ajax_referer( 'radius_legacy_pl_import', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( ! Radius_Legacy_Import_Service::detect_legacy_places() ) {
+			wp_send_json_error( array( 'message' => __( 'No legacy location taxonomy found.', 'radius' ) ) );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Long-running legacy import batch.
+			@set_time_limit( 180 );
+		}
+		if ( function_exists( 'ignore_user_abort' ) ) {
+			@ignore_user_abort( true );
+		}
+
+		$offset = isset( $_POST['offset'] ) ? absint( wp_unslash( $_POST['offset'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+
+		$posted_total = isset( $_POST['total_legacy'] ) ? absint( wp_unslash( $_POST['total_legacy'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+
+		$lim = Radius_Legacy_Import_Service::cap_legacy_batch_size( (int) Radius_Settings::get()['legacy_import_size'] );
+
+		$skip_post = isset( $_POST['skip_existing'] ) ? sanitize_text_field( wp_unslash( $_POST['skip_existing'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$options   = array();
+		if ( $skip_post === '1' || $skip_post === '0' ) {
+			$options['skip_existing'] = ( '1' === $skip_post );
+		}
+
+		$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
+
+		if ( ! isset( $res['total_legacy'] ) ) {
+			$res['total_legacy'] = Radius_Legacy_Import_Service::legacy_place_term_count();
+		}
+		$res['batch_size'] = $lim;
+
+		wp_send_json_success( $res );
+	}
+
+	/**
+	 * One deploy chunk (chained from JS until all places are processed — Magic Page–style).
+	 *
+	 * @return void
+	 */
+	public static function deploy_batch() {
+		check_ajax_referer( 'radius_deploy_batch', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Deploy may process many posts per request.
+			@set_time_limit( 300 );
+		}
+		if ( function_exists( 'ignore_user_abort' ) ) {
+			@ignore_user_abort( true );
+		}
+
+		$template_id = isset( $_POST['lf_template_id'] ) ? absint( wp_unslash( $_POST['lf_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$continuing  = ! empty( $_POST['lf_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$target      = isset( $_POST['lf_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['lf_deploy_target'] ) ) : 'lf_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( 'lf_service_area' !== $target ) {
+			$target = 'lf_landing';
+		}
+
+		$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
+
+		if ( ! $result['success'] ) {
+			wp_send_json_error( array( 'message' => $result['message'] ) );
+		}
+
+		$payload = array(
+			'done'            => ! empty( $result['done'] ),
+			'remaining'       => isset( $result['remaining'] ) ? (int) $result['remaining'] : 0,
+			'initial_total'   => isset( $result['initial_total'] ) ? (int) $result['initial_total'] : 0,
+			'stats_total'     => isset( $result['stats_total'] ) && is_array( $result['stats_total'] ) ? $result['stats_total'] : array(),
+			'stats_batch'     => isset( $result['stats_batch'] ) && is_array( $result['stats_batch'] ) ? $result['stats_batch'] : array(),
+			'done_message'    => '',
+			'batch_errors'    => array(),
+		);
+
+		$batch = $payload['stats_batch'];
+		if ( ! empty( $batch['errors'] ) && is_array( $batch['errors'] ) ) {
+			$payload['batch_errors'] = array_slice( $batch['errors'], 0, 5 );
+		}
+
+		if ( $payload['done'] ) {
+			$acc = $payload['stats_total'];
+			$payload['done_message'] = sprintf(
+				/* translators: 1 created 2 updated 3 skipped */
+				__( 'Deploy finished: %1$d created, %2$d updated, %3$d skipped (all batches complete).', 'radius' ),
+				(int) $acc['created'],
+				(int) $acc['updated'],
+				(int) $acc['skipped']
+			);
+			if ( ! empty( $acc['errors'] ) && is_array( $acc['errors'] ) ) {
+				$payload['done_message'] .= ' ' . implode( ' ', array_slice( $acc['errors'], 0, 2 ) );
+			}
+		}
+
+		wp_send_json_success( $payload );
+	}
+
+	/**
+	 * Delete a small chunk of lf_place terms (lowest IDs first) for “empty library”.
+	 *
+	 * @return void
+	 */
+	public static function purge_places_batch() {
+		check_ajax_referer( 'radius_purge_places', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Purge batch may delete many terms.
+			@set_time_limit( 120 );
+		}
+
+		$tax    = Radius_Place_Taxonomy::TAXONOMY;
+		$chunk  = (int) apply_filters( 'radius_purge_places_chunk_size', 120 );
+		$chunk  = max( 20, min( 300, $chunk ) );
+		$ids    = Radius_Place_Taxonomy::get_place_term_ids_for_purge_chunk( $chunk );
+		$deleted = 0;
+
+		foreach ( $ids as $tid ) {
+			$r = wp_delete_term( (int) $tid, $tax );
+			if ( ! is_wp_error( $r ) && $r ) {
+				++$deleted;
+			}
+		}
+
+		$remaining = (int) wp_count_terms(
+			array(
+				'taxonomy'   => $tax,
+				'hide_empty' => false,
+			)
+		);
+		if ( is_wp_error( $remaining ) ) {
+			$remaining = 0;
+		}
+
+		$done = empty( $ids ) || $remaining <= 0;
+
+		wp_send_json_success(
+			array(
+				'deleted'   => $deleted,
+				'remaining' => $remaining,
+				'done'      => $done,
+			)
+		);
+	}
+
+	/**
+	 * Delete one batch of duplicate-name places (keepers use shortest slug, then lowest term ID).
+	 *
+	 * @return void
+	 */
+	public static function dedupe_places_batch() {
+		check_ajax_referer( 'radius_dedupe_places', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Dedupe batch may delete many terms.
+			@set_time_limit( 120 );
+		}
+
+		$tax    = Radius_Place_Taxonomy::TAXONOMY;
+		$chunk  = (int) apply_filters( 'radius_dedupe_places_chunk_size', 60 );
+		$chunk  = max( 10, min( 120, $chunk ) );
+		$ids    = Radius_Place_Taxonomy::get_place_term_ids_for_dedupe_chunk( $chunk );
+		$deleted = 0;
+
+		foreach ( $ids as $tid ) {
+			$r = wp_delete_term( (int) $tid, $tax );
+			if ( ! is_wp_error( $r ) && $r ) {
+				++$deleted;
+			}
+		}
+
+		$remaining = Radius_Place_Taxonomy::count_place_duplicates_removable();
+		$done      = empty( $ids ) || $remaining <= 0;
+
+		wp_send_json_success(
+			array(
+				'deleted'   => $deleted,
+				'remaining' => $remaining,
+				'done'      => $done,
+			)
+		);
+	}
+}

@@ -1,0 +1,800 @@
+<?php
+/**
+ * Best-effort import from sites that used other mass-page plugins (templates + locations).
+ * Runs only when source data exists; does not require any third-party code.
+ *
+ * @package Radius
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Migration helpers.
+ */
+class Radius_Legacy_Import_Service {
+
+	/**
+	 * Post type slug used by common legacy mass-page plugins (filterable).
+	 *
+	 * @return string
+	 */
+	public static function legacy_template_post_type() {
+		return (string) apply_filters( 'radius_legacy_template_post_type', 'magicpage' );
+	}
+
+	/**
+	 * Taxonomy slug for legacy location terms (filterable).
+	 *
+	 * @return string
+	 */
+	public static function legacy_location_taxonomy() {
+		return (string) apply_filters( 'radius_legacy_location_taxonomy', 'location' );
+	}
+
+	/**
+	 * Whether legacy template posts exist.
+	 *
+	 * @return bool
+	 */
+	public static function detect_legacy_templates() {
+		return post_type_exists( self::legacy_template_post_type() );
+	}
+
+	/**
+	 * Whether legacy location terms exist.
+	 *
+	 * @return bool
+	 */
+	public static function detect_legacy_places() {
+		return taxonomy_exists( self::legacy_location_taxonomy() );
+	}
+
+	/**
+	 * Clamp batch size for legacy imports (avoid huge single requests).
+	 *
+	 * @param int $size Raw setting.
+	 * @return int
+	 */
+	public static function cap_legacy_batch_size( $size ) {
+		return max( 5, min( 100, (int) $size ) );
+	}
+
+	/**
+	 * Total terms in the legacy location taxonomy (for progress UI).
+	 *
+	 * @return int
+	 */
+	public static function legacy_place_term_count() {
+		if ( ! self::detect_legacy_places() ) {
+			return 0;
+		}
+		$n = wp_count_terms(
+			array(
+				'taxonomy'   => self::legacy_location_taxonomy(),
+				'hide_empty' => false,
+			)
+		);
+		if ( is_wp_error( $n ) ) {
+			return 0;
+		}
+		return (int) $n;
+	}
+
+	/**
+	 * Copy legacy blueprint posts into lf_template (draft first).
+	 *
+	 * @return array{imported:int,skipped:int,errors:string[]}
+	 */
+	public static function import_templates() {
+		$out = array(
+			'imported' => 0,
+			'skipped'  => 0,
+			'errors'   => array(),
+		);
+
+		if ( ! self::detect_legacy_templates() ) {
+			$out['errors'][] = __( 'No legacy template post type found.', 'radius' );
+			return $out;
+		}
+
+		$posts = get_posts(
+			array(
+				'post_type'      => self::legacy_template_post_type(),
+				'post_status'    => array( 'publish', 'draft', 'private' ),
+				'posts_per_page' => 200,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+			)
+		);
+
+		foreach ( $posts as $p ) {
+			$dup = get_posts(
+				array(
+					'post_type'      => 'lf_template',
+					'post_status'    => 'any',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						array(
+							'key'   => '_lf_imported_from',
+							'value' => (int) $p->ID,
+						),
+					),
+				)
+			);
+			if ( ! empty( $dup ) ) {
+				++$out['skipped'];
+				continue;
+			}
+
+			$new_id = wp_insert_post(
+				array(
+					'post_type'    => 'lf_template',
+					'post_status'  => 'draft',
+					'post_title'   => sprintf( /* translators: %s original title */ __( 'Imported: %s', 'radius' ), $p->post_title ),
+					'post_content' => $p->post_content,
+					'post_excerpt' => $p->post_excerpt,
+				),
+				true
+			);
+			if ( is_wp_error( $new_id ) ) {
+				$code = $new_id->get_error_code();
+				if ( 'duplicate' === $code || 'existing_post_slug' === $code || strpos( $code, 'duplicate' ) !== false ) {
+					++$out['skipped'];
+					continue;
+				}
+				$out['errors'][] = $new_id->get_error_message();
+				continue;
+			}
+			update_post_meta( (int) $new_id, '_lf_imported_from', (int) $p->ID );
+			++$out['imported'];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Copy legacy location terms into lf_place. Updates existing terms when slug matches.
+	 *
+	 * @param int      $limit       Max legacy terms per run.
+	 * @param int      $offset      Legacy term offset (stable ordering by term_id).
+	 * @param int|null $total_known Total legacy terms if already counted (skips a DB count per batch).
+	 * @param array<string,mixed> $options Optional: skip_existing (bool), slug_lookup_chunk (int).
+	 * @return array{imported:int,updated:int,skipped:int,skipped_existing:int,errors:string[],has_more:bool,next_offset:int}
+	 */
+	public static function import_places( $limit = 50, $offset = 0, $total_known = null, array $options = array() ) {
+		$out = array(
+			'imported'           => 0,
+			'updated'            => 0,
+			'skipped'            => 0,
+			'skipped_existing'   => 0,
+			'errors'             => array(),
+			'has_more'           => false,
+			'next_offset'        => (int) $offset,
+		);
+
+		if ( ! self::detect_legacy_places() ) {
+			$out['errors'][] = __( 'No legacy location taxonomy found.', 'radius' );
+			return $out;
+		}
+
+		$settings = Radius_Settings::get();
+		$skip_existing = array_key_exists( 'skip_existing', $options )
+			? (bool) $options['skip_existing']
+			: ! empty( $settings['legacy_import_skip_existing'] );
+		$slug_chunk = isset( $options['slug_lookup_chunk'] )
+			? max( 5, min( 50, (int) $options['slug_lookup_chunk'] ) )
+			: (int) apply_filters( 'radius_legacy_import_slug_lookup_chunk', 25 );
+
+		$tax = self::legacy_location_taxonomy();
+
+		$total_legacy = null;
+		if ( $total_known !== null && (int) $total_known > 0 ) {
+			$total_legacy = (int) $total_known;
+		} else {
+			$n = wp_count_terms(
+				array(
+					'taxonomy'   => $tax,
+					'hide_empty' => false,
+				)
+			);
+			if ( is_wp_error( $n ) ) {
+				$out['errors'][] = $n->get_error_message();
+				return $out;
+			}
+			$total_legacy = (int) $n;
+		}
+
+		$lim = max( 1, (int) $limit );
+		$off = max( 0, (int) $offset );
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => $tax,
+				'hide_empty' => false,
+				'number'     => $lim,
+				'offset'     => $off,
+				'orderby'    => 'term_id',
+				'order'      => 'ASC',
+			)
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			$out['errors'][] = $terms->get_error_message();
+			return $out;
+		}
+
+		$n_batch = count( $terms );
+		$out['next_offset'] = $off + $n_batch;
+		$out['has_more']    = $out['next_offset'] < $total_legacy;
+
+		$lf_tax = Radius_Place_Taxonomy::TAXONOMY;
+		$slugs  = wp_list_pluck( $terms, 'slug' );
+		$slugs  = array_filter( array_unique( array_map( 'strval', $slugs ) ) );
+
+		$lf_by_slug = array();
+		if ( ! empty( $slugs ) ) {
+			$slug_list = array_values( $slugs );
+			$chunks    = array_chunk( $slug_list, $slug_chunk );
+			foreach ( $chunks as $chunk ) {
+				if ( empty( $chunk ) ) {
+					continue;
+				}
+				$existing_batch = get_terms(
+					array(
+						'taxonomy'   => $lf_tax,
+						'hide_empty' => false,
+						'slug'       => $chunk,
+						'number'     => 0,
+					)
+				);
+				if ( ! is_wp_error( $existing_batch ) && is_array( $existing_batch ) ) {
+					foreach ( $existing_batch as $ex ) {
+						$lf_by_slug[ $ex->slug ] = $ex;
+					}
+				}
+			}
+		}
+
+		$defer = function_exists( 'wp_defer_term_counting' );
+		if ( $defer ) {
+			wp_defer_term_counting( true );
+		}
+		$suspend_cache = function_exists( 'wp_suspend_cache_addition' );
+		if ( $suspend_cache ) {
+			wp_suspend_cache_addition( true );
+		}
+
+		try {
+
+		foreach ( $terms as $term ) {
+			$slug = $term->slug;
+			$existing = isset( $lf_by_slug[ $slug ] ) ? $lf_by_slug[ $slug ] : null;
+
+			if ( $existing && ! is_wp_error( $existing ) && $skip_existing ) {
+				++$out['skipped_existing'];
+				continue;
+			}
+
+			if ( $existing && ! is_wp_error( $existing ) ) {
+				$tid = (int) $existing->term_id;
+				$upd = wp_update_term(
+					$tid,
+					Radius_Place_Taxonomy::TAXONOMY,
+					array(
+						'name' => $term->name,
+						'slug' => $slug,
+					)
+				);
+				if ( is_wp_error( $upd ) ) {
+					++$out['skipped'];
+					continue;
+				}
+				self::copy_legacy_term_meta_to_lf( (int) $term->term_id, $tid );
+				update_term_meta( $tid, '_lf_imported_from_term', (int) $term->term_id );
+				++$out['updated'];
+				continue;
+			}
+
+			$ins = wp_insert_term(
+				$term->name,
+				Radius_Place_Taxonomy::TAXONOMY,
+				array(
+					'slug' => $slug,
+				)
+			);
+
+			if ( is_wp_error( $ins ) ) {
+				if ( 'term_exists' === $ins->get_error_code() ) {
+					$data = $ins->get_error_data();
+					$tid  = is_array( $data ) && isset( $data['term_id'] ) ? (int) $data['term_id'] : (int) $data;
+					if ( $tid > 0 ) {
+						self::copy_legacy_term_meta_to_lf( (int) $term->term_id, $tid );
+						update_term_meta( $tid, '_lf_imported_from_term', (int) $term->term_id );
+						++$out['updated'];
+					} else {
+						++$out['skipped'];
+					}
+					continue;
+				}
+				++$out['skipped'];
+				continue;
+			}
+
+			$tid = (int) $ins['term_id'];
+			self::copy_legacy_term_meta_to_lf( (int) $term->term_id, $tid );
+			update_term_meta( $tid, '_lf_imported_from_term', (int) $term->term_id );
+			++$out['imported'];
+		}
+
+		} finally {
+			if ( $suspend_cache ) {
+				wp_suspend_cache_addition( false );
+			}
+			if ( $defer ) {
+				wp_defer_term_counting( false );
+			}
+		}
+
+		$out['total_legacy'] = $total_legacy;
+
+		/**
+		 * Result of one legacy place import batch.
+		 *
+		 * @param array<string,mixed> $out     Batch stats.
+		 * @param array<string,mixed> $options Options used for this batch.
+		 */
+		return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+	}
+
+	/**
+	 * Whether the legacy vendor global spintax option has any rows.
+	 *
+	 * @return bool
+	 */
+	public static function detect_magic_page_spintax_expressions() {
+		$exp = get_option( '_magic_page_spintax_expressions', array() );
+		return is_array( $exp ) && ! empty( $exp );
+	}
+
+	/**
+	 * Raw count of top-level rows in the legacy global spintax option (before parsing).
+	 *
+	 * @return int
+	 */
+	public static function magic_page_spintax_raw_row_count() {
+		$exp = get_option( '_magic_page_spintax_expressions', array() );
+		if ( ! is_array( $exp ) ) {
+			return 0;
+		}
+		return count( $exp );
+	}
+
+	/**
+	 * Normalize label the source option stores for `{spintax_label}` (may include wrapper text).
+	 *
+	 * @param mixed $raw Raw label from option.
+	 * @return string
+	 */
+	private static function mp_normalize_spintax_label( $raw ) {
+		$s = trim( (string) $raw );
+		if ( $s === '' ) {
+			return '';
+		}
+		$s = preg_replace( '/^\{+/', '', $s );
+		$s = preg_replace( '/\}+$/', '', $s );
+		$s = preg_replace( '/^spintax_/', '', $s );
+		$s = trim( $s );
+		return $s;
+	}
+
+	/**
+	 * Build variation strings from one source row (options / values arrays).
+	 *
+	 * @param array<string,mixed> $data One spintax definition.
+	 * @return string[]
+	 */
+	private static function mp_collect_variation_strings( array $data ) {
+		$opts = array();
+		if ( ! empty( $data['options'] ) && is_array( $data['options'] ) ) {
+			$opts = $data['options'];
+		} elseif ( ! empty( $data['values'] ) && is_array( $data['values'] ) ) {
+			$opts = $data['values'];
+		}
+		$variations = array();
+		foreach ( $opts as $opt ) {
+			if ( is_array( $opt ) ) {
+				$enc = wp_json_encode( $opt );
+				$s   = is_string( $enc ) ? $enc : '';
+			} else {
+				$s = is_string( $opt ) ? $opt : (string) $opt;
+			}
+			if ( function_exists( 'cleanup_quotes_slashes' ) ) {
+				$s = cleanup_quotes_slashes( $s );
+			}
+			$s = str_replace( "\0", '', $s );
+			if ( $s !== '' ) {
+				$variations[] = $s;
+			}
+		}
+		return $variations;
+	}
+
+	/**
+	 * Normalize legacy vendor global spintax option rows (wp_options) into Radius spintax block rows.
+	 * Each source row supplies: **key** (sanitized label) and **variations** (all option strings).
+	 *
+	 * @param array<string,mixed> $opts Optional: key_prefixes => string[] — if non-empty, only rows whose block key starts with one of these prefixes (after sanitize_key) are included.
+	 * @return array<int,array{key:string,label:string,variations:string[]}>
+	 */
+	public static function magic_page_spintax_rows( array $opts = array() ) {
+		$exp = get_option( '_magic_page_spintax_expressions', array() );
+		if ( ! is_array( $exp ) || empty( $exp ) ) {
+			return array();
+		}
+		$prefixes = array();
+		if ( ! empty( $opts['key_prefixes'] ) && is_array( $opts['key_prefixes'] ) ) {
+			foreach ( $opts['key_prefixes'] as $px ) {
+				$px = strtolower( trim( (string) $px ) );
+				if ( $px !== '' ) {
+					$prefixes[] = $px;
+				}
+			}
+		}
+		$out = array();
+		foreach ( $exp as $data ) {
+			if ( ! is_array( $data ) ) {
+				continue;
+			}
+			$label = self::mp_normalize_spintax_label( isset( $data['label'] ) ? $data['label'] : '' );
+			if ( $label === '' ) {
+				continue;
+			}
+			$key = sanitize_key( $label );
+			if ( $key === '' ) {
+				continue;
+			}
+			if ( ! empty( $prefixes ) ) {
+				$match = false;
+				foreach ( $prefixes as $px ) {
+					if ( strlen( $key ) >= strlen( $px ) && substr( $key, 0, strlen( $px ) ) === $px ) {
+						$match = true;
+						break;
+					}
+				}
+				if ( ! $match ) {
+					continue;
+				}
+			}
+			$variations = self::mp_collect_variation_strings( $data );
+			if ( empty( $variations ) ) {
+				continue;
+			}
+			$out[] = array(
+				'key'        => $key,
+				'label'      => $label,
+				'variations' => $variations,
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Map legacy Magic Page shortcodes / bracket tokens to Radius {{token}} syntax for templates and spintax variations.
+	 *
+	 * @param string $text Raw HTML/text.
+	 * @return string
+	 */
+	public static function convert_legacy_magic_page_tokens_to_curly( $text ) {
+		$text = (string) $text;
+		if ( $text === '' ) {
+			return '';
+		}
+		// [xfield_something] → {{something}}
+		$text = preg_replace_callback(
+			'/\[xfield_([a-z0-9_-]+)\]/i',
+			function ( $m ) {
+				$k = sanitize_key( $m[1] );
+				return $k !== '' ? '{{' . $k . '}}' : $m[0];
+			},
+			$text
+		);
+		$map = array(
+			'[location]'  => '{{place_name}}',
+			'[region]'    => '{{region}}',
+			'[zip]'       => '{{zip}}',
+			'[county]'    => '{{state}}',
+			'[country]'   => '{{country}}',
+			'[latitude]'  => '{{lat}}',
+			'[longitude]' => '{{lng}}',
+			'[slug]'      => '{{place_slug}}',
+		);
+		foreach ( $map as $from => $to ) {
+			$text = str_ireplace( $from, $to, $text );
+		}
+		// Legacy meta_* aliases (before generic [meta_key] → {{key}}).
+		$meta_aliases = array(
+			'[meta_region_code]' => '{{region}}',
+			'[meta_region]'      => '{{region}}',
+		);
+		foreach ( $meta_aliases as $from => $to ) {
+			$text = str_ireplace( $from, $to, $text );
+		}
+		// [meta_keyname] → {{keyname}} (common legacy pattern).
+		$text = preg_replace_callback(
+			'/\[meta_([a-z0-9_-]+)\]/i',
+			function ( $m ) {
+				$k = sanitize_key( $m[1] );
+				return $k !== '' ? '{{' . $k . '}}' : $m[0];
+			},
+			$text
+		);
+		return $text;
+	}
+
+	/**
+	 * Merge legacy global spintax definitions into lf_template `_lf_spintax_blocks` meta.
+	 *
+	 * @param string $scope               'all' or 'one'.
+	 * @param int    $single_template_id  lf_template post ID when $scope is 'one'.
+	 * @param bool   $replace_shortcodes  Replace `{spintax_label}` in title/body with `{{key}}`.
+	 * @param bool   $overwrite_keys      When true, replace existing block rows with the same key.
+	 * @param bool   $merge_variations    When true and key exists (and not overwrite), append source options to existing variations.
+	 * @param array<string,mixed> $import_opts Optional: key_prefixes (string[]) filters source rows by block key prefix; empty = all rows.
+	 * @return array{templates:int,blocks_added:int,blocks_skipped:int,blocks_merged:int,shortcode_replacements:int,legacy_token_conversions:int,errors:string[]}
+	 */
+	public static function import_magic_page_spintax_into_templates( $scope, $single_template_id, $replace_shortcodes, $overwrite_keys, $merge_variations = false, array $import_opts = array() ) {
+		$out = array(
+			'templates'               => 0,
+			'blocks_added'            => 0,
+			'blocks_skipped'          => 0,
+			'blocks_merged'           => 0,
+			'shortcode_replacements'  => 0,
+			'legacy_token_conversions' => 0,
+			'errors'                  => array(),
+		);
+
+		$prefixes = array();
+		if ( ! empty( $import_opts['key_prefixes'] ) && is_array( $import_opts['key_prefixes'] ) ) {
+			$prefixes = $import_opts['key_prefixes'];
+		}
+		$rows = self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
+		if ( empty( $rows ) ) {
+			$n_raw = self::magic_page_spintax_raw_row_count();
+			if ( $n_raw > 0 && ! empty( $prefixes ) ) {
+				$unfiltered = self::magic_page_spintax_rows( array() );
+				if ( ! empty( $unfiltered ) ) {
+					$out['errors'][] = __( 'No spintax rows matched your key prefix filter. Clear the prefix box or use different prefixes.', 'radius' );
+					return $out;
+				}
+			}
+			if ( $n_raw > 0 ) {
+				$out['errors'][] = sprintf(
+					/* translators: %d: row count in wp_options */
+					__( 'The legacy global spintax option has %d row(s), but none could be parsed as a label plus variation texts. Each row needs a label and an options (or values) list.', 'radius' ),
+					$n_raw
+				);
+			} else {
+				$out['errors'][] = __( 'No legacy global spintax data found in wp_options.', 'radius' );
+			}
+			return $out;
+		}
+
+		if ( 'one' === $scope ) {
+			$tid = (int) $single_template_id;
+			if ( $tid <= 0 || ! get_post( $tid ) || 'lf_template' !== get_post_type( $tid ) ) {
+				$out['errors'][] = __( 'Invalid template selected.', 'radius' );
+				return $out;
+			}
+			$ids = array( $tid );
+		} else {
+			$ids = get_posts(
+				array(
+					'post_type'      => 'lf_template',
+					'post_status'    => 'any',
+					'posts_per_page' => 500,
+					'fields'         => 'ids',
+					'orderby'        => 'ID',
+					'order'          => 'ASC',
+				)
+			);
+			if ( empty( $ids ) ) {
+				$out['errors'][] = __( 'No Radius templates exist yet.', 'radius' );
+				return $out;
+			}
+		}
+
+		foreach ( $ids as $tid ) {
+			$post = get_post( (int) $tid );
+			if ( ! $post || 'lf_template' !== $post->post_type ) {
+				continue;
+			}
+
+			$blocks = get_post_meta( $tid, '_lf_spintax_blocks', true );
+			if ( is_string( $blocks ) ) {
+				$blocks = json_decode( $blocks, true );
+			}
+			if ( ! is_array( $blocks ) ) {
+				$blocks = array();
+			}
+
+			$by_key = array();
+			foreach ( $blocks as $i => $row ) {
+				if ( ! is_array( $row ) || empty( $row['key'] ) ) {
+					continue;
+				}
+				$k = sanitize_key( (string) $row['key'] );
+				if ( $k !== '' ) {
+					$by_key[ $k ] = $i;
+				}
+			}
+
+			$added_here = 0;
+
+			foreach ( $rows as $mp ) {
+				$key = $mp['key'];
+				if ( isset( $by_key[ $key ] ) ) {
+					if ( $overwrite_keys ) {
+						$idx            = $by_key[ $key ];
+						$blocks[ $idx ] = array(
+							'key'        => $key,
+							'variations' => $mp['variations'],
+						);
+						++$added_here;
+						continue;
+					}
+					if ( $merge_variations ) {
+						$idx      = $by_key[ $key ];
+						$old_row  = isset( $blocks[ $idx ] ) && is_array( $blocks[ $idx ] ) ? $blocks[ $idx ] : array();
+						$old_vars = Radius_Template_Tokens::normalize_block_variations( $old_row );
+						$combined = array_merge( $old_vars, $mp['variations'] );
+						$seen     = array();
+						$deduped  = array();
+						foreach ( $combined as $v ) {
+							$v = is_string( $v ) ? $v : (string) $v;
+							if ( $v === '' ) {
+								continue;
+							}
+							$h = md5( $v );
+							if ( isset( $seen[ $h ] ) ) {
+								continue;
+							}
+							$seen[ $h ] = true;
+							$deduped[]  = $v;
+						}
+						if ( empty( $deduped ) ) {
+							$deduped = array( '' );
+						}
+						$new_row = array(
+							'key'        => $key,
+							'variations' => $deduped,
+						);
+						if ( isset( $old_row['label'] ) && (string) $old_row['label'] !== '' ) {
+							$new_row['label'] = (string) $old_row['label'];
+						}
+						$blocks[ $idx ] = $new_row;
+						++$out['blocks_merged'];
+						++$added_here;
+						continue;
+					}
+					++$out['blocks_skipped'];
+					continue;
+				}
+				$blocks[]       = array(
+					'key'        => $key,
+					'variations' => $mp['variations'],
+				);
+				$by_key[ $key ] = count( $blocks ) - 1;
+				++$added_here;
+			}
+
+			$tok_conv = 0;
+			if ( $replace_shortcodes ) {
+				foreach ( $blocks as $bi => $block_row ) {
+					if ( ! is_array( $block_row ) ) {
+						continue;
+					}
+					$vars = Radius_Template_Tokens::normalize_block_variations( $block_row );
+					foreach ( $vars as $vi => $v ) {
+						$orig = (string) $v;
+						$nw   = self::convert_legacy_magic_page_tokens_to_curly( $orig );
+						if ( $nw !== $orig ) {
+							++$tok_conv;
+						}
+						$vars[ $vi ] = $nw;
+					}
+					$new_block = array(
+						'key'        => isset( $block_row['key'] ) ? $block_row['key'] : '',
+						'variations' => $vars,
+					);
+					if ( isset( $block_row['label'] ) && (string) $block_row['label'] !== '' ) {
+						$new_block['label'] = (string) $block_row['label'];
+					}
+					$blocks[ $bi ] = $new_block;
+				}
+				$out['legacy_token_conversions'] += $tok_conv;
+			}
+
+			$enc = wp_json_encode( $blocks );
+			if ( false === $enc ) {
+				$out['errors'][] = sprintf(
+					/* translators: %d template ID */
+					__( 'Could not encode spintax blocks for template %d.', 'radius' ),
+					(int) $tid
+				);
+				continue;
+			}
+			// update_metadata() applies wp_unslash(); JSON from wp_json_encode() must be wp_slash()'d first.
+			update_post_meta( $tid, '_lf_spintax_blocks', wp_slash( $enc ) );
+			clean_post_cache( (int) $tid );
+
+			$repl = 0;
+			if ( $replace_shortcodes ) {
+				$title   = (string) $post->post_title;
+				$content = (string) $post->post_content;
+				foreach ( $rows as $mp ) {
+					$pattern = '/\{spintax_' . preg_quote( $mp['label'], '/' ) . '\}/iu';
+					$to      = '{{' . $mp['key'] . '}}';
+					$n1      = 0;
+					$n2      = 0;
+					$title   = (string) preg_replace( $pattern, $to, $title, -1, $n1 );
+					$content = (string) preg_replace( $pattern, $to, $content, -1, $n2 );
+					$repl   += (int) $n1 + (int) $n2;
+				}
+				$t0      = $title;
+				$c0      = $content;
+				$title   = self::convert_legacy_magic_page_tokens_to_curly( $title );
+				$content = self::convert_legacy_magic_page_tokens_to_curly( $content );
+				if ( $title !== $t0 ) {
+					++$out['legacy_token_conversions'];
+				}
+				if ( $content !== $c0 ) {
+					++$out['legacy_token_conversions'];
+				}
+				if ( $repl > 0 || $title !== $t0 || $content !== $c0 ) {
+					$upd = wp_update_post(
+						array(
+							'ID'           => (int) $tid,
+							'post_title'   => $title,
+							'post_content' => $content,
+						),
+						true
+					);
+					if ( is_wp_error( $upd ) ) {
+						$out['errors'][] = $upd->get_error_message();
+					} else {
+						$out['shortcode_replacements'] += $repl;
+					}
+				}
+			}
+
+			++$out['templates'];
+			$out['blocks_added'] += $added_here;
+		}
+
+		return $out;
+	}
+
+	private static function copy_legacy_term_meta_to_lf( $legacy_term_id, $lf_term_id ) {
+		$map = array(
+			'region'  => 'lf_region',
+			'country' => 'lf_country',
+			'zip'     => 'lf_postal',
+			'lat'     => 'lf_lat',
+			'lon'     => 'lf_lng',
+			'county'  => 'lf_state',
+		);
+		foreach ( $map as $src => $dst ) {
+			$v = get_term_meta( $legacy_term_id, $src, true );
+			if ( $v !== '' && $v !== false && $v !== null ) {
+				if ( 'lon' === $src ) {
+					update_term_meta( $lf_term_id, 'lf_lng', $v );
+				} else {
+					update_term_meta( $lf_term_id, $dst, $v );
+				}
+			}
+		}
+	}
+}

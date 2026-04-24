@@ -1,0 +1,1177 @@
+/* Radius — unified admin */
+.radius-brand {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin: 0 0 20px;
+	padding: 0;
+	border-bottom: 1px solid #c3c4c7;
+}
+.radius-brand__logo {
+	flex-shrink: 0;
+	display: block;
+	margin: 0;
+	padding: 0;
+	width: auto;
+	height: auto;
+	max-width: none;
+	max-height: none;
+	object-fit: contain;
+}
+.radius-brand__text {
+	min-width: 0;
+}
+.radius-brand__title {
+	margin: 0 0 8px;
+	font-size: 1.75rem;
+	line-height: 1.2;
+}
+.radius-brand__lead {
+	margin: 0;
+}
+
+.radius-admin .radius-lead {
+	font-size: 15px;
+	max-width: 720px;
+	color: #50575e;
+}
+
+/* Card grids (deploy, locations, etc.) — not the dashboard */
+.radius-cards {
+	margin: 20px 0 28px;
+}
+
+.radius-cards:not(.radius-cards--dashboard) {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 16px;
+	row-gap: 20px;
+	align-items: stretch;
+}
+
+/* Dashboard: exactly 4 columns — high specificity so wp-admin .wrap rules cannot flatten the grid */
+#wpbody-content .wrap.radius-admin > .radius-cards.radius-cards--dashboard {
+	display: grid !important;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 24px;
+	row-gap: 24px;
+	column-gap: 24px;
+	margin: 24px 0 36px;
+	align-items: stretch;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	clear: both;
+}
+
+#wpbody-content .wrap.radius-admin > .radius-cards.radius-cards--dashboard > .radius-card,
+.radius-cards.radius-cards--dashboard .radius-card {
+	min-width: 0;
+	min-height: 0;
+	height: auto;
+	align-self: stretch;
+	position: relative;
+	z-index: 1;
+}
+
+.radius-cards.radius-cards--dashboard .radius-card h2 {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 8px;
+	margin: 0 0 10px;
+	font-size: 15px;
+	line-height: 1.35;
+}
+
+.radius-cards.radius-cards--dashboard .radius-card__title-text {
+	min-width: 0;
+}
+
+.radius-cards.radius-cards--dashboard .radius-card__icon {
+	flex-shrink: 0;
+	width: 22px;
+	height: 22px;
+	font-size: 22px;
+	line-height: 1;
+	color: #2271b1;
+}
+
+.radius-cards.radius-cards--dashboard .radius-card__actions .button {
+	margin-bottom: 0;
+}
+
+@media (max-width: 1280px) {
+	#wpbody-content .wrap.radius-admin > .radius-cards.radius-cards--dashboard {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	}
+}
+
+@media (max-width: 600px) {
+	#wpbody-content .wrap.radius-admin > .radius-cards.radius-cards--dashboard {
+		grid-template-columns: minmax(0, 1fr) !important;
+	}
+}
+
+.radius-cards--locations-summary {
+	margin-bottom: 28px;
+}
+
+.radius-locations-toolbar-wrap {
+	clear: both;
+	margin-top: 8px;
+	margin-bottom: 22px;
+	padding-top: 16px;
+	border-top: 1px solid #dcdcde;
+}
+
+.radius-card__stat--dup {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid #dcdcde;
+}
+
+.radius-locations-tablenav--below-heading {
+	margin-top: 4px;
+	margin-bottom: 12px;
+}
+
+.radius-locations-tablenav {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px 16px;
+	margin: 16px 0 10px;
+}
+
+.radius-locations-tablenav .alignleft.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+}
+
+.radius-locations-tablenav .radius-locations-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	margin: 0;
+}
+
+.radius-locations-tablenav .radius-locations-filters .radius-lf-search-input {
+	min-width: 14em;
+}
+
+.radius-locations-tablenav-bottom {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 12px 16px;
+	margin: 0 0 18px;
+	clear: both;
+}
+
+.radius-locations-tablenav-bottom .tablenav-pages {
+	margin: 0;
+}
+
+.radius-locations-screen-options {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px 16px;
+	margin: 0;
+}
+
+.radius-locations-bulk {
+	margin-bottom: 14px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px 12px;
+}
+
+.radius-locations-bulk .alignleft.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.wp-list-table .column-lf_cb {
+	width: 2.2em;
+	vertical-align: middle;
+	text-align: center;
+}
+
+.radius-dashboard-footer {
+	clear: both;
+	margin-top: 4px;
+	padding-top: 22px;
+	border-top: 1px solid #dcdcde;
+}
+
+.radius-dashboard-footer .description {
+	margin: 0;
+	max-width: 720px;
+	line-height: 1.5;
+}
+
+/* Tabbed admin screens (Import, Settings) */
+.radius-tab-nav.nav-tab-wrapper {
+	margin: 18px 0 0;
+	padding-top: 0;
+	border-bottom: 1px solid #c3c4c7;
+}
+
+.radius-tab-panel {
+	margin-top: 20px;
+	max-width: 960px;
+}
+
+.radius-settings-form .radius-settings-panel {
+	margin-top: 16px;
+}
+
+.radius-details-preview {
+	margin: 1em 0;
+}
+
+.radius-tab-hr {
+	margin: 28px 0 20px;
+}
+
+.radius-form-block {
+	margin-top: 8px;
+}
+
+.radius-locations-import-export-row {
+	margin-bottom: 18px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 12px 16px;
+}
+
+.radius-places-bulk-form {
+	margin-bottom: 8px;
+}
+
+.radius-card {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 16px 18px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.radius-card h2 {
+	margin: 0 0 8px;
+	font-size: 15px;
+}
+
+.radius-card p {
+	margin: 0 0 12px;
+	color: #646970;
+	font-size: 13px;
+}
+
+.radius-card__text {
+	flex: 1 1 auto;
+}
+
+.radius-card__text p:last-child {
+	margin-bottom: 0;
+}
+
+.radius-card__stat {
+	margin: 10px 0 0;
+	color: #646970;
+	font-size: 13px;
+}
+
+.radius-card__actions {
+	margin-top: auto;
+	padding-top: 14px;
+}
+
+.radius-card__actions .button {
+	align-self: flex-start;
+}
+
+/* Template editor — spintax variations modal */
+.lf-spintax-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100100;
+	display: none;
+	align-items: center;
+	justify-content: center;
+}
+
+.lf-spintax-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.lf-spintax-modal__panel {
+	position: relative;
+	z-index: 1;
+	background: #fff;
+	max-width: 720px;
+	width: 92%;
+	max-height: 88vh;
+	overflow: auto;
+	padding: 18px 20px;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+}
+
+#lf-blocks .column-key,
+#lf-xfields .column-key,
+#lf-blocks th.radius-tpl-col-key,
+#lf-xfields th.radius-tpl-col-key,
+#lf-blocks td.radius-tpl-col-key,
+#lf-xfields td.radius-tpl-col-key {
+	width: 22%;
+}
+
+#lf-blocks .column-actions,
+#lf-xfields .column-actions,
+#lf-blocks th.radius-tpl-col-actions,
+#lf-xfields th.radius-tpl-col-actions,
+#lf-blocks td.radius-tpl-col-actions,
+#lf-xfields td.radius-tpl-col-actions {
+	width: 28%;
+	text-align: right;
+	white-space: nowrap;
+}
+
+#lf-blocks .lf-spintax-summary,
+#lf-xfields .lf-xfield-summary {
+	color: #646970;
+	font-size: 13px;
+	word-break: break-word;
+}
+
+.lf-metabox-modal__panel {
+	position: relative;
+	padding-top: 20px;
+}
+
+.lf-metabox-modal-dismiss {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 2;
+	font-size: 28px;
+	line-height: 1;
+	width: 36px;
+	height: 36px;
+	text-align: center;
+	text-decoration: none;
+	color: #50575e;
+}
+
+.lf-metabox-modal-dismiss:hover,
+.lf-metabox-modal-dismiss:focus {
+	color: #1d2327;
+}
+
+.radius-locations-toolbar {
+	margin: 20px 0 12px;
+}
+
+.radius-locations-toolbar__row {
+	margin: 0;
+}
+
+.radius-locations-table--full .widefat {
+	width: 100%;
+}
+
+.radius-legacy-import-status {
+	margin-top: 12px;
+	max-width: 720px;
+}
+
+.radius-legacy-import-progress-block {
+	margin: 0 0 14px;
+}
+
+.radius-legacy-import-progress-block--batch {
+	padding-top: 4px;
+	border-top: 1px solid #dcdcde;
+}
+
+.radius-legacy-import-progress-label {
+	margin: 0 0 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.radius-legacy-import-progress {
+	width: 100%;
+	max-width: 520px;
+	height: 18px;
+	display: block;
+	margin: 0 0 6px;
+	accent-color: #2271b1;
+}
+
+.radius-legacy-import-progress-caption {
+	margin: 0;
+	font-size: 12px;
+	color: #646970;
+	line-height: 1.45;
+}
+
+.radius-legacy-import-log {
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 12px 14px;
+	max-height: 280px;
+	overflow: auto;
+	font-size: 12px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+}
+
+.radius-card-muted {
+	opacity: 0.92;
+	border-style: dashed;
+}
+
+.radius-table {
+	max-width: 900px;
+	margin-top: 12px;
+}
+
+.radius-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	background: #f0f0f1;
+	color: #2c3338;
+}
+
+.radius-badge-ok {
+	background: #edfaef;
+	color: #1e4620;
+}
+
+.radius-badge-wip {
+	background: #f0f6fc;
+	color: #135e96;
+}
+
+.radius-notice {
+	max-width: 720px;
+	padding: 12px 16px;
+	border-left: 4px solid #72aee6;
+	background: #f0f6fc;
+	margin: 16px 0;
+}
+
+.radius-notice p {
+	margin: 0.5em 0;
+}
+
+.radius-notice p:first-child {
+	margin-top: 0;
+}
+
+.radius-prose {
+	max-width: 640px;
+	line-height: 1.5;
+}
+
+/* Service-area place picker (Settings) */
+.radius-anchor-table .lf-anchor-pick {
+	position: relative;
+	max-width: 420px;
+}
+
+.radius-anchor-table .lf-anchor-suggest {
+	position: absolute;
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	margin-top: 2px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 2px;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+	max-height: 220px;
+	overflow-y: auto;
+}
+
+.radius-anchor-table .lf-suggest-item {
+	display: block;
+	width: 100%;
+	padding: 8px 10px;
+	margin: 0;
+	text-align: left;
+	background: #fff;
+	border: none;
+	border-bottom: 1px solid #f0f0f1;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.radius-anchor-table .lf-suggest-item:hover {
+	background: #f6f7f7;
+}
+
+.radius-anchor-table .lf-suggest-empty {
+	padding: 8px 10px;
+	color: #646970;
+	font-size: 13px;
+}
+
+.radius-anchor-table .lf-no-coords {
+	color: #b32d2e;
+	font-size: 12px;
+}
+
+/* Deploy screen */
+.radius-deploy-summary {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+	padding: 16px 20px 14px;
+	margin: 12px 0 20px;
+	max-width: 1100px;
+}
+
+.radius-deploy-summary--ok {
+	border-left: 4px solid #00a32a;
+}
+
+.radius-deploy-summary--warn {
+	border-left: 4px solid #dba617;
+}
+
+.radius-deploy-summary--bad {
+	border-left: 4px solid #d63638;
+}
+
+/* Float help to top-right; Pre-flight + status stack on the left (as before). */
+.radius-deploy-summary__intro {
+	margin: 0 0 12px;
+	overflow: hidden;
+}
+
+.radius-deploy-summary__intro::after {
+	content: '';
+	display: table;
+	clear: both;
+}
+
+.radius-deploy-summary__help-btn {
+	float: right;
+	margin: 0 0 4px 16px;
+	width: auto !important;
+	max-width: max-content;
+	white-space: nowrap;
+}
+
+.radius-deploy-summary__intro-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.radius-deploy-summary__title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.4;
+}
+
+.radius-deploy-summary__hint {
+	margin: 0;
+	color: #646970;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.radius-deploy-summary__stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 12px;
+	list-style: none;
+	margin: 0 0 14px;
+	padding: 0;
+}
+
+.radius-deploy-summary__stat {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 108px;
+	flex: 1 1 100px;
+	max-width: 160px;
+	padding: 10px 12px;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	background: #fcfcfd;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.radius-deploy-summary__label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	color: #646970;
+}
+
+.radius-deploy-summary__value {
+	font-size: 22px;
+	font-weight: 600;
+	line-height: 1.2;
+	color: #1d2327;
+}
+
+.radius-deploy-summary__toolbar {
+	margin: 0;
+	padding-top: 12px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.radius-deploy-summary__links {
+	margin: 0;
+	font-size: 13px;
+}
+
+.radius-deploy-summary__help-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.radius-deploy-summary__help-btn .dashicons {
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	line-height: 1;
+}
+
+/* Deploy: help modal (fixed overlay — reliable in wp-admin) */
+.radius-deploy-help-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100100;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 20px;
+	box-sizing: border-box;
+}
+
+.radius-deploy-help-overlay[hidden] {
+	display: none !important;
+}
+
+.radius-deploy-help-overlay__backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: rgba(0, 0, 0, 0.45);
+	cursor: default;
+}
+
+.radius-deploy-help-overlay__panel {
+	position: relative;
+	z-index: 1;
+	width: 100%;
+	max-width: 560px;
+	max-height: min(80vh, 640px);
+	display: flex;
+	flex-direction: column;
+	background: #fff;
+	border-radius: 6px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+	color: #1d2327;
+	overflow: hidden;
+}
+
+.radius-deploy-help-modal__chrome {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1 1 auto;
+	max-height: inherit;
+}
+
+.radius-deploy-help-modal__header {
+	flex-shrink: 0;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px 18px 12px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.radius-deploy-help-modal__title {
+	margin: 0;
+	padding-right: 8px;
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.radius-deploy-help-modal__x {
+	flex: 0 0 auto;
+	margin: -4px -4px 0 0;
+	padding: 0;
+	width: 32px;
+	height: 32px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	font-size: 22px;
+	line-height: 1;
+	color: #646970;
+	cursor: pointer;
+}
+
+.radius-deploy-help-modal__x:hover,
+.radius-deploy-help-modal__x:focus {
+	color: #1d2327;
+	background: #f0f0f1;
+}
+
+.radius-deploy-help-modal__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 16px 18px;
+	overflow-y: auto;
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+.radius-deploy-help-modal__body p {
+	margin: 0 0 12px;
+}
+
+.radius-deploy-help-modal__body p:last-child {
+	margin-bottom: 0;
+}
+
+.radius-deploy-help-modal__footer {
+	flex-shrink: 0;
+	padding: 12px 18px 16px;
+	border-top: 1px solid #f0f0f1;
+	display: flex;
+	justify-content: flex-end;
+}
+
+/*
+ * Deploy template cards: force real grid rows (wp-admin / themes sometimes override
+ * layout on .wrap descendants; min() avoids overflow on narrow sidebars).
+ */
+#wpbody-content .wrap.radius-admin.radius-deploy .radius-deploy-grid,
+.radius-deploy-grid {
+	display: grid !important;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+	gap: 20px;
+	row-gap: 24px;
+	column-gap: 20px;
+	align-items: stretch;
+	width: 100%;
+	max-width: 1200px;
+	margin-top: 18px;
+	box-sizing: border-box;
+	clear: both;
+}
+
+#wpbody-content .wrap.radius-admin.radius-deploy .radius-deploy-card,
+.radius-deploy .radius-deploy-card {
+	min-width: 0;
+	min-height: 0;
+	height: auto;
+	align-self: stretch;
+	position: relative;
+	box-sizing: border-box;
+}
+
+.radius-deploy-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	padding: 18px 20px;
+	display: flex;
+	flex-direction: column;
+}
+
+.radius-deploy-card__head {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px 12px;
+	margin-bottom: 12px;
+}
+
+.radius-deploy-card__title {
+	margin: 0;
+	font-size: 16px;
+	line-height: 1.35;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* Stack badges vertically so column width = widest badge; more room for template title. */
+.radius-deploy-card__badges {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	flex-wrap: nowrap;
+	gap: 6px;
+	flex: 0 0 auto;
+	max-width: max-content;
+}
+
+.radius-deploy-card__badges .radius-badge {
+	width: max-content;
+	max-width: 100%;
+}
+
+.radius-deploy-card__table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0 0 14px;
+	font-size: 13px;
+	table-layout: fixed;
+}
+
+.radius-deploy-card__table th,
+.radius-deploy-card__table td {
+	padding: 8px 10px 8px 0;
+	vertical-align: middle;
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.radius-deploy-card__table tr:last-child th,
+.radius-deploy-card__table tr:last-child td {
+	border-bottom: none;
+}
+
+/* Two columns: label | value (landings value = counter + bar inline in right column). */
+.radius-deploy-card__table th.radius-deploy-card__cell-label {
+	width: 38%;
+}
+
+.radius-deploy-card__table td.radius-deploy-card__cell-value,
+.radius-deploy-card__table td.radius-deploy-card__cell-deploy {
+	width: 62%;
+}
+
+.radius-deploy-card__cell-label {
+	color: #646970;
+	font-weight: 700;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	text-align: left;
+	vertical-align: middle;
+}
+
+.radius-deploy-card__cell-value {
+	color: #1d2327;
+	word-break: break-word;
+	vertical-align: middle;
+}
+
+.radius-deploy-card__cell-deploy {
+	padding-left: 10px;
+	vertical-align: middle;
+}
+
+/* Right column: fraction + progress bar on one line (two inner columns). */
+.radius-deploy-card__deploy-metrics {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 10px 12px;
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.radius-deploy-card__deploy-num {
+	flex: 0 0 auto;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.radius-deploy-card__deploy-bar-wrap {
+	flex: 1 1 0;
+	min-width: 72px;
+	max-width: 100%;
+}
+
+.radius-deploy-card__deploy-bar-wrap .radius-deploy-progress {
+	width: 100%;
+	min-width: 64px;
+	min-height: 14px;
+	height: 14px;
+}
+
+.radius-deploy-progress {
+	display: block;
+	width: 100%;
+	min-width: 72px;
+	height: 14px;
+	border-radius: 7px;
+	background: #c3c4c7;
+	border: 1px solid #a7aaad;
+	overflow: hidden;
+	box-sizing: border-box;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.radius-deploy-progress__fill {
+	display: block;
+	height: 100%;
+	min-width: 0;
+	border-radius: 5px;
+	background: linear-gradient(90deg, #2271b1, #135e96);
+	transition: width 0.25s ease-out;
+	box-sizing: border-box;
+}
+
+.radius-deploy-card__actions {
+	margin-top: auto;
+	padding-top: 4px;
+}
+
+.radius-deploy-card__ajax-progress {
+	margin: 0 0 10px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.radius-deploy-card__pending {
+	margin: 0 0 10px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.radius-deploy-card__form--continue {
+	margin-bottom: 8px;
+}
+
+.radius-deploy-card__form--cancel {
+	margin-bottom: 12px;
+}
+
+.radius-deploy-card__form .button-large {
+	width: 100%;
+	text-align: center;
+	justify-content: center;
+	height: auto;
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+
+.radius-deploy-card__edit {
+	margin: 10px 0 0;
+	text-align: center;
+	font-size: 13px;
+}
+
+/* License tab — API key + validate (compact row, not full width) */
+.radius-api-key-row {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 10px;
+	width: fit-content;
+	max-width: 100%;
+}
+.radius-api-key-row .radius-api-key-input {
+	flex: 0 1 auto;
+	min-width: 12em;
+	max-width: 25em;
+	width: min(25em, 100%);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 13px;
+	background: #fff !important;
+	border: 1px solid #8c8f94;
+	box-shadow: 0 0 0 transparent;
+}
+.radius-api-key-row .radius-api-key-input:focus {
+	background: #fff !important;
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+	outline: 2px solid transparent;
+}
+.radius-api-key-row__actions {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	flex: 0 0 auto;
+}
+.radius-api-validate-status {
+	display: inline-block;
+	margin-left: 4px;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.radius-api-validate-status--pending {
+	background: #f0f0f1;
+	color: #50575e;
+}
+.radius-api-validate-status--ok {
+	background: #edfaef;
+	color: #1e4620;
+	border: 1px solid #68de7c;
+}
+.radius-api-validate-status--bad {
+	background: #fcf0f1;
+	color: #650000;
+	border: 1px solid #f86368;
+}
+
+/* License details row — current plan + pricing cards */
+.radius-license-current-card {
+	max-width: 520px;
+	margin: 0 0 24px;
+	padding: 18px 20px;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+	background: #fff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.radius-license-current-card__badge {
+	display: inline-block;
+	margin: 0 0 10px;
+	padding: 2px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #1e4620;
+	background: #edfaef;
+	border-radius: 3px;
+	border: 1px solid #68de7c;
+}
+.radius-license-current-card__title {
+	margin: 0 0 14px;
+	font-size: 18px;
+	line-height: 1.25;
+}
+.radius-license-current-card__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px 36px;
+	margin: 0 0 16px;
+}
+.radius-license-current-card__meta div {
+	margin: 0;
+}
+.radius-license-current-card__meta dt {
+	margin: 0;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: #646970;
+}
+.radius-license-current-card__meta dd {
+	margin: 4px 0 0;
+	font-size: 14px;
+}
+.radius-license-current-card__features-title {
+	margin: 0 0 8px;
+	font-size: 13px;
+}
+.radius-license-current-card__features {
+	margin: 0;
+	padding-left: 1.2em;
+	font-size: 13px;
+	line-height: 1.5;
+}
+.radius-license-pricing-intro {
+	margin: 0 0 10px;
+	max-width: 640px;
+}
+.radius-license-pricing-cards {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+	max-width: 720px;
+	margin: 0;
+}
+.radius-license-pricing-cards--unlimited,
+.radius-license-pricing-cards--single {
+	grid-template-columns: minmax(0, 360px);
+}
+@media (max-width: 782px) {
+	.radius-license-pricing-cards {
+		grid-template-columns: 1fr;
+	}
+}
+.radius-license-price-card {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 16px 18px;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	background: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.radius-license-price-card--highlight {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1, 0 2px 8px rgba(34, 113, 177, 0.12);
+}
+.radius-license-price-card__title {
+	margin: 0 0 10px;
+	font-size: 15px;
+}
+.radius-license-price-card__list {
+	margin: 0 0 auto;
+	padding-left: 1.2em;
+	padding-bottom: 14px;
+	font-size: 13px;
+	line-height: 1.45;
+	flex-grow: 1;
+}
+.radius-license-price-card__action {
+	margin: 0;
+	padding-top: 4px;
+	text-align: center;
+}
+.radius-license-price-card__action .button {
+	min-width: 8em;
+}

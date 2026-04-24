@@ -1,0 +1,204 @@
+/* Radius — landing analytics admin */
+
+.radius-lfa-dashboard {
+	padding: 0 0 2rem;
+	max-width: 1400px;
+}
+
+.lfa-dash-header {
+	margin-bottom: 1.75rem;
+}
+
+.lfa-dash-title {
+	font-size: 1.75rem;
+	font-weight: 600;
+	color: #1e293b;
+	margin: 0 0 0.25rem;
+}
+
+.lfa-dash-subtitle {
+	margin: 0;
+	color: #64748b;
+	font-size: 0.9375rem;
+}
+
+.lfa-summary-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 1rem;
+	margin-bottom: 2rem;
+}
+
+.lfa-card {
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.lfa-card-stat {
+	padding: 1.25rem 1.5rem;
+	text-align: center;
+}
+
+.lfa-stat-value {
+	display: block;
+	font-size: 1.75rem;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.2;
+}
+
+.lfa-stat-label {
+	display: block;
+	font-size: 0.8125rem;
+	color: #64748b;
+	margin-top: 0.25rem;
+}
+
+.lfa-section {
+	margin-bottom: 2.5rem;
+}
+
+.lfa-section-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: #1e293b;
+	margin: 0 0 0.35rem;
+}
+
+.lfa-section-desc {
+	font-size: 0.875rem;
+	color: #64748b;
+	margin: 0 0 1rem;
+}
+
+.lfa-tools {
+	margin: 0 0 1rem;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem 1rem;
+}
+
+.lfa-tools .description {
+	flex: 1 1 240px;
+	margin: 0;
+	color: #64748b;
+	font-size: 0.8125rem;
+}
+
+.lfa-section-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+	gap: 1.25rem;
+	margin-bottom: 1.25rem;
+}
+
+.lfa-card-chart {
+	padding: 1.25rem;
+}
+
+.lfa-card-chart.lfa-chart-wide {
+	grid-column: 1 / -1;
+}
+
+.lfa-card-heading {
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: #334155;
+	margin: 0 0 1rem;
+}
+
+.lfa-chart-wrap {
+	position: relative;
+	height: 280px;
+}
+
+.lfa-chart-wrap canvas {
+	max-height: 280px;
+}
+
+.lfa-no-data {
+	margin: 0;
+	padding: 1.5rem;
+	color: #64748b;
+	font-size: 0.875rem;
+	text-align: center;
+}
+
+.lfa-card-table {
+	padding: 1.25rem;
+	overflow: hidden;
+}
+
+.lfa-table-scroll {
+	overflow-x: auto;
+}
+
+.lfa-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.875rem;
+}
+
+.lfa-table th,
+.lfa-table td {
+	padding: 0.65rem 1rem;
+	text-align: left;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.lfa-table th {
+	font-weight: 600;
+	color: #475569;
+	background: #f8fafc;
+}
+
+.lfa-table tbody tr:hover {
+	background: #f8fafc;
+}
+
+.lfa-table td {
+	color: #334155;
+}
+
+.lfa-pager {
+	margin-top: 1rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid #e2e8f0;
+}
+
+.lfa-pager-inner {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 0.75rem 1rem;
+}
+
+.lfa-pager-status {
+	font-size: 0.8125rem;
+	color: #64748b;
+	min-width: 8rem;
+	text-align: center;
+}
+
+.lfa-pager .button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+@media (max-width: 782px) {
+	.lfa-summary-cards {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.lfa-section-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.lfa-stat-value {
+		font-size: 1.5rem;
+	}
+}
