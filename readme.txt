@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.15
+Stable tag: 1.6.16
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,6 +47,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_legacy_location_zip_meta_keys` — legacy location term meta keys tried when resolving zip for service-area anchor mapping (default `zip`, `Zip`, `ZIP`, `postal_code`, `postal`, `Postcode`).
 * `radius_migration_clone_elementor_meta_keys_exclude` — list of `_elementor*` post meta key names to skip in the bulk meta copy before Elementor’s document copy runs when cloning migration variants (default: every `_elementor` key found on the source template).
 == Changelog ==
+
+= 1.6.16 =
+* Legacy token conversion: after option-row matching, convert **any** remaining `{spintax_…}` (including hyphenated keys like `{spintax_roadside-h2-3}`) to `{{…}}` via `sanitize_key`, so Elementor text is not limited to labels present in the global spintax option.
 
 = 1.6.15 =
 * Migration template clones (roadside / heavy / equipment): copy Elementor document meta via the same Elementor-aware path used for Magic Page imports (`copy_elementor_document_meta_to_template`), instead of only bulk-copying post meta. Bulk copy skips `_elementor*` keys so `_elementor_data` is not dropped or corrupted when cloning from the towing blueprint.

@@ -1504,7 +1504,34 @@ class Radius_Legacy_Import_Service {
 			},
 			$text
 		);
+		// Any leftover Magic Page `{spintax_key-or-label}` not matched by option rows (hyphenated keys, renamed variants, etc.).
+		$text = self::convert_remaining_braced_spintax_to_curly_keys( $text );
 		return $text;
+	}
+
+	/**
+	 * Turn `{spintax_anything}` into `{{anything}}` using sanitize_key so all legacy placeholders convert (no row-by-row limit).
+	 *
+	 * @param string $text HTML/text possibly containing `{spintax_roadside-h2-3}` etc.
+	 * @return string
+	 */
+	private static function convert_remaining_braced_spintax_to_curly_keys( $text ) {
+		$text = (string) $text;
+		if ( $text === '' || strpos( $text, '{spintax_' ) === false ) {
+			return $text;
+		}
+		return (string) preg_replace_callback(
+			'/\{spintax_([^\}]+)\}/',
+			function ( $m ) {
+				$inner = isset( $m[1] ) ? trim( (string) $m[1] ) : '';
+				if ( $inner === '' ) {
+					return $m[0];
+				}
+				$key = sanitize_key( $inner );
+				return $key !== '' ? '{{' . $key . '}}' : $m[0];
+			},
+			$text
+		);
 	}
 
 	/**
