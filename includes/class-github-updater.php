@@ -165,7 +165,7 @@ class Radius_GitHub_Updater {
 
 		$preferred = apply_filters(
 			'radius_github_release_zip_preference',
-			array( 'wp-radius-seo.zip', 'radius-seo.zip', 'radius.zip' ),
+			array( 'wp-radius-seo.zip', 'wp-radius-seo-release.zip', 'radius-seo.zip', 'radius.zip' ),
 			$data
 		);
 		if ( is_array( $preferred ) ) {
