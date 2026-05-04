@@ -90,6 +90,25 @@ class Radius_Legacy_Import_Service {
 				return true;
 			}
 		}
+		// White-label or custom folder names: any active plugin path containing "magic-page".
+		$active = (array) get_option( 'active_plugins', array() );
+		if ( is_multisite() ) {
+			$net = (array) get_site_option( 'active_sitewide_plugins', array() );
+			if ( ! empty( $net ) ) {
+				$active = array_merge( $active, array_keys( $net ) );
+			}
+		}
+		foreach ( $active as $rel ) {
+			if ( ! is_string( $rel ) || $rel === '' ) {
+				continue;
+			}
+			if ( false === stripos( $rel, 'magic-page' ) ) {
+				continue;
+			}
+			if ( is_plugin_active( $rel ) ) {
+				return true;
+			}
+		}
 		return false;
 	}
 

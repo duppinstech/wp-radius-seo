@@ -269,9 +269,10 @@ final class Radius_Migration_Wizard {
 		if ( ! self::has_no_deployed_landings() ) {
 			return false;
 		}
-		return Radius_Legacy_Import_Service::detect_magic_page_environment()
-			|| self::get_state() === 'dismissed'
-			|| self::all_core_steps_done();
+		// Always load the modal when Magic Page is active and migration is not finished. Legacy
+		// data detection only informs imports — if CPT/tax/options differ or the DB is empty,
+		// users still need the wizard (filters / manual steps on Import → Magic Page migration).
+		return true;
 	}
 
 	/**
@@ -327,7 +328,9 @@ final class Radius_Migration_Wizard {
 		if ( self::all_core_steps_done() ) {
 			return false;
 		}
-		return Radius_Legacy_Import_Service::detect_magic_page_environment();
+		// Offer the tour whenever Magic Page is active and core steps remain; do not require
+		// detect_magic_page_environment() so new installs and non-default CPT slugs still get prompts.
+		return true;
 	}
 
 	/**

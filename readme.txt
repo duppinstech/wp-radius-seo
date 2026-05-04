@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.8
+Stable tag: 1.6.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -39,6 +39,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_elementor_exclude_post_types_from_admin_meta_queries` — array of CPT slugs to omit from Elementor’s admin `WP_Query` that lists “built with Elementor” across all supported types (reduces load from huge `radius_landing` tables). Return an empty array to keep default Elementor behavior.
 * `radius_deploy_batch_time_limit` — seconds for PHP `max_execution_time` during chained deploy AJAX (default 300, clamped 60–600).
 == Changelog ==
+
+= 1.6.9 =
+* Magic Page migration wizard: load the tour whenever Magic Page is active and migration is not finished — detection of legacy CPT/tax/options no longer gates the modal (fixes missing wizard on installs where slugs differ or data is not detected yet).
+* Magic Page detection: treat any active plugin whose path contains `magic-page` as Magic Page (covers white-label / nonstandard install folders in addition to known basenames).
 
 = 1.6.8 =
 * Deploy: clearer alerts when the server returns HTML, timeouts, 5xx, or non-JSON (instead of only “Unexpected server response”); chained deploy parses text first so failures are classified.
