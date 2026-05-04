@@ -1979,7 +1979,7 @@ Fast roadside help in {{region}}
 								'replacers' => __( 'Site replacers (company & phone)', 'radius' ),
 								'anchors'   => __( 'Service area anchors', 'radius' ),
 							);
-							foreach ( $labels as $k => $label ) {
+							foreach ( $labels as $k => $label ) :
 								$st  = isset( $migration_steps[ $k ] ) ? $migration_steps[ $k ] : null;
 								$ok  = is_array( $st ) && ! empty( $st['done'] );
 								$src = is_array( $st ) && ! empty( $st['recorded'] ) ? __( 'recorded', 'radius' ) : ( is_array( $st ) && ! empty( $st['inferred'] ) ? __( 'detected on site', 'radius' ) : '' );
@@ -1991,7 +1991,8 @@ Fast roadside help in {{region}}
 										<span class="description">(<?php echo esc_html( $src ); ?>)</span>
 									<?php endif; ?>
 								</li>
-							}
+								<?php
+							endforeach;
 							?>
 						</ul>
 						<?php if ( ! empty( $migration_log ) ) : ?>
