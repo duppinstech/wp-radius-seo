@@ -2589,10 +2589,16 @@ class Radius_Legacy_Import_Service {
 	private static function magic_page_location_option_to_anchor_rows() {
 		$names = apply_filters(
 			'radius_magic_page_anchor_settings_option_names',
-			array( 'magic_page_location_radius_settings' )
+			array(
+				'magic_page_location_radius_settings',
+				'_magic_page_export_static_settings',
+			)
 		);
 		if ( ! is_array( $names ) ) {
-			$names = array( 'magic_page_location_radius_settings' );
+			$names = array(
+				'magic_page_location_radius_settings',
+				'_magic_page_export_static_settings',
+			);
 		}
 		$rows = array();
 		foreach ( $names as $name ) {
@@ -2703,8 +2709,13 @@ class Radius_Legacy_Import_Service {
 				continue;
 			}
 			$legacy_tid = self::magic_page_anchor_row_legacy_term_id( $row );
-			// Wizard migration standardizes on 25 mi; Magic Page row radius is ignored unless filtered.
-			$miles = (float) apply_filters( 'radius_migration_anchor_radius_miles', 25.0, $row );
+			$miles       = 25.0;
+			if ( isset( $row['radius'] ) && is_scalar( $row['radius'] ) && is_numeric( $row['radius'] ) ) {
+				$miles = (float) $row['radius'];
+			} elseif ( isset( $row['radius_miles'] ) && is_numeric( $row['radius_miles'] ) ) {
+				$miles = (float) $row['radius_miles'];
+			}
+			$miles = (float) apply_filters( 'radius_migration_anchor_radius_miles', $miles, $row );
 			if ( ! is_finite( $miles ) || $miles <= 0 ) {
 				$miles = 25.0;
 			}

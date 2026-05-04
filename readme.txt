@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.22
+Stable tag: 1.6.23
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -52,11 +52,14 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_magic_page_landing_group_meta_keys` — meta key candidates for the “group” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_group_id`).
 * `radius_magic_page_landing_abort_if_candidates_match_all_pages` — abort bulk delete when candidate count equals total posts in scanned types (default true).
 * `radius_migration_service_area_template_id` — filter the `radius_template` ID written to **Settings → Service area template (default)** after the automated templates pipeline (default: towing/base template ID).
-* `radius_magic_page_anchor_settings_option_names` — additional `wp_option` names to read for Magic Page location/service rows (default: `magic_page_location_radius_settings` only).
+* `radius_magic_page_anchor_settings_option_names` — `wp_option` names for Magic Page location rows used as service anchors (defaults: `magic_page_location_radius_settings`, `_magic_page_export_static_settings`; later options override earlier rows with the same legacy term id).
 * `radius_magic_page_anchor_row_legacy_term_keys` — keys tried on each saved row to find the legacy location term ID.
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.23 =
+* **Service anchors:** Read **`locations`** from **`_magic_page_export_static_settings`** (`id` = legacy location term id, `radius` = miles). Default **25** miles when missing or invalid. Per-row `radius` / `radius_miles` is applied before the `radius_migration_anchor_radius_miles` filter.
 
 = 1.6.22 =
 * **Site replacers (migration):** Merge Magic Page global xfields from **`_magic_page_xfields`** in `wp_options` (serialized map: `company-name`, `company-short`, `phone-number`, keywords, etc.). Direct key match to Radius site replacer keys; option merge runs after template `_radius_xfields` rows so Magic Page options win. Works even when the imported template has no `_radius_xfields` meta.
