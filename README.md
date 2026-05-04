@@ -32,6 +32,8 @@ Installed sites poll **GitHub Releases** (latest release must include a `.zip` a
 
 You can still upload a newer ZIP manually or use [Git Updater](https://git-updater.com/) if you prefer. Filters: `radius_github_updater_enabled`, `radius_github_updater_repo`.
 
+**Maintainers — shipping a version:** merge your changes, bump `Version` / `RADIUS_VERSION` and `readme.txt` (stable tag + changelog), push `main`, then **[publish a GitHub Release](https://github.com/oduppinsjr/wp-radius-seo/releases/new)** with tag `vX.Y.Z` matching the plugin version and attach `wp-radius-seo.zip` built with `git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD`. Without a release + ZIP asset, installed sites will not see the update in **Dashboard → Updates**.
+
 WordPress.org–style metadata and hooks are documented in **`readme.txt`** (used for directory submissions and translators).
 
 ---
