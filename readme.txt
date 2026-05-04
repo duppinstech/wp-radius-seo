@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.14
+Stable tag: 1.6.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,7 +45,12 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
 * `radius_migration_spintax_import_elementor_meta_keys` — post meta keys that receive `{spintax_*}` / legacy token replacement during global spintax import (default `_elementor_data`, `_elementor_page_settings`, `_radius_xfields`).
 * `radius_migration_legacy_location_zip_meta_keys` — legacy location term meta keys tried when resolving zip for service-area anchor mapping (default `zip`, `Zip`, `ZIP`, `postal_code`, `postal`, `Postcode`).
+* `radius_migration_clone_elementor_meta_keys_exclude` — list of `_elementor*` post meta key names to skip in the bulk meta copy before Elementor’s document copy runs when cloning migration variants (default: every `_elementor` key found on the source template).
 == Changelog ==
+
+= 1.6.15 =
+* Migration template clones (roadside / heavy / equipment): copy Elementor document meta via the same Elementor-aware path used for Magic Page imports (`copy_elementor_document_meta_to_template`), instead of only bulk-copying post meta. Bulk copy skips `_elementor*` keys so `_elementor_data` is not dropped or corrupted when cloning from the towing blueprint.
+* Variant keyword swaps: map bare placeholder `{{towing}}` → `{{roadside}}`, `{{heavy}}`, or `{{equipment}}` (in addition to `spintax_towing` + `towing_*` prefix rules). Filter `radius_migration_clone_elementor_meta_keys_exclude` can adjust which `_elementor*` keys are omitted from the non-Elementor bulk copy.
 
 = 1.6.14 =
 * Global spintax import (and automated migration spintax step): when “replace shortcodes” is used, also rewrite `{spintax_…}` and legacy bracket tokens inside `_elementor_data`, `_elementor_page_settings`, and `_radius_xfields`—not only the post title/body. Spintax **variation** lines get the same treatment. Cloned templates (roadside / heavy / equipment) now also map `spintax_towing` → `spintax_roadside` / `heavy` / `equipment` before the generic `towing_` → prefix swaps.

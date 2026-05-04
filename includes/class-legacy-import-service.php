@@ -445,6 +445,30 @@ class Radius_Legacy_Import_Service {
 	 * @param array $exclude_keys   Meta keys to skip.
 	 * @return void
 	 */
+	/**
+	 * Meta keys starting with `_elementor` on the source post — exclude from `copy_all_template_post_meta` when Elementor will copy document data separately.
+	 *
+	 * @param int $source_post_id Source template ID.
+	 * @return string[]
+	 */
+	private static function elementor_meta_keys_present_on_post( $source_post_id ) {
+		$source_post_id = (int) $source_post_id;
+		$out            = array();
+		if ( $source_post_id <= 0 ) {
+			return $out;
+		}
+		$all = get_post_meta( $source_post_id );
+		if ( ! is_array( $all ) ) {
+			return $out;
+		}
+		foreach ( array_keys( $all ) as $meta_key ) {
+			if ( is_string( $meta_key ) && strpos( $meta_key, '_elementor' ) === 0 ) {
+				$out[] = $meta_key;
+			}
+		}
+		return apply_filters( 'radius_migration_clone_elementor_meta_keys_exclude', $out, $source_post_id );
+	}
+
 	public static function copy_all_template_post_meta( $source_post_id, $target_post_id, array $exclude_keys = array() ) {
 		$source_post_id = (int) $source_post_id;
 		$target_post_id = (int) $target_post_id;
@@ -512,14 +536,17 @@ class Radius_Legacy_Import_Service {
 		// Longer / specific substrings first so `spintax_towing` maps before generic `towing_` swaps inside keys.
 		$map     = array(
 			'roadside'  => array(
+				'{{towing}}'     => '{{roadside}}',
 				'spintax_towing' => 'spintax_roadside',
 				'towing_'        => 'roadside_',
 			),
 			'heavy'     => array(
+				'{{towing}}'     => '{{heavy}}',
 				'spintax_towing' => 'spintax_heavy',
 				'towing_'        => 'heavy_',
 			),
 			'equipment' => array(
+				'{{towing}}'     => '{{equipment}}',
 				'spintax_towing' => 'spintax_equipment',
 				'towing_'        => 'equipment_',
 			),
@@ -662,7 +689,10 @@ class Radius_Legacy_Import_Service {
 		if ( is_wp_error( $new_id ) ) {
 			return $new_id;
 		}
-		self::copy_all_template_post_meta( $source_id, (int) $new_id );
+		// Copy Radius meta (spintax, xfields, …) but not `_elementor*`: bulk row copy can break large JSON / Elementor expectations.
+		$exclude_el = self::elementor_meta_keys_present_on_post( $source_id );
+		self::copy_all_template_post_meta( $source_id, (int) $new_id, $exclude_el );
+		self::copy_elementor_document_meta_to_template( $source_id, (int) $new_id );
 		update_post_meta( (int) $new_id, '_radius_migration_clone_of', (int) $source_id );
 		self::apply_keyword_swaps_to_radius_template( (int) $new_id, $pairs );
 
