@@ -1,6 +1,7 @@
 # OS / editor
 .DS_Store
 Thumbs.db
+.cursor/
 *.swp
 *.swo
 *~
