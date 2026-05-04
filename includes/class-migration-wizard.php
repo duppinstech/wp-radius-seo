@@ -402,7 +402,7 @@ final class Radius_Migration_Wizard {
 	 * @return bool
 	 */
 	public static function infer_magic_page_landings_cleared() {
-		return count( Radius_Legacy_Import_Service::find_magic_page_generated_landing_post_ids() ) === 0;
+		return Radius_Legacy_Import_Service::count_magic_page_generated_landing_candidates() === 0;
 	}
 
 	/**
@@ -665,10 +665,23 @@ final class Radius_Migration_Wizard {
 			case 'magic_pages_cleanup':
 				if ( function_exists( 'set_time_limit' ) ) {
 					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
-					@set_time_limit( 600 );
+					@set_time_limit( 300 );
 				}
-				$res = Radius_Legacy_Import_Service::delete_magic_page_generated_landing_pages();
+				if ( function_exists( 'ignore_user_abort' ) ) {
+					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+					@ignore_user_abort( true );
+				}
+				$after = isset( $_POST['after_post_id'] ) ? absint( wp_unslash( $_POST['after_post_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+
+				$uid  = get_current_user_id();
+				$tkey = 'radius_mw_mp_cleanup_' . $uid;
+				if ( 0 === $after ) {
+					delete_transient( $tkey );
+				}
+
+				$res = Radius_Legacy_Import_Service::delete_magic_page_generated_landing_pages_batch( $after );
 				if ( ! empty( $res['blocked'] ) ) {
+					delete_transient( $tkey );
 					wp_send_json_error(
 						array(
 							'message' => ! empty( $res['blocked_message'] )
@@ -679,14 +692,24 @@ final class Radius_Migration_Wizard {
 						400
 					);
 				}
-				self::record_step_done(
-					'magic_pages',
-					__( 'Magic Page mass landing pages removed (location + group meta footprint).', 'radius' ),
-					array(
-						'source'        => 'wizard',
-						'deleted_count' => isset( $res['deleted_count'] ) ? (int) $res['deleted_count'] : 0,
-					)
-				);
+
+				$batch_del = isset( $res['deleted_this_batch'] ) ? (int) $res['deleted_this_batch'] : 0;
+				$cum       = (int) get_transient( $tkey ) + $batch_del;
+				set_transient( $tkey, $cum, 3600 );
+
+				$res['deleted_running_total'] = $cum;
+
+				if ( empty( $res['has_more'] ) ) {
+					delete_transient( $tkey );
+					self::record_step_done(
+						'magic_pages',
+						__( 'Magic Page mass landing pages removed (location + group meta footprint).', 'radius' ),
+						array(
+							'source'        => 'wizard',
+							'deleted_count' => $cum,
+						)
+					);
+				}
 				wp_send_json_success( $res );
 				return;
 			case 'magic_page_plugin_deactivate':

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.29
+Stable tag: 1.6.30
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -52,6 +52,8 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_magic_page_landing_location_meta_keys` — meta key candidates for the “location” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_location_id`).
 * `radius_magic_page_landing_group_meta_keys` — meta key candidates for the “group” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_group_id`).
 * `radius_magic_page_landing_abort_if_candidates_match_all_pages` — abort bulk delete when candidate count equals total posts in scanned types (default true).
+* `radius_magic_page_landing_delete_batch_size` — Magic Page mass landing **delete** batch size per AJAX request (default 45, clamped 5–150; migration wizard chains until done).
+* `radius_magic_page_landing_max_ids_returned` — max IDs returned by `find_magic_page_generated_landing_post_ids()` (default 50000, clamped 100–200000; prefer `count_magic_page_generated_landing_candidates()` for large sites).
 * `radius_migration_service_area_template_id` — filter the `radius_template` ID written to **Settings → Service area template (default)** after the automated templates pipeline (default: towing/base template ID).
 * `radius_migration_yoast_service_line_map` — filter focus keyword, SEO title, and meta description (token strings) per service line (`towing`, `roadside`, `heavy`, `equipment`) when applying Yoast template meta after migration.
 * `radius_magic_page_anchor_settings_option_names` — `wp_option` names for Magic Page location rows used as service anchors (defaults: `magic_page_location_radius_settings`, `_magic_page_export_static_settings`; later options override earlier rows with the same legacy term id).
@@ -59,6 +61,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.30 =
+* **Magic Page mass landing delete:** Deletes run in **chunked AJAX batches** (cursor `after_post_id`, default ~45 posts per request) instead of one giant request — avoids **HTTP 500 / timeouts** on thousands of pages. Preview uses **COUNT** + sample IDs (no longer loads every candidate ID into memory). Wizard loops until `has_more` is false; running delete total is logged when the step completes. New helpers: `count_magic_page_generated_landing_candidates()`, `find_magic_page_generated_landing_post_ids_after()`, `delete_magic_page_generated_landing_pages_batch()`, `magic_page_landing_delete_blocked_reason_for_counts()`.
 
 = 1.6.29 =
 * **Legacy place import (AJAX):** Batches use **term_id cursor** pagination (`term_id > last`) instead of **OFFSET** for loading legacy terms. Deep imports (thousands of locations) stay much closer to **constant** query cost per batch instead of slowing as the offset grows. New POST param `cursor_term_id`; response includes `next_cursor_term_id`. Filter `radius_legacy_import_places_use_term_id_cursor` to opt out. Non-AJAX single batch form is unchanged (OFFSET).

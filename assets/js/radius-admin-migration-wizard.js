@@ -1216,15 +1216,43 @@
 			ensurePriorStepsComplete(steps, 4);
 			if (userWants.magic_pages) {
 				setStepState('mw-step-magic-pages', 'wait');
-				var jMp = await postWizard('magic_pages_cleanup');
-				if (!jMp.success) {
-					throw new Error(
-						(jMp.data && jMp.data.message) ||
-							i18n.requestFailed ||
-							'Request failed'
-					);
+				var mpAfter = 0;
+				var mpCand = null;
+				var lastMp = {};
+				while (true) {
+					var jMp = await postWizard('magic_pages_cleanup', {
+						after_post_id: String(mpAfter),
+					});
+					if (!jMp.success) {
+						throw new Error(
+							(jMp.data && jMp.data.message) ||
+								i18n.requestFailed ||
+								'Request failed'
+						);
+					}
+					lastMp = jMp.data || {};
+					if (typeof lastMp.candidate_count === 'number') {
+						mpCand = lastMp.candidate_count;
+					}
+					if (!lastMp.has_more) {
+						break;
+					}
+					mpAfter =
+						lastMp.next_after_post_id != null
+							? parseInt(lastMp.next_after_post_id, 10) || 0
+							: 0;
+					await new Promise(function (r) {
+						setTimeout(r, 250);
+					});
 				}
-				jMpData = jMp.data || {};
+				jMpData = Object.assign({}, lastMp, {
+					deleted_count:
+						lastMp.deleted_running_total != null
+							? lastMp.deleted_running_total
+							: lastMp.deleted_this_batch || 0,
+					candidate_count:
+						mpCand != null ? mpCand : lastMp.candidate_count,
+				});
 				setStepState('mw-step-magic-pages', 'done');
 				stFresh = await postWizard('status');
 				if (stFresh.success && stFresh.data && stFresh.data.steps) {

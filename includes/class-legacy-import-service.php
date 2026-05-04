@@ -874,6 +874,56 @@ class Radius_Legacy_Import_Service {
 	 * @return int[] Post IDs ascending.
 	 */
 	public static function find_magic_page_generated_landing_post_ids() {
+		$max = (int) apply_filters( 'radius_magic_page_landing_max_ids_returned', 50000 );
+		$max = max( 100, min( 200000, $max ) );
+		return self::find_magic_page_generated_landing_post_ids_after( 0, $max );
+	}
+
+	/**
+	 * Count posts matching the Magic Page landing footprint (location + group meta) without loading all IDs.
+	 *
+	 * @return int
+	 */
+	public static function count_magic_page_generated_landing_candidates() {
+		global $wpdb;
+
+		$post_types = self::magic_page_landing_post_types();
+		$loc_keys   = self::magic_page_landing_location_meta_keys();
+		$grp_keys   = self::magic_page_landing_group_meta_keys();
+		if ( empty( $post_types ) || empty( $loc_keys ) || empty( $grp_keys ) ) {
+			return 0;
+		}
+
+		$lc = count( $loc_keys );
+		$gc = count( $grp_keys );
+		$tc = count( $post_types );
+
+		$loc_in = implode( ',', array_fill( 0, $lc, '%s' ) );
+		$grp_in = implode( ',', array_fill( 0, $gc, '%s' ) );
+		$pt_in  = implode( ',', array_fill( 0, $tc, '%s' ) );
+
+		$sql = "SELECT COUNT(DISTINCT p.ID)
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} ml ON ml.post_id = p.ID AND ml.meta_key IN ($loc_in) AND ml.meta_value != '' AND ml.meta_value IS NOT NULL
+			INNER JOIN {$wpdb->postmeta} mg ON mg.post_id = p.ID AND mg.meta_key IN ($grp_in) AND mg.meta_value != '' AND mg.meta_value IS NOT NULL
+			WHERE p.post_type IN ($pt_in)
+			AND p.post_status NOT IN ('trash','auto-draft')";
+
+		$args     = array_merge( $loc_keys, $grp_keys, $post_types );
+		$prepared = $wpdb->prepare( $sql, $args );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- assembled IN (...) lists from sanitized keys.
+		$n = $wpdb->get_var( $prepared );
+		return is_numeric( $n ) ? (int) $n : 0;
+	}
+
+	/**
+	 * Footprint post IDs after a cursor (for batched delete — avoids OFFSET and huge arrays).
+	 *
+	 * @param int $after_post_id Only IDs strictly greater (0 = from start).
+	 * @param int $limit         Max rows.
+	 * @return int[]
+	 */
+	public static function find_magic_page_generated_landing_post_ids_after( $after_post_id, $limit ) {
 		global $wpdb;
 
 		$post_types = self::magic_page_landing_post_types();
@@ -882,6 +932,8 @@ class Radius_Legacy_Import_Service {
 		if ( empty( $post_types ) || empty( $loc_keys ) || empty( $grp_keys ) ) {
 			return array();
 		}
+
+		$lim = max( 1, min( 200000, (int) $limit ) );
 
 		$lc = count( $loc_keys );
 		$gc = count( $grp_keys );
@@ -897,9 +949,11 @@ class Radius_Legacy_Import_Service {
 			INNER JOIN {$wpdb->postmeta} mg ON mg.post_id = p.ID AND mg.meta_key IN ($grp_in) AND mg.meta_value != '' AND mg.meta_value IS NOT NULL
 			WHERE p.post_type IN ($pt_in)
 			AND p.post_status NOT IN ('trash','auto-draft')
-			ORDER BY p.ID ASC";
+			AND p.ID > %d
+			ORDER BY p.ID ASC
+			LIMIT %d";
 
-		$args   = array_merge( $loc_keys, $grp_keys, $post_types );
+		$args     = array_merge( $loc_keys, $grp_keys, $post_types, array( max( 0, (int) $after_post_id ), $lim ) );
 		$prepared = $wpdb->prepare( $sql, $args );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- assembled IN (...) lists from sanitized keys.
 		$rows = $wpdb->get_col( $prepared );
@@ -913,24 +967,35 @@ class Radius_Legacy_Import_Service {
 	/**
 	 * Whether bulk-delete should abort because the footprint matches 100% of scanned posts (likely mis-identification).
 	 *
-	 * @param int[] $candidate_ids Candidate post IDs.
-	 * @param int   $total_posts   Total posts in scanned types (see count_posts_in_magic_page_landing_post_types()).
+	 * @param int   $candidate_count Candidate post count.
+	 * @param int   $total_posts     Total posts in scanned types (see count_posts_in_magic_page_landing_post_types()).
+	 * @param int[] $candidate_ids   Optional IDs for filters that inspect rows (may be empty when using count-only path).
 	 * @return string|null Error code or null if OK.
 	 */
-	public static function magic_page_landing_delete_blocked_reason( array $candidate_ids, $total_posts ) {
-		$candidate_ids = array_values( array_filter( array_map( 'absint', $candidate_ids ) ) );
-		$total_posts   = (int) $total_posts;
-		$n             = count( $candidate_ids );
+	public static function magic_page_landing_delete_blocked_reason_for_counts( $candidate_count, $total_posts, array $candidate_ids = array() ) {
+		$candidate_count = (int) $candidate_count;
+		$total_posts     = (int) $total_posts;
 		if ( ! apply_filters( 'radius_magic_page_landing_abort_if_candidates_match_all_pages', true, $candidate_ids, $total_posts ) ) {
 			return null;
 		}
 		if ( $total_posts < 1 ) {
 			return null;
 		}
-		if ( $n === $total_posts ) {
+		if ( $candidate_count === $total_posts ) {
 			return 'matches_all_pages';
 		}
 		return null;
+	}
+
+	/**
+	 * Whether bulk-delete should abort because the footprint matches 100% of scanned posts (likely mis-identification).
+	 *
+	 * @param int[] $candidate_ids Candidate post IDs.
+	 * @param int   $total_posts   Total posts in scanned types (see count_posts_in_magic_page_landing_post_types()).
+	 * @return string|null Error code or null if OK.
+	 */
+	public static function magic_page_landing_delete_blocked_reason( array $candidate_ids, $total_posts ) {
+		return self::magic_page_landing_delete_blocked_reason_for_counts( count( $candidate_ids ), $total_posts, $candidate_ids );
 	}
 
 	/**
@@ -939,40 +1004,87 @@ class Radius_Legacy_Import_Service {
 	 * @return array<string,mixed>
 	 */
 	public static function preview_magic_page_landing_cleanup() {
-		$ids         = self::find_magic_page_generated_landing_post_ids();
-		$total       = self::count_posts_in_magic_page_landing_post_types();
-		$blocked_key = self::magic_page_landing_delete_blocked_reason( $ids, $total );
-		$blocked     = null !== $blocked_key;
+		$total          = self::count_posts_in_magic_page_landing_post_types();
+		$n_candidates   = self::count_magic_page_generated_landing_candidates();
+		$blocked_key    = self::magic_page_landing_delete_blocked_reason_for_counts( $n_candidates, $total, array() );
+		$blocked        = null !== $blocked_key;
+		$sample_ids     = self::find_magic_page_generated_landing_post_ids_after( 0, 40 );
 
 		return array(
-			'post_types'             => self::magic_page_landing_post_types(),
-			'location_meta_keys'     => self::magic_page_landing_location_meta_keys(),
-			'group_meta_keys'        => self::magic_page_landing_group_meta_keys(),
-			'total_posts_scanned'    => $total,
-			'candidate_count'        => count( $ids ),
-			'candidate_ids_sample'   => array_slice( $ids, 0, 40 ),
-			'blocked'                => $blocked,
-			'blocked_reason'         => $blocked_key,
-			'blocked_message'        => $blocked
+			'post_types'           => self::magic_page_landing_post_types(),
+			'location_meta_keys'   => self::magic_page_landing_location_meta_keys(),
+			'group_meta_keys'      => self::magic_page_landing_group_meta_keys(),
+			'total_posts_scanned'  => $total,
+			'candidate_count'      => $n_candidates,
+			'candidate_ids_sample' => $sample_ids,
+			'blocked'              => $blocked,
+			'blocked_reason'       => $blocked_key,
+			'blocked_message'      => $blocked
 				? __( 'Refused to delete Magic Page landings: the footprint matched every page in the scanned post types. Adjust filters or remove pages manually to avoid deleting your entire site.', 'radius' )
 				: null,
 		);
 	}
 
 	/**
-	 * Permanently delete posts identified as Magic Page mass landings (location + group meta footprint).
+	 * Delete one chunk of Magic Page mass landing pages (AJAX chains until has_more is false).
 	 *
-	 * @return array<string,mixed> Preview fields plus deleted_count and delete_errors.
+	 * @param int $after_post_id Last ID from previous batch (0 for first batch — runs fail-safe count check).
+	 * @return array<string,mixed>
 	 */
-	public static function delete_magic_page_generated_landing_pages() {
-		$preview = self::preview_magic_page_landing_cleanup();
-		if ( ! empty( $preview['blocked'] ) ) {
-			$preview['deleted_count']  = 0;
-			$preview['delete_errors'] = array();
-			return $preview;
+	public static function delete_magic_page_generated_landing_pages_batch( $after_post_id ) {
+		$batch_size = (int) apply_filters( 'radius_magic_page_landing_delete_batch_size', 45 );
+		$batch_size = max( 5, min( 150, $batch_size ) );
+		$after      = max( 0, (int) $after_post_id );
+
+		$total_posts = self::count_posts_in_magic_page_landing_post_types();
+
+		$base_preview = array(
+			'post_types'          => self::magic_page_landing_post_types(),
+			'location_meta_keys'  => self::magic_page_landing_location_meta_keys(),
+			'group_meta_keys'     => self::magic_page_landing_group_meta_keys(),
+			'total_posts_scanned' => $total_posts,
+		);
+
+		if ( 0 === $after ) {
+			$n_candidates = self::count_magic_page_generated_landing_candidates();
+			$blocked_key  = self::magic_page_landing_delete_blocked_reason_for_counts( $n_candidates, $total_posts, array() );
+			if ( null !== $blocked_key ) {
+				return array_merge(
+					$base_preview,
+					array(
+						'blocked'               => true,
+						'blocked_reason'        => $blocked_key,
+						'blocked_message'       => __( 'Refused to delete Magic Page landings: the footprint matched every page in the scanned post types. Adjust filters or remove pages manually to avoid deleting your entire site.', 'radius' ),
+						'candidate_count'       => $n_candidates,
+						'deleted_this_batch'    => 0,
+						'deleted_count'         => 0,
+						'has_more'              => false,
+						'next_after_post_id'    => 0,
+						'delete_errors'         => array(),
+						'candidate_ids_sample'  => self::find_magic_page_generated_landing_post_ids_after( 0, 40 ),
+					)
+				);
+			}
+			$base_preview['candidate_count'] = $n_candidates;
 		}
 
-		$ids = self::find_magic_page_generated_landing_post_ids();
+		$ids = self::find_magic_page_generated_landing_post_ids_after( $after, $batch_size );
+
+		if ( empty( $ids ) ) {
+			return array_merge(
+				$base_preview,
+				array(
+					'blocked'            => false,
+					'deleted_this_batch' => 0,
+					'deleted_count'      => 0,
+					'has_more'           => false,
+					'next_after_post_id' => $after,
+					'delete_errors'      => array(),
+					'candidate_ids_sample' => self::find_magic_page_generated_landing_post_ids_after( 0, 40 ),
+				)
+			);
+		}
+
 		$del = 0;
 		$err = array();
 		foreach ( $ids as $pid ) {
@@ -1000,11 +1112,29 @@ class Radius_Legacy_Import_Service {
 			}
 		}
 
-		$preview['deleted_count']  = $del;
-		$preview['delete_errors']  = $err;
-		$preview['candidate_count'] = count( $ids );
-		$preview['candidate_ids_sample'] = array_slice( $ids, 0, 40 );
-		return $preview;
+		$max_id = $after;
+		foreach ( $ids as $pid ) {
+			$max_id = max( $max_id, (int) $pid );
+		}
+
+		$n_fetched = count( $ids );
+		$has_more   = ( $n_fetched >= $batch_size );
+
+		$out = array_merge(
+			$base_preview,
+			array(
+				'blocked'              => false,
+				'deleted_this_batch'   => $del,
+				'deleted_count'        => $del,
+				'delete_errors'        => array_slice( $err, 0, 12 ),
+				'has_more'             => $has_more,
+				'next_after_post_id'   => $max_id,
+				'batch_size'           => $batch_size,
+				'candidate_ids_sample' => array_slice( $ids, 0, 40 ),
+			)
+		);
+
+		return $out;
 	}
 
 	/**
