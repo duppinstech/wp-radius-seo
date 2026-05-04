@@ -52,10 +52,18 @@ WordPress.org–style metadata and hooks are documented in **`readme.txt`** (use
 
 ## License
 
-GPL-2.0-or-later. See `readme.txt` and the plugin file header.
+**GPL-2.0-or-later.** Summary in [`LICENSE.md`](LICENSE.md); full legal text in [`LICENSE`](LICENSE). The plugin header and [`readme.txt`](readme.txt) match.
 
 ---
 
-## Support & contributing
+## Community & policies
 
-Issues and pull requests: [oduppinsjr/wp-radius-seo](https://github.com/oduppinsjr/wp-radius-seo).
+| Document | Purpose |
+|----------|---------|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute, coding norms, release ZIP workflow |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant community expectations |
+| [`SECURITY.md`](SECURITY.md) | Supported versions, **private** vulnerability reporting |
+| [`SUPPORT.md`](SUPPORT.md) | Where to get help, documentation pointers |
+| [`CHANGELOG.md`](CHANGELOG.md) | Points to `readme.txt` + GitHub Releases (single changelog source) |
+
+**Issues & PRs:** [github.com/oduppinsjr/wp-radius-seo](https://github.com/oduppinsjr/wp-radius-seo). Use the issue templates under **.github/ISSUE_TEMPLATE/** when reporting bugs or requesting features.
