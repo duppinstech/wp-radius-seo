@@ -1221,19 +1221,34 @@
 }
 .radius-mw-steps {
 	margin: 0 0 16px;
-	padding-left: 1.2em;
+	padding-left: 0;
+	list-style: none;
+}
+.radius-mw-steps--checklist {
+	counter-reset: mwstep;
 }
 .radius-mw-step {
-	margin: 0 0 10px;
-	padding-left: 0.2em;
-	list-style: decimal;
+	margin: 0 0 12px;
+	padding: 0;
+	list-style: none;
 	display: grid;
-	grid-template-columns: 1fr auto;
-	align-items: center;
-	gap: 12px;
+	grid-template-columns: auto 1fr auto;
+	align-items: start;
+	gap: 10px 12px;
+}
+.radius-mw-step-run-wrap {
+	padding-top: 2px;
+	margin: 0;
+	font-weight: 400;
+}
+.radius-mw-step-run {
+	margin: 0 4px 0 0;
+}
+.radius-mw-step-main {
+	min-width: 0;
 }
 .radius-mw-step-label {
-	grid-column: 1 / -1;
+	display: block;
 	font-weight: 600;
 	margin-bottom: 4px;
 }
@@ -1241,18 +1256,14 @@
 	width: 100%;
 	max-width: 280px;
 	height: 10px;
-	grid-column: 1;
 }
-.radius-mw-step-state {
-	display: inline-flex;
+.radius-mw-step-meta {
+	display: flex;
 	align-items: center;
-	justify-content: center;
-	min-width: 1.5rem;
-	min-height: 1.5rem;
-	grid-column: 2;
-	justify-self: end;
+	justify-content: flex-end;
+	min-width: 5.5rem;
 }
-.radius-mw-step-state[data-state="wait"]::before {
+.radius-mw-step-wait[data-state="wait"]::before {
 	content: "";
 	display: inline-block;
 	width: 14px;
@@ -1262,11 +1273,80 @@
 	border-radius: 50%;
 	animation: radius-mw-spin 0.7s linear infinite;
 }
-.radius-mw-step-state[data-state="done"]::before {
-	content: "✓";
+.radius-mw-step-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.4;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+.radius-mw-step-badge--complete {
+	background: #edfaef;
 	color: #00a32a;
-	font-weight: 700;
+	border: 1px solid #b8e6bf;
+}
+.radius-mw-step-badge--incomplete {
+	background: #fcf9e8;
+	color: #996800;
+	border: 1px solid #f0e69d;
+}
+.radius-migration-step-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.4;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+.radius-migration-step-badge--complete {
+	background: #edfaef;
+	color: #00a32a;
+	border: 1px solid #b8e6bf;
+}
+.radius-migration-step-badge--incomplete {
+	background: #fcf9e8;
+	color: #996800;
+	border: 1px solid #f0e69d;
+}
+.radius-mw-deploy-block {
+	margin: 0 0 16px;
+	padding: 12px 14px;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+.radius-mw-deploy-block--locked {
+	opacity: 0.55;
+	pointer-events: none;
+}
+.radius-mw-deploy-block-title {
+	margin: 0 0 6px;
+	font-weight: 600;
 	font-size: 14px;
+}
+.radius-mw-deploy-block-help {
+	margin: 0 0 10px !important;
+	font-size: 13px;
+}
+.radius-mw-deploy-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.radius-mw-deploy-actions .button {
+	margin: 0;
+}
+.radius-mw-deploy-actions--summary {
+	margin-top: 12px;
+}
+.radius-mw-deploy-primary {
+	margin: 0;
 }
 .radius-mw-run {
 	margin: 8px 0 12px;

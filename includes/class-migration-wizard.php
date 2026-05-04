@@ -237,6 +237,44 @@ final class Radius_Migration_Wizard {
 	}
 
 	/**
+	 * Whether all four core migration steps are satisfied (recorded or inferred).
+	 *
+	 * @return bool
+	 */
+	public static function all_core_steps_done() {
+		$s = self::build_steps_status();
+		foreach ( self::step_keys() as $k ) {
+			if ( empty( $s[ $k ]['done'] ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Magic Page active + license + no deploy yet: assets may load (wizard / redo).
+	 *
+	 * @return bool
+	 */
+	public static function wizard_assets_available() {
+		if ( ! Radius_API_License::is_unlocked() ) {
+			return false;
+		}
+		if ( ! Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
+			return false;
+		}
+		if ( self::get_state() === 'completed' ) {
+			return false;
+		}
+		if ( ! self::has_no_deployed_landings() ) {
+			return false;
+		}
+		return Radius_Legacy_Import_Service::detect_magic_page_environment()
+			|| self::get_state() === 'dismissed'
+			|| self::all_core_steps_done();
+	}
+
+	/**
 	 * @return string 'open'|'dismissed'|'completed'
 	 */
 	public static function get_state() {
@@ -286,6 +324,9 @@ final class Radius_Migration_Wizard {
 		if ( ! self::has_no_deployed_landings() ) {
 			return false;
 		}
+		if ( self::all_core_steps_done() ) {
+			return false;
+		}
 		return Radius_Legacy_Import_Service::detect_magic_page_environment();
 	}
 
@@ -298,10 +339,7 @@ final class Radius_Migration_Wizard {
 		if ( ! is_admin() || ! Radius_API_License::is_unlocked() ) {
 			return false;
 		}
-		if ( self::get_state() === 'completed' ) {
-			return false;
-		}
-		return self::should_offer_wizard() || self::get_state() === 'dismissed';
+		return self::wizard_assets_available();
 	}
 
 	/**
@@ -418,16 +456,24 @@ final class Radius_Migration_Wizard {
 	 */
 	private static function build_status_payload() {
 		$deploy_url = admin_url( 'admin.php?page=radius-deploy' );
+		$auto       = self::should_offer_wizard() && self::get_state() !== 'dismissed';
 		return array(
-			'show_modal'     => self::should_offer_wizard() && self::get_state() !== 'dismissed',
-			'show_banner'    => self::should_offer_wizard() && self::get_state() === 'dismissed',
-			'offer'          => self::should_offer_wizard(),
-			'state'          => self::get_state(),
-			'deploy_url'     => $deploy_url,
-			'legacy_places'  => Radius_Legacy_Import_Service::detect_legacy_places(),
-			'legacy_tpl'     => Radius_Legacy_Import_Service::detect_legacy_templates(),
-			'steps'          => self::build_steps_status(),
-			'activity_log'   => self::get_activity_log(),
+			'wizard_available' => self::wizard_assets_available(),
+			'all_steps_done'   => self::all_core_steps_done(),
+			'show_auto_modal'  => $auto,
+			/** @deprecated Use show_auto_modal */
+			'show_modal'       => $auto,
+			'show_banner'      => self::should_offer_wizard() && self::get_state() === 'dismissed',
+			/** @deprecated Use wizard_available */
+			'offer'            => self::wizard_assets_available(),
+			'state'            => self::get_state(),
+			'deploy_url'       => $deploy_url,
+			'service_areas_url' => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
+			'locations_url'    => admin_url( 'admin.php?page=radius-locations' ),
+			'legacy_places'    => Radius_Legacy_Import_Service::detect_legacy_places(),
+			'legacy_tpl'       => Radius_Legacy_Import_Service::detect_legacy_templates(),
+			'steps'            => self::build_steps_status(),
+			'activity_log'     => self::get_activity_log(),
 		);
 	}
 }

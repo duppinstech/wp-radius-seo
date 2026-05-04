@@ -280,13 +280,20 @@ class Radius_Admin {
 				'wizardNonce'    => wp_create_nonce( 'radius_migration_wizard' ),
 				'wizardAction'   => 'radius_migration_wizard',
 				'openOnLoad'     => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
-				'deployPageUrl'  => admin_url( 'admin.php?page=radius-deploy' ),
-				'importPageUrl'  => admin_url( 'admin.php?page=radius-import&tab=migration' ),
-				'i18n'           => array(
+				'deployPageUrl'        => admin_url( 'admin.php?page=radius-deploy' ),
+				'importPageUrl'        => admin_url( 'admin.php?page=radius-import&tab=migration' ),
+				'serviceAreasUrl'      => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
+				'locationsLibraryUrl'  => admin_url( 'admin.php?page=radius-locations' ),
+				'i18n'                 => array(
 					'errorPrefix'            => __( 'Error:', 'radius' ),
 					'requestFailed'          => __( 'Request failed.', 'radius' ),
 					'title'                  => __( 'Magic Page → Radius migration', 'radius' ),
 					'intro'                  => __( 'This assistant imports legacy locations, publishes your four service templates with the correct URLs, copies spintax and company details, and sets service areas. You only need the summary at the end—then open Deploy.', 'radius' ),
+					'runThisStep'            => __( 'Run this step when you click Start', 'radius' ),
+					'completed'              => __( 'Completed', 'radius' ),
+					'incomplete'             => __( 'Incomplete', 'radius' ),
+					'stepDeployTitle'        => __( 'Deploy & verify', 'radius' ),
+					'stepDeployHelp'         => __( 'Available after the four steps above are complete. Review locations and service areas, then open Deploy.', 'radius' ),
 					'stepPlaces'             => __( 'Import legacy locations into the place library', 'radius' ),
 					'stepTemplates'          => __( 'Import templates, set slugs, import spintax by prefix', 'radius' ),
 					'stepReplacers'          => __( 'Copy company & phone into site replacers', 'radius' ),
@@ -300,6 +307,8 @@ class Radius_Admin {
 					'summaryReplacers'       => __( 'Site replacers updated', 'radius' ),
 					'deployCta'              => __( 'Site is ready for deployment', 'radius' ),
 					'goDeploy'               => __( 'Open Deploy', 'radius' ),
+					'locationLibrary'        => __( 'Location library', 'radius' ),
+					'serviceAreasBtn'        => __( 'Service areas', 'radius' ),
 					'placesProgress'         => __( 'Locations', 'radius' ),
 					'legacyImportMissing'    => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
 					'importingTemplates'     => __( 'Importing legacy templates…', 'radius' ),
@@ -527,13 +536,20 @@ class Radius_Admin {
 						'wizardNonce'   => wp_create_nonce( 'radius_migration_wizard' ),
 						'wizardAction'  => 'radius_migration_wizard',
 						'openOnLoad'    => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
-						'deployPageUrl' => admin_url( 'admin.php?page=radius-deploy' ),
-						'importPageUrl' => admin_url( 'admin.php?page=radius-import&tab=migration' ),
-						'i18n'          => array(
+						'deployPageUrl'       => admin_url( 'admin.php?page=radius-deploy' ),
+						'importPageUrl'       => admin_url( 'admin.php?page=radius-import&tab=migration' ),
+						'serviceAreasUrl'     => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
+						'locationsLibraryUrl' => admin_url( 'admin.php?page=radius-locations' ),
+						'i18n'                => array(
 							'errorPrefix'         => __( 'Error:', 'radius' ),
 							'requestFailed'       => __( 'Request failed.', 'radius' ),
 							'title'               => __( 'Magic Page → Radius migration', 'radius' ),
 							'intro'               => __( 'This assistant imports legacy locations, publishes your four service templates with the correct URLs, copies spintax and company details, and sets service areas. You only need the summary at the end—then open Deploy.', 'radius' ),
+							'runThisStep'         => __( 'Run this step when you click Start', 'radius' ),
+							'completed'           => __( 'Completed', 'radius' ),
+							'incomplete'          => __( 'Incomplete', 'radius' ),
+							'stepDeployTitle'     => __( 'Deploy & verify', 'radius' ),
+							'stepDeployHelp'      => __( 'Available after the four steps above are complete. Review locations and service areas, then open Deploy.', 'radius' ),
 							'stepPlaces'          => __( 'Import legacy locations into the place library', 'radius' ),
 							'stepTemplates'       => __( 'Import templates, set slugs, import spintax by prefix', 'radius' ),
 							'stepReplacers'       => __( 'Copy company & phone into site replacers', 'radius' ),
@@ -547,6 +563,8 @@ class Radius_Admin {
 							'summaryReplacers'    => __( 'Site replacers updated', 'radius' ),
 							'deployCta'           => __( 'Site is ready for deployment', 'radius' ),
 							'goDeploy'            => __( 'Open Deploy', 'radius' ),
+							'locationLibrary'     => __( 'Location library', 'radius' ),
+							'serviceAreasBtn'     => __( 'Service areas', 'radius' ),
 							'placesProgress'      => __( 'Locations', 'radius' ),
 							'legacyImportMissing' => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
 							'importingTemplates'  => __( 'Importing legacy templates…', 'radius' ),
@@ -1984,8 +2002,8 @@ Fast roadside help in {{region}}
 								$ok  = is_array( $st ) && ! empty( $st['done'] );
 								$src = is_array( $st ) && ! empty( $st['recorded'] ) ? __( 'recorded', 'radius' ) : ( is_array( $st ) && ! empty( $st['inferred'] ) ? __( 'detected on site', 'radius' ) : '' );
 								?>
-								<li style="margin:6px 0;">
-									<?php echo $ok ? '&#10003; ' : '&#9714; '; ?>
+								<li class="radius-migration-checklist-item" style="margin:6px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+									<span class="radius-migration-step-badge<?php echo $ok ? ' radius-migration-step-badge--complete' : ' radius-migration-step-badge--incomplete'; ?>"><?php echo $ok ? esc_html__( 'Completed', 'radius' ) : esc_html__( 'Incomplete', 'radius' ); ?></span>
 									<strong><?php echo esc_html( $label ); ?></strong>
 									<?php if ( $ok && $src ) : ?>
 										<span class="description">(<?php echo esc_html( $src ); ?>)</span>

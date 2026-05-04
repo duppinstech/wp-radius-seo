@@ -1,5 +1,5 @@
 /**
- * Magic Page → Radius migration: modal tour (all Radius admin screens when eligible).
+ * Magic Page → Radius migration: modal tour (Radius admin when Magic Page is active).
  */
 (function () {
 	'use strict';
@@ -10,9 +10,16 @@
 			: {};
 	var i18n = cfg.i18n || {};
 
+	var STEP_KEYS = ['places', 'templates', 'replacers', 'anchors'];
+	var STEP_IDS = {
+		places: 'mw-step-places',
+		templates: 'mw-step-templates',
+		replacers: 'mw-step-replacers',
+		anchors: 'mw-step-anchors',
+	};
+
 	var rootEl = null;
 	var overlayEl = null;
-	var runStep = 0;
 	var placeStats = null;
 
 	function el(tag, cls, html) {
@@ -24,6 +31,21 @@
 			n.innerHTML = html;
 		}
 		return n;
+	}
+
+	function mergeCfgFromPayload(payload) {
+		if (!payload || typeof payload !== 'object') {
+			return;
+		}
+		if (payload.service_areas_url) {
+			cfg.serviceAreasUrl = payload.service_areas_url;
+		}
+		if (payload.locations_url) {
+			cfg.locationsLibraryUrl = payload.locations_url;
+		}
+		if (payload.deploy_url) {
+			cfg.deployPageUrl = payload.deploy_url;
+		}
 	}
 
 	function postMigration(action, extra) {
@@ -69,25 +91,135 @@
 		});
 	}
 
-	function applyPrefilledSteps(steps) {
+	function rowIdForStep(key) {
+		return STEP_IDS[key] || '';
+	}
+
+	function refreshStepRows(steps) {
 		if (!steps) {
 			return;
 		}
-		['places', 'templates', 'replacers', 'anchors'].forEach(function (key) {
+		STEP_KEYS.forEach(function (key) {
+			var id = rowIdForStep(key);
+			var row = document.getElementById(id);
+			if (!row) {
+				return;
+			}
 			var s = steps[key];
-			if (s && s.done) {
-				setStepState('mw-step-' + key, 'done');
+			var done = s && s.done;
+			var badge = row.querySelector('.radius-mw-step-badge');
+			var cb = row.querySelector('.radius-mw-step-run');
+			var waitEl = row.querySelector('.radius-mw-step-wait');
+			if (waitEl) {
+				waitEl.hidden = true;
+			}
+			if (badge) {
+				badge.hidden = false;
+				badge.textContent = done
+					? i18n.completed || 'Completed'
+					: i18n.incomplete || 'Incomplete';
+				badge.className =
+					'radius-mw-step-badge ' +
+					(done
+						? 'radius-mw-step-badge--complete'
+						: 'radius-mw-step-badge--incomplete');
+			}
+			if (cb) {
+				cb.checked = !done;
+			}
+			if (done) {
+				row.setAttribute('data-done', '1');
 				if (key === 'places') {
 					setPlacesProgress(100);
 				}
+			} else {
+				row.removeAttribute('data-done');
+				if (key === 'places') {
+					setPlacesProgress(0);
+				}
 			}
 		});
+		updateDeployBlock(steps);
+	}
+
+	function updateDeployBlock(steps) {
+		var block = document.getElementById('radius-mw-deploy-block');
+		if (!block) {
+			return;
+		}
+		var all =
+			steps &&
+			STEP_KEYS.every(function (k) {
+				return steps[k] && steps[k].done;
+			});
+		block.classList.toggle('radius-mw-deploy-block--locked', !all);
+	}
+
+	function applyPrefilledSteps(steps) {
+		refreshStepRows(steps);
+	}
+
+	function createDeploySection(payload) {
+		mergeCfgFromPayload(payload);
+		var depUrl = cfg.deployPageUrl || 'admin.php?page=radius-deploy';
+		var areasUrl = cfg.serviceAreasUrl || '#';
+		var locUrl = cfg.locationsLibraryUrl || '#';
+
+		var wrap = el('div', 'radius-mw-deploy-block radius-mw-deploy-block--locked');
+		wrap.id = 'radius-mw-deploy-block';
+		wrap.setAttribute('aria-disabled', 'true');
+
+		var title = el(
+			'p',
+			'radius-mw-deploy-block-title',
+			i18n.stepDeployTitle || ''
+		);
+		var help = el(
+			'p',
+			'description radius-mw-deploy-block-help',
+			i18n.stepDeployHelp || ''
+		);
+		var actions = el('div', 'radius-mw-deploy-actions', '');
+
+		var bDeploy = el(
+			'button',
+			'button button-primary radius-mw-deploy-primary',
+			i18n.goDeploy || 'Open Deploy'
+		);
+		bDeploy.type = 'button';
+		bDeploy.addEventListener('click', function (e) {
+			e.preventDefault();
+			window.location.href = depUrl;
+		});
+
+		var aLoc = el('a', 'button', i18n.locationLibrary || 'Location library');
+		aLoc.href = locUrl;
+
+		var aAreas = el('a', 'button', i18n.serviceAreasBtn || 'Service areas');
+		aAreas.href = areasUrl;
+
+		actions.appendChild(bDeploy);
+		actions.appendChild(aLoc);
+		actions.appendChild(aAreas);
+
+		wrap.appendChild(title);
+		wrap.appendChild(help);
+		wrap.appendChild(actions);
+		return wrap;
 	}
 
 	function ensureModal(payload) {
+		mergeCfgFromPayload(payload);
 		if (rootEl) {
 			if (payload && payload.steps) {
 				applyPrefilledSteps(payload.steps);
+			} else {
+				postWizard('status').then(function (st) {
+					if (st.success && st.data && st.data.steps) {
+						mergeCfgFromPayload(st.data);
+						applyPrefilledSteps(st.data.steps);
+					}
+				});
 			}
 			return;
 		}
@@ -106,19 +238,31 @@
 		hTitle.id = 'radius-mw-title';
 		head.appendChild(hTitle);
 		var intro = el('p', 'radius-mw-intro', i18n.intro || '');
-		var steps = el('ol', 'radius-mw-steps', '');
-		steps.appendChild(
-			createStepRow('mw-step-places', i18n.stepPlaces, 'bar')
+		var stepsOl = el('ol', 'radius-mw-steps radius-mw-steps--checklist', '');
+		stepsOl.appendChild(
+			createStepRow('mw-step-places', i18n.stepPlaces, 'bar', 'places')
 		);
-		steps.appendChild(
-			createStepRow('mw-step-templates', i18n.stepTemplates, 'spin')
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-templates',
+				i18n.stepTemplates,
+				'spin',
+				'templates'
+			)
 		);
-		steps.appendChild(
-			createStepRow('mw-step-replacers', i18n.stepReplacers, 'spin')
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-replacers',
+				i18n.stepReplacers,
+				'spin',
+				'replacers'
+			)
 		);
-		steps.appendChild(
-			createStepRow('mw-step-anchors', i18n.stepAnchors, 'spin')
+		stepsOl.appendChild(
+			createStepRow('mw-step-anchors', i18n.stepAnchors, 'spin', 'anchors')
 		);
+
+		var deploySec = createDeploySection(payload);
 
 		var run = el('div', 'radius-mw-run', '');
 		var foot = el('div', 'radius-mw-foot', '');
@@ -138,7 +282,8 @@
 
 		panel.appendChild(head);
 		panel.appendChild(intro);
-		panel.appendChild(steps);
+		panel.appendChild(stepsOl);
+		panel.appendChild(deploySec);
 		panel.appendChild(run);
 		panel.appendChild(summary);
 		panel.appendChild(foot);
@@ -150,23 +295,56 @@
 		rootEl = panel;
 		if (payload && payload.steps) {
 			applyPrefilledSteps(payload.steps);
+		} else if (payload) {
+			postWizard('status').then(function (st) {
+				if (st.success && st.data && st.data.steps) {
+					mergeCfgFromPayload(st.data);
+					applyPrefilledSteps(st.data.steps);
+				}
+			});
 		}
 	}
 
-	function createStepRow(id, label, mode) {
+	function createStepRow(id, label, mode, stepKey) {
 		var li = el('li', 'radius-mw-step', '');
 		li.id = id;
+		li.setAttribute('data-step-key', stepKey);
+
+		var runWrap = el('label', 'radius-mw-step-run-wrap', '');
+		var sr = el('span', 'screen-reader-text', i18n.runThisStep || '');
+		var cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.className = 'radius-mw-step-run';
+		cb.setAttribute('data-step', stepKey);
+		cb.title = i18n.runThisStep || '';
+		runWrap.appendChild(sr);
+		runWrap.appendChild(cb);
+
+		var main = el('div', 'radius-mw-step-main', '');
 		var lab = el('span', 'radius-mw-step-label', label);
-		li.appendChild(lab);
+		main.appendChild(lab);
 		if (mode === 'bar') {
 			var bar = el('progress', 'radius-mw-step-progress', '');
 			bar.max = 100;
 			bar.value = 0;
-			li.appendChild(bar);
+			main.appendChild(bar);
 		}
-		var st = el('span', 'radius-mw-step-state', '');
-		st.setAttribute('data-state', mode === 'bar' ? '' : 'idle');
-		li.appendChild(st);
+
+		var meta = el('div', 'radius-mw-step-meta', '');
+		var wait = el('span', 'radius-mw-step-wait', '');
+		wait.hidden = true;
+		wait.setAttribute('aria-hidden', 'true');
+		var badge = el(
+			'span',
+			'radius-mw-step-badge radius-mw-step-badge--incomplete',
+			i18n.incomplete || 'Incomplete'
+		);
+		meta.appendChild(wait);
+		meta.appendChild(badge);
+
+		li.appendChild(runWrap);
+		li.appendChild(main);
+		li.appendChild(meta);
 		return li;
 	}
 
@@ -175,13 +353,43 @@
 		if (!row) {
 			return;
 		}
-		var st = row.querySelector('.radius-mw-step-state');
-		if (st) {
-			st.setAttribute('data-state', state);
+		var badge = row.querySelector('.radius-mw-step-badge');
+		var waitEl = row.querySelector('.radius-mw-step-wait');
+		if (state === 'wait') {
+			if (badge) {
+				badge.hidden = true;
+			}
+			if (waitEl) {
+				waitEl.hidden = false;
+				waitEl.setAttribute('data-state', 'wait');
+			}
+			return;
+		}
+		if (waitEl) {
+			waitEl.hidden = true;
+			waitEl.removeAttribute('data-state');
 		}
 		if (state === 'done') {
+			if (badge) {
+				badge.hidden = false;
+				badge.textContent = i18n.completed || 'Completed';
+				badge.className =
+					'radius-mw-step-badge radius-mw-step-badge--complete';
+			}
+			var cb = row.querySelector('.radius-mw-step-run');
+			if (cb) {
+				cb.checked = false;
+			}
 			row.setAttribute('data-done', '1');
+			return;
 		}
+		if (badge) {
+			badge.hidden = false;
+			badge.textContent = i18n.incomplete || 'Incomplete';
+			badge.className =
+				'radius-mw-step-badge radius-mw-step-badge--incomplete';
+		}
+		row.removeAttribute('data-done');
 	}
 
 	function setPlacesProgress(pct) {
@@ -200,6 +408,15 @@
 		if (!sum) {
 			return;
 		}
+		var depUrl = cfg.deployPageUrl || 'admin.php?page=radius-deploy';
+		var areasUrl = cfg.serviceAreasUrl || '#';
+		var locUrl = cfg.locationsLibraryUrl || '#';
+
+		var deployBlock = document.getElementById('radius-mw-deploy-block');
+		if (deployBlock) {
+			deployBlock.hidden = true;
+		}
+
 		var parts = [];
 		if (data && data.allDone) {
 			parts.push(
@@ -209,145 +426,148 @@
 			);
 		}
 		if (!(data && data.allDone)) {
-		if (placeStats && placeStats.success) {
-			if (placeStats.skipped) {
+			if (placeStats && placeStats.success) {
+				if (placeStats.skipped) {
+					parts.push(
+						'<p><strong>' +
+							esc(i18n.summaryLocations) +
+							':</strong> ' +
+							esc(i18n.summarySkippedPlaces || '') +
+							'</p>'
+					);
+				} else {
+					parts.push(
+						'<p><strong>' +
+							esc(i18n.summaryLocations) +
+							':</strong> ' +
+							esc(
+								String(
+									placeStats.sumImported +
+										' new, ' +
+										placeStats.sumUpdated +
+										' updated' +
+										(placeStats.totalLegacy
+											? ' (' +
+											  placeStats.totalLegacy +
+											  ' legacy terms)'
+											: '')
+								)
+							) +
+							'</p>'
+					);
+				}
+			} else if (placeStats && !placeStats.success) {
 				parts.push(
-					'<p><strong>' +
+					'<p class="radius-mw-warn"><strong>' +
 						esc(i18n.summaryLocations) +
 						':</strong> ' +
-						esc(i18n.summarySkippedPlaces || '') +
+						esc(placeStats.error || 'incomplete') +
 						'</p>'
 				);
-			} else {
+			}
+			var tpl = data && data.templates;
+			var skips = (data && data.skips) || {};
+			if (skips.templates) {
 				parts.push(
 					'<p><strong>' +
-						esc(i18n.summaryLocations) +
+						esc(i18n.summaryTemplates) +
 						':</strong> ' +
+						esc(i18n.summarySkippedTemplates || '') +
+						'</p>'
+				);
+			} else if (tpl && tpl.service_template_labels) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryTemplates) +
+						':</strong> ' +
+						esc(String(tpl.service_template_labels.length)) +
+						'</p><ul class="radius-mw-list">'
+				);
+				tpl.service_template_labels.forEach(function (r) {
+					parts.push('<li>' + esc(r.label || '') + '</li>');
+				});
+				parts.push('</ul>');
+			}
+			if (skips.replacers) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryReplacers) +
+						':</strong> ' +
+						esc(i18n.summarySkippedReplacers || '') +
+						'</p>'
+				);
+			} else if (data && data.replacers && Object.keys(data.replacers).length) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryReplacers) +
+						':</strong> ' +
+						esc(String(data.replacers.updated || 0)) +
+						' ' +
 						esc(
-							String(
-								placeStats.sumImported +
-									' new, ' +
-									placeStats.sumUpdated +
-									' updated' +
-									(placeStats.totalLegacy
-										? ' (' + placeStats.totalLegacy + ' legacy terms)'
-										: '')
-							)
+							data.replacers.keys && data.replacers.keys.length
+								? '(' + data.replacers.keys.join(', ') + ')'
+								: ''
 						) +
 						'</p>'
 				);
 			}
-		} else if (placeStats && !placeStats.success) {
-			parts.push(
-				'<p class="radius-mw-warn"><strong>' +
-					esc(i18n.summaryLocations) +
-					':</strong> ' +
-					esc(placeStats.error || 'incomplete') +
-					'</p>'
-			);
-		}
-		var tpl = data && data.templates;
-		var skips = (data && data.skips) || {};
-		if (skips.templates) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryTemplates) +
-					':</strong> ' +
-					esc(i18n.summarySkippedTemplates || '') +
-					'</p>'
-			);
-		} else if (tpl && tpl.service_template_labels) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryTemplates) +
-					':</strong> ' +
-					esc(String(tpl.service_template_labels.length)) +
-					'</p><ul class="radius-mw-list">'
-			);
-			tpl.service_template_labels.forEach(function (r) {
+			if (skips.anchors) {
 				parts.push(
-					'<li>' + esc(r.label || '') + '</li>'
+					'<p><strong>' +
+						esc(i18n.summaryAnchors) +
+						':</strong> ' +
+						esc(i18n.summarySkippedAnchors || '') +
+						'</p>'
 				);
-			});
-			parts.push('</ul>');
-		}
-		if (skips.replacers) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryReplacers) +
-					':</strong> ' +
-					esc(i18n.summarySkippedReplacers || '') +
-					'</p>'
-			);
-		} else if (data && data.replacers && Object.keys(data.replacers).length) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryReplacers) +
-					':</strong> ' +
-					esc(String(data.replacers.updated || 0)) +
-					' ' +
-					esc(
-						data.replacers.keys && data.replacers.keys.length
-							? '(' + data.replacers.keys.join(', ') + ')'
-							: ''
-					) +
-					'</p>'
-			);
-		}
-		if (skips.anchors) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryAnchors) +
-					':</strong> ' +
-					esc(i18n.summarySkippedAnchors || '') +
-					'</p>'
-			);
-		} else if (data && data.anchors) {
-			parts.push(
-				'<p><strong>' +
-					esc(i18n.summaryAnchors) +
-					':</strong> ' +
-					esc(String(data.anchors.anchors_count || 0)) +
-					'</p>'
-			);
-			if (data.anchors.anchor_labels && data.anchors.anchor_labels.length) {
-				parts.push('<ul class="radius-mw-list">');
-				data.anchors.anchor_labels.forEach(function (n) {
-					if (n) {
-						parts.push('<li>' + esc(n) + '</li>');
-					}
-				});
-				parts.push('</ul>');
+			} else if (data && data.anchors) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryAnchors) +
+						':</strong> ' +
+						esc(String(data.anchors.anchors_count || 0)) +
+						'</p>'
+				);
+				if (data.anchors.anchor_labels && data.anchors.anchor_labels.length) {
+					parts.push('<ul class="radius-mw-list">');
+					data.anchors.anchor_labels.forEach(function (n) {
+						if (n) {
+							parts.push('<li>' + esc(n) + '</li>');
+						}
+					});
+					parts.push('</ul>');
+				}
 			}
-		}
-		if (tpl && tpl.errors && tpl.errors.length) {
-			parts.push(
-				'<p class="radius-mw-warn">' +
-					esc(tpl.errors.join(' ')) +
-					'</p>'
-			);
-		}
+			if (tpl && tpl.errors && tpl.errors.length) {
+				parts.push(
+					'<p class="radius-mw-warn">' +
+						esc(tpl.errors.join(' ')) +
+						'</p>'
+				);
+			}
 		}
 		sum.innerHTML =
 			'<h2 class="radius-mw-summary-title">' +
 			esc(i18n.deployCta || 'Ready') +
 			'</h2>' +
 			parts.join('') +
-			'<p class="radius-mw-deploy-wrap"><a class="button button-primary button-hero" id="radius-mw-godeploy" href="#">' +
+			'<p class="radius-mw-deploy-actions radius-mw-deploy-actions--summary">' +
+			'<a class="button button-primary" href="' +
+			escAttr(depUrl) +
+			'">' +
 			esc(i18n.goDeploy || 'Open Deploy') +
-			'</a></p>';
+			'</a> ' +
+			'<a class="button" href="' +
+			escAttr(locUrl) +
+			'">' +
+			esc(i18n.locationLibrary || 'Location library') +
+			'</a> ' +
+			'<a class="button" href="' +
+			escAttr(areasUrl) +
+			'">' +
+			esc(i18n.serviceAreasBtn || 'Service areas') +
+			'</a>' +
+			'</p>';
 		sum.hidden = false;
-		var go = document.getElementById('radius-mw-godeploy');
-		if (go) {
-			go.addEventListener('click', function (e) {
-				e.preventDefault();
-				postWizard('complete').finally(function () {
-					window.location.href =
-						cfg.deployPageUrl ||
-						'admin.php?page=radius-deploy';
-				});
-			});
-		}
 		var intro = document.querySelector('.radius-mw-intro');
 		if (intro) {
 			intro.hidden = true;
@@ -358,6 +578,7 @@
 		}
 		var run = document.querySelector('.radius-mw-run');
 		if (run) {
+			run.innerHTML = '';
 			run.hidden = true;
 		}
 		var foot = document.querySelector('.radius-mw-foot');
@@ -370,6 +591,13 @@
 		var d = document.createElement('div');
 		d.textContent = s;
 		return d.innerHTML;
+	}
+
+	function escAttr(s) {
+		return String(s)
+			.replace(/&/g, '&amp;')
+			.replace(/"/g, '&quot;')
+			.replace(/</g, '&lt;');
 	}
 
 	function onDismiss() {
@@ -385,6 +613,15 @@
 		}
 	}
 
+	function wantsRun(stepKey) {
+		var row = document.getElementById(rowIdForStep(stepKey));
+		if (!row) {
+			return true;
+		}
+		var cb = row.querySelector('.radius-mw-step-run');
+		return cb ? cb.checked : true;
+	}
+
 	async function onStart() {
 		var start = document.getElementById('radius-mw-start');
 		if (start) {
@@ -396,26 +633,35 @@
 				'<p class="radius-mw-running"><span class="radius-mw-spinner" aria-hidden="true"></span> ' +
 				esc(i18n.running || 'Working…') +
 				'</p>';
+			run.hidden = false;
 		}
 
 		var stFresh = await postWizard('status');
-		var steps =
-			stFresh.success && stFresh.data && stFresh.data.steps
-				? stFresh.data.steps
-				: {};
+		if (!stFresh.success || !stFresh.data) {
+			if (run) {
+				run.innerHTML =
+					'<p class="radius-mw-error">' +
+					esc(i18n.requestFailed || 'Request failed') +
+					'</p>';
+			}
+			if (start) {
+				start.disabled = false;
+			}
+			return;
+		}
+		mergeCfgFromPayload(stFresh.data);
+		var steps = stFresh.data.steps || {};
+
 		applyPrefilledSteps(steps);
 
-		var allDone =
-			steps.places &&
-			steps.places.done &&
-			steps.templates &&
-			steps.templates.done &&
-			steps.replacers &&
-			steps.replacers.done &&
-			steps.anchors &&
-			steps.anchors.done;
+		var allDone = STEP_KEYS.every(function (k) {
+			return steps[k] && steps[k].done;
+		});
+		var anyRunDesired = STEP_KEYS.some(function (k) {
+			return wantsRun(k);
+		});
 
-		if (allDone) {
+		if (allDone && !anyRunDesired) {
 			placeStats = { success: true, skipped: true };
 			showSummary({ allDone: true });
 			if (run) {
@@ -447,7 +693,7 @@
 		};
 
 		try {
-			if (!(steps.places && steps.places.done)) {
+			if (wantsRun('places')) {
 				setStepState('mw-step-places', 'wait');
 				if (typeof window.radiusLegacyImportRunAll !== 'function') {
 					throw new Error(
@@ -466,18 +712,23 @@
 				setStepState('mw-step-places', 'done');
 				await postWizard('step_complete', { step: 'places' });
 			} else {
-				setPlacesProgress(100);
-				setStepState('mw-step-places', 'done');
-				placeStats = { success: true, skipped: true };
+				if (steps.places && steps.places.done) {
+					setPlacesProgress(100);
+					setStepState('mw-step-places', 'done');
+				} else {
+					setPlacesProgress(0);
+					setStepState('mw-step-places', 'idle');
+				}
 				skips.places = true;
 			}
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
+				refreshStepRows(steps);
 			}
 
-			if (!(steps.templates && steps.templates.done)) {
+			if (wantsRun('templates')) {
 				setStepState('mw-step-templates', 'wait');
 				var jTpl = await postWizard('templates_pipeline');
 				if (!jTpl.success) {
@@ -490,16 +741,21 @@
 				tpl = jTpl.data || {};
 				setStepState('mw-step-templates', 'done');
 			} else {
-				setStepState('mw-step-templates', 'done');
+				if (steps.templates && steps.templates.done) {
+					setStepState('mw-step-templates', 'done');
+				} else {
+					setStepState('mw-step-templates', 'idle');
+				}
 				skips.templates = true;
 			}
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
+				refreshStepRows(steps);
 			}
 
-			if (!(steps.replacers && steps.replacers.done)) {
+			if (wantsRun('replacers')) {
 				setStepState('mw-step-replacers', 'wait');
 				var jRep = await postWizard('site_replacers');
 				if (!jRep.success) {
@@ -512,16 +768,21 @@
 				jRepData = jRep.data || {};
 				setStepState('mw-step-replacers', 'done');
 			} else {
-				setStepState('mw-step-replacers', 'done');
+				if (steps.replacers && steps.replacers.done) {
+					setStepState('mw-step-replacers', 'done');
+				} else {
+					setStepState('mw-step-replacers', 'idle');
+				}
 				skips.replacers = true;
 			}
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
+				refreshStepRows(steps);
 			}
 
-			if (!(steps.anchors && steps.anchors.done)) {
+			if (wantsRun('anchors')) {
 				setStepState('mw-step-anchors', 'wait');
 				var jAnc = await postWizard('service_anchors');
 				if (!jAnc.success) {
@@ -534,8 +795,18 @@
 				jAncData = jAnc.data || {};
 				setStepState('mw-step-anchors', 'done');
 			} else {
-				setStepState('mw-step-anchors', 'done');
+				if (steps.anchors && steps.anchors.done) {
+					setStepState('mw-step-anchors', 'done');
+				} else {
+					setStepState('mw-step-anchors', 'idle');
+				}
 				skips.anchors = true;
+			}
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data && stFresh.data.steps) {
+				steps = stFresh.data.steps;
+				refreshStepRows(steps);
 			}
 
 			showSummary({
@@ -568,10 +839,10 @@
 			return;
 		}
 		var p = st.data;
-		if (!p.offer) {
+		if (!p.wizard_available && !p.offer) {
 			return;
 		}
-		if (p.show_modal || cfg.openOnLoad) {
+		if (p.show_auto_modal || p.show_modal || cfg.openOnLoad) {
 			ensureModal(p);
 			if (cfg.openOnLoad) {
 				try {
@@ -607,6 +878,9 @@
 					return;
 				}
 				var p = st.success && st.data ? st.data : {};
+				if (!p.wizard_available && !p.offer) {
+					return;
+				}
 				ensureModal(p);
 				try {
 					window.history.replaceState(
@@ -641,10 +915,9 @@
 		if (tplBtn) {
 			tplBtn.addEventListener('click', function () {
 				tplBtn.disabled = true;
-				postMigration('radius_migration_import_templates')
-					.finally(function () {
-						tplBtn.disabled = false;
-					});
+				postMigration('radius_migration_import_templates').finally(function () {
+					tplBtn.disabled = false;
+				});
 			});
 		}
 		var cloneBtn = document.getElementById('radius-migration-clone-only');
@@ -665,4 +938,3 @@
 		}
 	});
 })();
-
