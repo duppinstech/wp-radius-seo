@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.25
+Stable tag: 1.6.26
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -52,11 +52,15 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_magic_page_landing_group_meta_keys` — meta key candidates for the “group” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_group_id`).
 * `radius_magic_page_landing_abort_if_candidates_match_all_pages` — abort bulk delete when candidate count equals total posts in scanned types (default true).
 * `radius_migration_service_area_template_id` — filter the `radius_template` ID written to **Settings → Service area template (default)** after the automated templates pipeline (default: towing/base template ID).
+* `radius_migration_yoast_service_line_map` — filter focus keyword, SEO title, and meta description (token strings) per service line (`towing`, `roadside`, `heavy`, `equipment`) when applying Yoast template meta after migration.
 * `radius_magic_page_anchor_settings_option_names` — `wp_option` names for Magic Page location rows used as service anchors (defaults: `magic_page_location_radius_settings`, `_magic_page_export_static_settings`; later options override earlier rows with the same legacy term id).
 * `radius_magic_page_anchor_row_legacy_term_keys` — keys tried on each saved row to find the legacy location term ID.
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.26 =
+* **Migration / Yoast:** After the templates pipeline, each service template gets Yoast **focus keyphrases** (towing, roadside assistance, heavy towing, heavy equipment towing) and **SEO title** / **meta description** set to `{{towing-meta-title}}` … `{{equipment-meta-desc}}` (resolved on deploy from **Settings → Site replacers**). Default replacer rows added; filter `radius_migration_yoast_service_line_map` to customize.
 
 = 1.6.25 =
 * **Migration wizard:** **Overall progress** bar (0–100%) reflects completed steps only—**100%** when all eight steps are complete. **Start** is blocked if the highest checked step has incomplete/unchecked earlier steps. During a run, the flow **stops** if any prior step is incomplete or if the server does not mark a executed step **completed** after its action.

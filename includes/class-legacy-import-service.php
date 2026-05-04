@@ -2357,6 +2357,114 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Set Yoast SEO fields on a service template: focus keyword + SEO title / meta description tokens (resolved at deploy from site replacers).
+	 *
+	 * @param int    $template_id  radius_template post ID.
+	 * @param string $service_line towing|roadside|heavy|equipment
+	 * @return bool
+	 */
+	public static function apply_migration_template_yoast_meta( $template_id, $service_line ) {
+		$template_id  = (int) $template_id;
+		$service_line = sanitize_key( (string) $service_line );
+		if ( $template_id <= 0 || $service_line === '' ) {
+			return false;
+		}
+		$post = get_post( $template_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return false;
+		}
+
+		$map = apply_filters(
+			'radius_migration_yoast_service_line_map',
+			array(
+				'towing'    => array(
+					'focuskw'   => 'towing',
+					'title_tpl' => '{{towing-meta-title}}',
+					'desc_tpl'  => '{{towing-meta-desc}}',
+				),
+				'roadside'  => array(
+					'focuskw'   => 'roadside assistance',
+					'title_tpl' => '{{roadside-meta-title}}',
+					'desc_tpl'  => '{{roadside-meta-desc}}',
+				),
+				'heavy'     => array(
+					'focuskw'   => 'heavy towing',
+					'title_tpl' => '{{heavy-meta-title}}',
+					'desc_tpl'  => '{{heavy-meta-desc}}',
+				),
+				'equipment' => array(
+					'focuskw'   => 'heavy equipment towing',
+					'title_tpl' => '{{equipment-meta-title}}',
+					'desc_tpl'  => '{{equipment-meta-desc}}',
+				),
+			),
+			$template_id,
+			$service_line
+		);
+
+		if ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) {
+			return false;
+		}
+
+		$m = $map[ $service_line ];
+		if ( isset( $m['focuskw'] ) ) {
+			update_post_meta( $template_id, '_yoast_wpseo_focuskw', (string) $m['focuskw'] );
+		}
+		if ( isset( $m['title_tpl'] ) ) {
+			update_post_meta( $template_id, '_yoast_wpseo_title', (string) $m['title_tpl'] );
+		}
+		if ( isset( $m['desc_tpl'] ) ) {
+			update_post_meta( $template_id, '_yoast_wpseo_metadesc', (string) $m['desc_tpl'] );
+		}
+		clean_post_cache( $template_id );
+		return true;
+	}
+
+	/**
+	 * Add site replacer rows for Yoast meta tokens if missing (Radius → Settings → Site replacers).
+	 *
+	 * @return void
+	 */
+	private static function merge_yoast_meta_site_replacer_rows() {
+		$cfg  = Radius_Settings::get();
+		$rows = isset( $cfg['site_replacements'] ) && is_array( $cfg['site_replacements'] ) ? $cfg['site_replacements'] : array();
+		$need = array(
+			'towing-meta-title',
+			'towing-meta-desc',
+			'roadside-meta-title',
+			'roadside-meta-desc',
+			'heavy-meta-title',
+			'heavy-meta-desc',
+			'equipment-meta-title',
+			'equipment-meta-desc',
+		);
+		$have = array();
+		foreach ( $rows as $row ) {
+			if ( empty( $row['key'] ) ) {
+				continue;
+			}
+			$have[ sanitize_key( (string) $row['key'] ) ] = true;
+		}
+		$added = false;
+		foreach ( $need as $k ) {
+			$sk = sanitize_key( $k );
+			if ( $sk === '' || ! empty( $have[ $sk ] ) ) {
+				continue;
+			}
+			$rows[]        = array(
+				'key'            => $k,
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			);
+			$have[ $sk ] = true;
+			$added       = true;
+		}
+		if ( $added ) {
+			Radius_Settings::update( array( 'site_replacements' => $rows ) );
+		}
+	}
+
+	/**
 	 * Import Magic Page templates, publish base + variants with fixed slugs, import global spintax by prefix per template.
 	 *
 	 * @return array<string,mixed>
@@ -2374,6 +2482,8 @@ class Radius_Legacy_Import_Service {
 		);
 
 		$out['templates_pruned'] = self::delete_migration_sourced_radius_templates();
+
+		self::merge_yoast_meta_site_replacer_rows();
 
 		$imp = self::import_templates();
 		$out['import'] = $imp;
@@ -2414,6 +2524,9 @@ class Radius_Legacy_Import_Service {
 			$out['errors'][] = __( 'Could not publish the base template with slug “towing”.', 'radius' );
 		}
 		$out['slugs']['towing'] = $slug_base;
+		if ( get_post( $base_id ) ) {
+			self::apply_migration_template_yoast_meta( $base_id, 'towing' );
+		}
 
 		$titles   = self::migration_variant_default_titles();
 		$slug_map = apply_filters(
@@ -2441,6 +2554,9 @@ class Radius_Legacy_Import_Service {
 					__( 'Could not publish variant template (%s).', 'radius' ),
 					$variant
 				);
+			}
+			if ( get_post( $vid ) ) {
+				self::apply_migration_template_yoast_meta( $vid, $variant );
 			}
 			$variant_ids[ $variant ] = $vid;
 			$out['slugs'][ $variant ] = $slug;

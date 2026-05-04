@@ -54,6 +54,46 @@ class Radius_Settings {
 				'area_overrides' => array(),
 			),
 			array(
+				'key'            => 'towing-meta-title',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'towing-meta-desc',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'roadside-meta-title',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'roadside-meta-desc',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'heavy-meta-title',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'heavy-meta-desc',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'equipment-meta-title',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'equipment-meta-desc',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
 				'key'            => 'phone-number',
 				'values'         => array( '' ),
 				'area_overrides' => array(),
