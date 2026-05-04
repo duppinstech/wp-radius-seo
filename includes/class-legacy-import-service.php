@@ -509,15 +509,19 @@ class Radius_Legacy_Import_Service {
 	 */
 	public static function migration_variant_replace_pairs( $variant ) {
 		$variant = sanitize_key( (string) $variant );
+		// Longer / specific substrings first so `spintax_towing` maps before generic `towing_` swaps inside keys.
 		$map     = array(
 			'roadside'  => array(
-				'towing_' => 'roadside_',
+				'spintax_towing' => 'spintax_roadside',
+				'towing_'        => 'roadside_',
 			),
 			'heavy'     => array(
-				'towing_' => 'heavy_',
+				'spintax_towing' => 'spintax_heavy',
+				'towing_'        => 'heavy_',
 			),
 			'equipment' => array(
-				'towing_' => 'equipment_',
+				'spintax_towing' => 'spintax_equipment',
+				'towing_'        => 'equipment_',
 			),
 		);
 		if ( ! isset( $map[ $variant ] ) ) {
@@ -1306,6 +1310,121 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Replace only `{spintax_Label}` → `{{key}}` (no `[xfield]` / `[location]` conversion).
+	 *
+	 * @param string $text Raw text.
+	 * @param array<int,array{key:string,label:string}> $rows Spintax rows.
+	 * @return string
+	 */
+	private static function apply_spintax_brace_placeholders_only( $text, array $rows ) {
+		$text = (string) $text;
+		foreach ( $rows as $mp ) {
+			if ( ! is_array( $mp ) || empty( $mp['label'] ) || empty( $mp['key'] ) ) {
+				continue;
+			}
+			$pattern = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
+			$text    = (string) preg_replace( $pattern, '{{' . $mp['key'] . '}}', $text );
+		}
+		return $text;
+	}
+
+	/**
+	 * Replace `{spintax_Label}` with `{{sanitized_key}}` using imported rows, then run legacy bracket/shortcode → `{{}}` (same as Spintax import checkboxes).
+	 *
+	 * @param string               $text Raw text (title, body, Elementor string, variation).
+	 * @param array<int,array{key:string,label:string,variations?:string[]}> $rows From magic_page_spintax_rows().
+	 * @return string
+	 */
+	public static function replace_spintax_labels_and_legacy_tokens_in_string( $text, array $rows ) {
+		$mid = self::apply_spintax_brace_placeholders_only( $text, $rows );
+		return self::convert_legacy_magic_page_tokens_to_curly( $mid );
+	}
+
+	/**
+	 * Walk arrays (e.g. Elementor JSON) and apply replace_spintax_labels_and_legacy_tokens_in_string to every string.
+	 *
+	 * @param mixed $data Array/string/scalar.
+	 * @param array<int,array{key:string,label:string}> $rows Spintax rows.
+	 * @return mixed
+	 */
+	public static function deep_replace_spintax_labels_and_legacy_tokens( $data, array $rows ) {
+		if ( is_string( $data ) ) {
+			return self::replace_spintax_labels_and_legacy_tokens_in_string( $data, $rows );
+		}
+		if ( is_array( $data ) ) {
+			foreach ( $data as $k => $v ) {
+				$data[ $k ] = self::deep_replace_spintax_labels_and_legacy_tokens( $v, $rows );
+			}
+		}
+		return $data;
+	}
+
+	/**
+	 * Apply `{spintax_*}` / legacy token conversion to Elementor and related JSON meta (matches Import → global spintax “replace shortcodes” for builder data).
+	 *
+	 * @param int   $template_id radius_template ID.
+	 * @param array<int,array{key:string,label:string}> $rows Current import row set.
+	 * @return void
+	 */
+	public static function replace_spintax_placeholders_in_template_builder_meta( $template_id, array $rows ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 || empty( $rows ) ) {
+			return;
+		}
+
+		$meta_keys = apply_filters(
+			'radius_migration_spintax_import_elementor_meta_keys',
+			array( '_elementor_data', '_elementor_page_settings', '_radius_xfields' )
+		);
+		$page_settings_key = '_elementor_page_settings';
+
+		foreach ( $meta_keys as $mk ) {
+			if ( ! is_string( $mk ) || $mk === '' ) {
+				continue;
+			}
+			$raw = get_post_meta( $template_id, $mk, true );
+			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			if ( $page_settings_key === $mk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$changed = self::deep_replace_spintax_labels_and_legacy_tokens( $decoded, $rows );
+				update_post_meta( $template_id, $mk, $changed );
+				continue;
+			}
+			if ( is_string( $raw ) ) {
+				$decoded = json_decode( $raw, true );
+				if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+					$changed = self::deep_replace_spintax_labels_and_legacy_tokens( $decoded, $rows );
+					$enc     = wp_json_encode( $changed );
+					if ( false !== $enc ) {
+						update_post_meta( $template_id, $mk, wp_slash( $enc ) );
+					}
+				} else {
+					$new = self::replace_spintax_labels_and_legacy_tokens_in_string( $raw, $rows );
+					if ( $new !== $raw ) {
+						update_post_meta( $template_id, $mk, $new );
+					}
+				}
+				continue;
+			}
+			if ( is_array( $raw ) ) {
+				$changed = self::deep_replace_spintax_labels_and_legacy_tokens( $raw, $rows );
+				$enc     = wp_json_encode( $changed );
+				if ( false !== $enc ) {
+					update_post_meta( $template_id, $mk, wp_slash( $enc ) );
+				}
+			}
+		}
+
+		self::normalize_elementor_page_settings_meta( $template_id );
+		clean_post_cache( $template_id );
+	}
+
+	/**
 	 * Map legacy Magic Page shortcodes / bracket tokens to Radius {{token}} syntax for templates and spintax variations.
 	 *
 	 * @param string $text Raw HTML/text.
@@ -1523,7 +1642,7 @@ class Radius_Legacy_Import_Service {
 					$vars = Radius_Template_Tokens::normalize_block_variations( $block_row );
 					foreach ( $vars as $vi => $v ) {
 						$orig = (string) $v;
-						$nw   = self::convert_legacy_magic_page_tokens_to_curly( $orig );
+						$nw   = self::replace_spintax_labels_and_legacy_tokens_in_string( $orig, $rows );
 						if ( $nw !== $orig ) {
 							++$tok_conv;
 						}
@@ -1556,28 +1675,26 @@ class Radius_Legacy_Import_Service {
 
 			$repl = 0;
 			if ( $replace_shortcodes ) {
-				$title   = (string) $post->post_title;
-				$content = (string) $post->post_content;
+				$t_raw = (string) $post->post_title;
+				$c_raw = (string) $post->post_content;
 				foreach ( $rows as $mp ) {
-					$pattern = '/\{spintax_' . preg_quote( $mp['label'], '/' ) . '\}/iu';
-					$to      = '{{' . $mp['key'] . '}}';
-					$n1      = 0;
-					$n2      = 0;
-					$title   = (string) preg_replace( $pattern, $to, $title, -1, $n1 );
-					$content = (string) preg_replace( $pattern, $to, $content, -1, $n2 );
-					$repl   += (int) $n1 + (int) $n2;
+					if ( ! is_array( $mp ) || empty( $mp['label'] ) ) {
+						continue;
+					}
+					$p = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
+					$repl += (int) preg_match_all( $p, $t_raw . $c_raw );
 				}
-				$t0      = $title;
-				$c0      = $content;
-				$title   = self::convert_legacy_magic_page_tokens_to_curly( $title );
-				$content = self::convert_legacy_magic_page_tokens_to_curly( $content );
-				if ( $title !== $t0 ) {
+				$mid_t   = self::apply_spintax_brace_placeholders_only( $t_raw, $rows );
+				$mid_c   = self::apply_spintax_brace_placeholders_only( $c_raw, $rows );
+				$title   = self::convert_legacy_magic_page_tokens_to_curly( $mid_t );
+				$content = self::convert_legacy_magic_page_tokens_to_curly( $mid_c );
+				if ( $title !== $mid_t ) {
 					++$out['legacy_token_conversions'];
 				}
-				if ( $content !== $c0 ) {
+				if ( $content !== $mid_c ) {
 					++$out['legacy_token_conversions'];
 				}
-				if ( $repl > 0 || $title !== $t0 || $content !== $c0 ) {
+				if ( $repl > 0 || $title !== $t_raw || $content !== $c_raw ) {
 					$upd = wp_update_post(
 						array(
 							'ID'           => (int) $tid,
@@ -1592,6 +1709,8 @@ class Radius_Legacy_Import_Service {
 						$out['shortcode_replacements'] += $repl;
 					}
 				}
+
+				self::replace_spintax_placeholders_in_template_builder_meta( (int) $tid, $rows );
 			}
 
 			++$out['templates'];
@@ -2130,6 +2249,36 @@ class Radius_Legacy_Import_Service {
 	 * @param array<string,mixed> $row            Optional row context (slug).
 	 * @return int
 	 */
+	private static function legacy_zip_digits_from_term( $legacy_term_id ) {
+		$legacy_term_id = (int) $legacy_term_id;
+		if ( $legacy_term_id <= 0 ) {
+			return '';
+		}
+		$zip_keys = apply_filters(
+			'radius_migration_legacy_location_zip_meta_keys',
+			array( 'zip', 'Zip', 'ZIP', 'postal_code', 'postal', 'Postcode' )
+		);
+		foreach ( $zip_keys as $zk ) {
+			$z = get_term_meta( $legacy_term_id, $zk, true );
+			if ( is_string( $z ) && $z !== '' ) {
+				$d = preg_replace( '/\D/', '', $z );
+				if ( strlen( $d ) >= 5 ) {
+					return substr( $d, 0, 5 );
+				}
+				if ( $d !== '' ) {
+					return $d;
+				}
+			}
+		}
+		$t = get_term( $legacy_term_id, self::legacy_location_taxonomy() );
+		if ( $t && ! is_wp_error( $t ) && is_string( $t->description ) && $t->description !== '' ) {
+			if ( preg_match( '/\b(\d{5})(?:-\d{4})?\b/', $t->description, $m ) ) {
+				return $m[1];
+			}
+		}
+		return '';
+	}
+
 	private static function map_legacy_location_term_to_radius_place_id( $legacy_term_id, array $row = array() ) {
 		$legacy_term_id = (int) $legacy_term_id;
 		if ( $legacy_term_id <= 0 ) {
@@ -2147,13 +2296,52 @@ class Radius_Legacy_Import_Service {
 				'meta_query' => array(
 					array(
 						'key'   => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
-						'value' => $legacy_term_id,
+						'value' => (string) $legacy_term_id,
 					),
 				),
 			)
 		);
 		if ( ! is_wp_error( $imported ) && ! empty( $imported[0] ) ) {
 			return (int) $imported[0]->term_id;
+		}
+
+		$imported = get_terms(
+			array(
+				'taxonomy'   => $radius_tax,
+				'hide_empty' => false,
+				'number'     => 1,
+				'meta_query' => array(
+					array(
+						'key'     => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
+						'value'   => $legacy_term_id,
+						'compare' => '=',
+						'type'    => 'NUMERIC',
+					),
+				),
+			)
+		);
+		if ( ! is_wp_error( $imported ) && ! empty( $imported[0] ) ) {
+			return (int) $imported[0]->term_id;
+		}
+
+		$all_rp = get_terms(
+			array(
+				'taxonomy'   => $radius_tax,
+				'hide_empty' => false,
+				'number'     => 0,
+				'fields'     => 'ids',
+			)
+		);
+		if ( ! is_wp_error( $all_rp ) && is_array( $all_rp ) ) {
+			foreach ( $all_rp as $rid ) {
+				$v = get_term_meta( (int) $rid, Radius_Data_Registry::META_IMPORTED_FROM_TERM, true );
+				if ( $v === '' || $v === false ) {
+					continue;
+				}
+				if ( (int) $v === $legacy_term_id || (string) (int) $v === (string) $legacy_term_id ) {
+					return (int) $rid;
+				}
+			}
 		}
 
 		$term = get_term( $legacy_term_id, $legacy_tax );
@@ -2171,28 +2359,27 @@ class Radius_Legacy_Import_Service {
 			return (int) $r_slug->term_id;
 		}
 
-		$zip = get_term_meta( $legacy_term_id, 'zip', true );
-		if ( ! is_string( $zip ) || $zip === '' ) {
-			return 0;
-		}
-		$zip_norm = preg_replace( '/\D/', '', $zip );
+		$zip_norm = self::legacy_zip_digits_from_term( $legacy_term_id );
 		if ( $zip_norm === '' ) {
 			return 0;
-		}
-		if ( strlen( $zip_norm ) > 5 ) {
-			$zip_norm = substr( $zip_norm, 0, 5 );
 		}
 
 		$candidates = get_terms(
 			array(
 				'taxonomy'   => $radius_tax,
 				'hide_empty' => false,
-				'number'     => 10,
+				'number'     => 15,
 				'meta_query' => array(
+					'relation' => 'OR',
 					array(
 						'key'     => Radius_Data_Registry::TERM_META_POSTAL,
 						'value'   => $zip_norm,
 						'compare' => '=',
+					),
+					array(
+						'key'     => Radius_Data_Registry::TERM_META_POSTAL,
+						'value'   => $zip_norm . '-',
+						'compare' => 'LIKE',
 					),
 				),
 			)

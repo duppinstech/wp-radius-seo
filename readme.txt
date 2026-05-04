@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.13
+Stable tag: 1.6.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -43,7 +43,13 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_imported_template_title` — filter the `radius_template` title when importing a Magic Page blueprint (default: legacy title with `[location]` etc. converted to `{{place_name}}`, …).
 * `radius_migration_clear_imported_template_content_when_elementor_builder` — return false to keep classic/block `post_content` after import when Elementor builder data exists (default true: clear so Elementor-only templates do not show duplicate classic markup).
 * `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
+* `radius_migration_spintax_import_elementor_meta_keys` — post meta keys that receive `{spintax_*}` / legacy token replacement during global spintax import (default `_elementor_data`, `_elementor_page_settings`, `_radius_xfields`).
+* `radius_migration_legacy_location_zip_meta_keys` — legacy location term meta keys tried when resolving zip for service-area anchor mapping (default `zip`, `Zip`, `ZIP`, `postal_code`, `postal`, `Postcode`).
 == Changelog ==
+
+= 1.6.14 =
+* Global spintax import (and automated migration spintax step): when “replace shortcodes” is used, also rewrite `{spintax_…}` and legacy bracket tokens inside `_elementor_data`, `_elementor_page_settings`, and `_radius_xfields`—not only the post title/body. Spintax **variation** lines get the same treatment. Cloned templates (roadside / heavy / equipment) now also map `spintax_towing` → `spintax_roadside` / `heavy` / `equipment` before the generic `towing_` → prefix swaps.
+* Service area anchors: more reliable legacy → `radius_place` matching—try `_radius_imported_from_term` as string or number, scan terms if meta_query misses; read zip from additional legacy term meta keys and from the term description; match `radius_postal` with exact or ZIP+4-style values.
 
 = 1.6.13 =
 * Magic Page migration wizard: preserve “run this step” choices when starting migration; clear recorded step flags when redoing a completed step so templates, replacers, and anchors can be run again without the UI resetting checkboxes.
