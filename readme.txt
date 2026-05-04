@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.23
+Stable tag: 1.6.25
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,12 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.25 =
+* **Migration wizard:** **Overall progress** bar (0–100%) reflects completed steps only—**100%** when all eight steps are complete. **Start** is blocked if the highest checked step has incomplete/unchecked earlier steps. During a run, the flow **stops** if any prior step is incomplete or if the server does not mark a executed step **completed** after its action.
+
+= 1.6.24 =
+* **Migration wizard:** Place step completes only when the **Radius place count matches** the legacy location taxonomy (when it still has terms). Removed the places progress bar; **Deploy & verify** block removed; added steps to **deactivate/delete the Magic Page plugin**, **deploy service areas**, then **deploy all four service templates** via the same batch AJAX as the Deploy screen. **Finish** shows a **completion banner** and marks migration complete when landing deploy finishes. Wizard can run even when landings already exist. REST: `radius_magic_page_plugin_basename` + `find_magic_page_plugin_basename_for_removal()`; `radius_migration_wizard_deploy_landing_slugs` for template order.
 
 = 1.6.23 =
 * **Service anchors:** Read **`locations`** from **`_magic_page_export_static_settings`** (`id` = legacy location term id, `radius` = miles). Default **25** miles when missing or invalid. Per-row `radius` / `radius_miles` is applied before the `radius_migration_anchor_radius_miles` filter.

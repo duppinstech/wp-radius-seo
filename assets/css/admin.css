@@ -1219,6 +1219,27 @@
 	color: #50575e;
 	font-size: 14px;
 }
+.radius-mw-overall-progress {
+	margin: 0 0 16px;
+}
+.radius-mw-overall-progress-heading {
+	display: block;
+	font-weight: 600;
+	font-size: 13px;
+	margin-bottom: 6px;
+}
+progress.radius-mw-overall-bar {
+	width: 100%;
+	max-width: 100%;
+	height: 12px;
+	margin: 0 0 6px;
+	vertical-align: middle;
+}
+.radius-mw-overall-progress-label {
+	margin: 0;
+	font-size: 13px;
+	color: #50575e;
+}
 .radius-mw-steps {
 	margin: 0 0 16px;
 	padding-left: 0;
@@ -1394,6 +1415,29 @@
 }
 .radius-mw-error {
 	color: #b32d2e;
+}
+.radius-mw-completion {
+	margin: 0 0 12px;
+	padding: 12px 14px;
+	border: 1px solid #b8e6bf;
+	border-radius: 4px;
+	background: #edfaef;
+}
+.radius-mw-completion-msg {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.45;
+}
+.radius-mw-step-plugin-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	margin-top: 8px;
+}
+.radius-mw-step-plugin-actions .button-small {
+	min-height: 26px;
+	line-height: 1.9;
 }
 .radius-migration-wizard-banner .radius-migration-wizard-continue {
 	margin-left: 8px;

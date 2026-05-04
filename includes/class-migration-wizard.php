@@ -30,7 +30,16 @@ final class Radius_Migration_Wizard {
 	 * Valid migration step keys (order).
 	 */
 	private static function step_keys() {
-		return array( 'places', 'templates', 'replacers', 'anchors', 'magic_pages' );
+		return array(
+			'places',
+			'templates',
+			'replacers',
+			'anchors',
+			'magic_pages',
+			'magic_page_plugin',
+			'deploy_areas',
+			'deploy_landings',
+		);
 	}
 
 	/**
@@ -55,7 +64,7 @@ final class Radius_Migration_Wizard {
 	/**
 	 * Mark a step as completed and optionally log.
 	 *
-	 * @param string               $step One of places|templates|replacers|anchors|magic_pages.
+	 * @param string               $step One of step_keys().
 	 * @param string|null          $note Optional log line (English message).
 	 * @param array<string,mixed> $ctx Optional context for log.
 	 * @return void
@@ -85,7 +94,7 @@ final class Radius_Migration_Wizard {
 	/**
 	 * Clear the recorded completion flag for one step so the migration wizard can run it again.
 	 *
-	 * @param string $step One of places|templates|replacers|anchors|magic_pages.
+	 * @param string $step One of step_keys().
 	 * @return void
 	 */
 	public static function clear_recorded_step( $step ) {
@@ -146,18 +155,100 @@ final class Radius_Migration_Wizard {
 	}
 
 	/**
-	 * Whether the place library has any terms.
+	 * True when the Radius place library count matches the legacy location taxonomy (if it still has terms).
 	 *
 	 * @return bool
 	 */
-	public static function infer_places_imported() {
-		$n = wp_count_terms(
+	public static function infer_places_counts_match() {
+		$legacy_tax = Radius_Legacy_Import_Service::detect_legacy_places();
+		$legacy_n   = 0;
+		if ( $legacy_tax ) {
+			$legacy_n = (int) Radius_Legacy_Import_Service::legacy_place_term_count();
+		}
+		$radius_n = wp_count_terms(
 			array(
 				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
 				'hide_empty' => false,
 			)
 		);
-		return ! is_wp_error( $n ) && (int) $n > 0;
+		if ( is_wp_error( $radius_n ) ) {
+			return false;
+		}
+		$radius_n = (int) $radius_n;
+		if ( $legacy_tax && $legacy_n > 0 ) {
+			return $radius_n === $legacy_n;
+		}
+		return $radius_n > 0;
+	}
+
+	/**
+	 * @return array{legacy:int,radius:int,legacy_taxonomy:bool}
+	 */
+	public static function place_count_snapshot() {
+		$legacy_tax = Radius_Legacy_Import_Service::detect_legacy_places();
+		$legacy_n   = 0;
+		if ( $legacy_tax ) {
+			$legacy_n = (int) Radius_Legacy_Import_Service::legacy_place_term_count();
+		}
+		$radius_n = wp_count_terms(
+			array(
+				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
+				'hide_empty' => false,
+			)
+		);
+		if ( is_wp_error( $radius_n ) ) {
+			$radius_n = 0;
+		} else {
+			$radius_n = (int) $radius_n;
+		}
+		return array(
+			'legacy'            => $legacy_n,
+			'radius'            => $radius_n,
+			'legacy_taxonomy'   => (bool) $legacy_tax,
+		);
+	}
+
+	/**
+	 * Published radius_template IDs for automated landing deploy (towing + three variants).
+	 *
+	 * @return int[]
+	 */
+	private static function landing_template_ids_ordered() {
+		$slugs = apply_filters(
+			'radius_migration_wizard_deploy_landing_slugs',
+			array(
+				'towing',
+				'roadside-assistance',
+				'heavy-towing',
+				'heavy-equipment-towing',
+			)
+		);
+		if ( ! is_array( $slugs ) ) {
+			return array();
+		}
+		$ids = array();
+		foreach ( $slugs as $slug ) {
+			$slug = sanitize_title( (string) $slug );
+			if ( $slug === '' ) {
+				continue;
+			}
+			$posts = get_posts(
+				array(
+					'post_type'              => 'radius_template',
+					'name'                   => $slug,
+					'post_status'            => 'publish',
+					'posts_per_page'         => 1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			);
+			if ( ! empty( $posts[0] ) ) {
+				$ids[] = (int) $posts[0];
+			}
+		}
+		return array_values( array_filter( array_map( 'absint', $ids ) ) );
 	}
 
 	/**
@@ -234,16 +325,16 @@ final class Radius_Migration_Wizard {
 	 */
 	public static function build_steps_status() {
 		$rec = self::get_recorded_steps();
-		$inf_places    = self::infer_places_imported();
+		$inf_places    = self::infer_places_counts_match();
 		$inf_templates = self::infer_templates_ready();
 		$inf_rep       = self::infer_replacers_filled();
 		$inf_anc       = self::infer_anchors_configured();
 		$inf_mp_clear  = self::infer_magic_page_landings_cleared();
-		$mp_active     = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
+		$inf_plugin_ok = self::infer_magic_page_plugin_step_complete();
 
 		return array(
 			'places'    => array(
-				'done'      => ! empty( $rec['places'] ) || $inf_places,
+				'done'      => $inf_places,
 				'recorded'  => ! empty( $rec['places'] ),
 				'inferred'  => $inf_places,
 			),
@@ -263,9 +354,24 @@ final class Radius_Migration_Wizard {
 				'inferred'  => $inf_anc,
 			),
 			'magic_pages' => array(
-				'done'      => ! empty( $rec['magic_pages'] ) || ( $inf_mp_clear && ! $mp_active ),
+				'done'      => ! empty( $rec['magic_pages'] ) || $inf_mp_clear,
 				'recorded'  => ! empty( $rec['magic_pages'] ),
-				'inferred'  => $inf_mp_clear && ! $mp_active,
+				'inferred'  => $inf_mp_clear,
+			),
+			'magic_page_plugin' => array(
+				'done'      => ! empty( $rec['magic_page_plugin'] ) || $inf_plugin_ok,
+				'recorded'  => ! empty( $rec['magic_page_plugin'] ),
+				'inferred'  => $inf_plugin_ok,
+			),
+			'deploy_areas' => array(
+				'done'      => ! empty( $rec['deploy_areas'] ),
+				'recorded'  => ! empty( $rec['deploy_areas'] ),
+				'inferred'  => false,
+			),
+			'deploy_landings' => array(
+				'done'      => ! empty( $rec['deploy_landings'] ),
+				'recorded'  => ! empty( $rec['deploy_landings'] ),
+				'inferred'  => false,
 			),
 		);
 	}
@@ -277,6 +383,18 @@ final class Radius_Migration_Wizard {
 	 */
 	public static function infer_magic_page_landings_cleared() {
 		return count( Radius_Legacy_Import_Service::find_magic_page_generated_landing_post_ids() ) === 0;
+	}
+
+	/**
+	 * Magic Page plugin step is complete when it is not active and no Magic Page plugin package remains to delete.
+	 *
+	 * @return bool
+	 */
+	public static function infer_magic_page_plugin_step_complete() {
+		if ( Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
+			return false;
+		}
+		return Radius_Legacy_Import_Service::find_magic_page_plugin_basename_for_removal() === '';
 	}
 
 	/**
@@ -304,9 +422,6 @@ final class Radius_Migration_Wizard {
 			return false;
 		}
 		if ( self::get_state() === 'completed' ) {
-			return false;
-		}
-		if ( ! self::has_no_deployed_landings() ) {
 			return false;
 		}
 		return self::magic_page_wizard_context_active();
@@ -377,9 +492,6 @@ final class Radius_Migration_Wizard {
 			return false;
 		}
 		if ( self::get_state() === 'completed' ) {
-			return false;
-		}
-		if ( ! self::has_no_deployed_landings() ) {
 			return false;
 		}
 		if ( self::all_core_steps_done() ) {
@@ -542,6 +654,58 @@ final class Radius_Migration_Wizard {
 				);
 				wp_send_json_success( $res );
 				return;
+			case 'magic_page_plugin_deactivate':
+				if ( ! current_user_can( 'activate_plugins' ) ) {
+					wp_send_json_error( array( 'message' => __( 'You do not have permission to manage plugins.', 'radius' ) ), 403 );
+				}
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+				$b = Radius_Legacy_Import_Service::get_active_magic_page_plugin_basename();
+				if ( $b === '' ) {
+					wp_send_json_success( array( 'ok' => true, 'already_inactive' => true ) );
+					return;
+				}
+				deactivate_plugins( $b, true );
+				self::append_activity_log( __( 'Magic Page plugin deactivated.', 'radius' ), array( 'source' => 'wizard' ) );
+				wp_send_json_success( array( 'ok' => true, 'basename' => $b ) );
+				return;
+			case 'magic_page_plugin_delete':
+			case 'magic_page_plugin_remove':
+				if ( ! current_user_can( 'delete_plugins' ) ) {
+					wp_send_json_error( array( 'message' => __( 'You do not have permission to delete plugins.', 'radius' ) ), 403 );
+				}
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+				require_once ABSPATH . 'wp-admin/includes/file.php';
+				$b = Radius_Legacy_Import_Service::find_magic_page_plugin_basename_for_removal();
+				if ( $b === '' ) {
+					self::record_step_done(
+						'magic_page_plugin',
+						__( 'Magic Page plugin not installed — nothing to delete.', 'radius' ),
+						array( 'source' => 'wizard' )
+					);
+					wp_send_json_success( array( 'ok' => true, 'already_gone' => true ) );
+					return;
+				}
+				if ( is_plugin_active( $b ) ) {
+					deactivate_plugins( $b, true );
+				}
+				$deleted = delete_plugins( array( $b ) );
+				if ( is_wp_error( $deleted ) ) {
+					wp_send_json_error(
+						array(
+							'message' => $deleted->get_error_message()
+								? $deleted->get_error_message()
+								: __( 'Could not delete the Magic Page plugin.', 'radius' ),
+						),
+						500
+					);
+				}
+				self::record_step_done(
+					'magic_page_plugin',
+					__( 'Magic Page plugin removed from the site.', 'radius' ),
+					array( 'source' => 'wizard' )
+				);
+				wp_send_json_success( array( 'ok' => true, 'basename' => $b ) );
+				return;
 			default:
 				wp_send_json_error( array( 'message' => __( 'Unknown action.', 'radius' ) ), 400 );
 		}
@@ -553,6 +717,9 @@ final class Radius_Migration_Wizard {
 	private static function build_status_payload() {
 		$deploy_url = admin_url( 'admin.php?page=radius-deploy' );
 		$auto       = self::should_offer_wizard() && self::get_state() !== 'dismissed';
+		$counts     = self::place_count_snapshot();
+		$settings   = Radius_Settings::get();
+		$sa_tpl     = isset( $settings['service_area_template_id'] ) ? (int) $settings['service_area_template_id'] : 0;
 		return array(
 			'wizard_available' => self::wizard_assets_available(),
 			'all_steps_done'   => self::all_core_steps_done(),
@@ -568,6 +735,12 @@ final class Radius_Migration_Wizard {
 			'locations_url'    => admin_url( 'admin.php?page=radius-locations' ),
 			'legacy_places'    => Radius_Legacy_Import_Service::detect_legacy_places(),
 			'legacy_tpl'       => Radius_Legacy_Import_Service::detect_legacy_templates(),
+			'places_legacy_count' => $counts['legacy'],
+			'places_radius_count' => $counts['radius'],
+			'places_counts_match' => self::infer_places_counts_match(),
+			'service_area_template_id'    => $sa_tpl,
+			'deploy_landing_template_ids' => self::landing_template_ids_ordered(),
+			'deploy_batch_nonce'          => wp_create_nonce( 'radius_deploy_batch' ),
 			'steps'            => self::build_steps_status(),
 			'activity_log'     => self::get_activity_log(),
 		);

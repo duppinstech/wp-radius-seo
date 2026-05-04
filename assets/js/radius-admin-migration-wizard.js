@@ -10,13 +10,25 @@
 			: {};
 	var i18n = cfg.i18n || {};
 
-	var STEP_KEYS = ['places', 'templates', 'replacers', 'anchors', 'magic_pages'];
+	var STEP_KEYS = [
+		'places',
+		'templates',
+		'replacers',
+		'anchors',
+		'magic_pages',
+		'magic_page_plugin',
+		'deploy_areas',
+		'deploy_landings',
+	];
 	var STEP_IDS = {
 		places: 'mw-step-places',
 		templates: 'mw-step-templates',
 		replacers: 'mw-step-replacers',
 		anchors: 'mw-step-anchors',
 		magic_pages: 'mw-step-magic-pages',
+		magic_page_plugin: 'mw-step-magic-page-plugin',
+		deploy_areas: 'mw-step-deploy-areas',
+		deploy_landings: 'mw-step-deploy-landings',
 	};
 
 	var rootEl = null;
@@ -46,6 +58,19 @@
 		}
 		if (payload.deploy_url) {
 			cfg.deployPageUrl = payload.deploy_url;
+		}
+		if (typeof payload.service_area_template_id === 'number') {
+			cfg.serviceAreaTemplateId = payload.service_area_template_id;
+		} else if (typeof payload.service_area_template_id === 'string') {
+			cfg.serviceAreaTemplateId = parseInt(payload.service_area_template_id, 10) || 0;
+		}
+		if (Array.isArray(payload.deploy_landing_template_ids)) {
+			cfg.deployLandingTemplateIds = payload.deploy_landing_template_ids.map(function (id) {
+				return parseInt(id, 10) || 0;
+			}).filter(Boolean);
+		}
+		if (typeof payload.deploy_batch_nonce === 'string') {
+			cfg.deployBatchNonce = payload.deploy_batch_nonce;
 		}
 	}
 
@@ -96,6 +121,90 @@
 		return STEP_IDS[key] || '';
 	}
 
+	function countCompletedSteps(steps) {
+		if (!steps) {
+			return 0;
+		}
+		var n = 0;
+		STEP_KEYS.forEach(function (key) {
+			if (steps[key] && steps[key].done) {
+				n += 1;
+			}
+		});
+		return n;
+	}
+
+	function updateOverallProgress(steps) {
+		var wrap = document.getElementById('radius-mw-overall-progress');
+		if (!wrap) {
+			return;
+		}
+		var total = STEP_KEYS.length;
+		var done = countCompletedSteps(steps);
+		var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+		var bar = document.getElementById('radius-mw-overall-bar');
+		if (bar) {
+			bar.value = pct;
+			bar.setAttribute('aria-valuenow', String(pct));
+		}
+		var lab = document.getElementById('radius-mw-overall-progress-label');
+		if (lab) {
+			var fmt =
+				i18n.overallProgressFmt ||
+				'%1$d / %2$d steps complete (%3$d%%).';
+			lab.textContent = fmt
+				.replace('%1$d', String(done))
+				.replace('%2$d', String(total))
+				.replace('%3$d', String(pct));
+		}
+	}
+
+	function validatePriorStepsForRun(userWants, steps) {
+		var maxIdx = -1;
+		var i;
+		for (i = 0; i < STEP_KEYS.length; i++) {
+			if (userWants[STEP_KEYS[i]]) {
+				maxIdx = i;
+			}
+		}
+		if (maxIdx <= 0) {
+			return;
+		}
+		for (i = 0; i < maxIdx; i++) {
+			var pk = STEP_KEYS[i];
+			if (steps[pk] && steps[pk].done) {
+				continue;
+			}
+			if (userWants[pk]) {
+				continue;
+			}
+			throw new Error(
+				i18n.priorStepsIncomplete ||
+					'Every earlier step must already be complete or selected to run before the last step you checked.'
+			);
+		}
+	}
+
+	function ensurePriorStepsComplete(steps, upToExclusive) {
+		var i;
+		for (i = 0; i < upToExclusive; i++) {
+			var pk = STEP_KEYS[i];
+			if (!steps[pk] || !steps[pk].done) {
+				var b1 = i18n.priorStepBlocked || 'Complete step “%s” before continuing.';
+				throw new Error(b1.replace('%s', pk));
+			}
+		}
+	}
+
+	function throwIfStepNotDone(stepKey, steps) {
+		if (!steps[stepKey] || !steps[stepKey].done) {
+			var b2 =
+				i18n.stepNotCompleteFailure ||
+				'Migration stopped: step did not reach completed status (%s).';
+			throw new Error(b2.replace('%s', stepKey));
+		}
+	}
+
 	/**
 	 * @param {Record<string,{done?:boolean}>|null|undefined} steps
 	 * @param {Record<string,boolean>|null|undefined} preserveRunFor If set, keeps run checkbox checked for pending re-runs.
@@ -137,83 +246,15 @@
 			}
 			if (done) {
 				row.setAttribute('data-done', '1');
-				if (key === 'places') {
-					setPlacesProgress(100);
-				}
 			} else {
 				row.removeAttribute('data-done');
-				if (key === 'places') {
-					setPlacesProgress(0);
-				}
 			}
 		});
-		updateDeployBlock(steps);
-	}
-
-	function updateDeployBlock(steps) {
-		var block = document.getElementById('radius-mw-deploy-block');
-		if (!block) {
-			return;
-		}
-		var all =
-			steps &&
-			STEP_KEYS.every(function (k) {
-				return steps[k] && steps[k].done;
-			});
-		block.classList.toggle('radius-mw-deploy-block--locked', !all);
+		updateOverallProgress(steps);
 	}
 
 	function applyPrefilledSteps(steps) {
 		refreshStepRows(steps);
-	}
-
-	function createDeploySection(payload) {
-		mergeCfgFromPayload(payload);
-		var depUrl = cfg.deployPageUrl || 'admin.php?page=radius-deploy';
-		var areasUrl = cfg.serviceAreasUrl || '#';
-		var locUrl = cfg.locationsLibraryUrl || '#';
-
-		var wrap = el('div', 'radius-mw-deploy-block radius-mw-deploy-block--locked');
-		wrap.id = 'radius-mw-deploy-block';
-		wrap.setAttribute('aria-disabled', 'true');
-
-		var title = el(
-			'p',
-			'radius-mw-deploy-block-title',
-			i18n.stepDeployTitle || ''
-		);
-		var help = el(
-			'p',
-			'description radius-mw-deploy-block-help',
-			i18n.stepDeployHelp || ''
-		);
-		var actions = el('div', 'radius-mw-deploy-actions', '');
-
-		var bDeploy = el(
-			'button',
-			'button button-primary radius-mw-deploy-primary',
-			i18n.goDeploy || 'Open Deploy'
-		);
-		bDeploy.type = 'button';
-		bDeploy.addEventListener('click', function (e) {
-			e.preventDefault();
-			window.location.href = depUrl;
-		});
-
-		var aLoc = el('a', 'button', i18n.locationLibrary || 'Location library');
-		aLoc.href = locUrl;
-
-		var aAreas = el('a', 'button', i18n.serviceAreasBtn || 'Service areas');
-		aAreas.href = areasUrl;
-
-		actions.appendChild(bDeploy);
-		actions.appendChild(aLoc);
-		actions.appendChild(aAreas);
-
-		wrap.appendChild(title);
-		wrap.appendChild(help);
-		wrap.appendChild(actions);
-		return wrap;
 	}
 
 	function ensureModal(payload) {
@@ -246,9 +287,34 @@
 		hTitle.id = 'radius-mw-title';
 		head.appendChild(hTitle);
 		var intro = el('p', 'radius-mw-intro', i18n.intro || '');
+		var overallWrap = el('div', 'radius-mw-overall-progress', '');
+		overallWrap.id = 'radius-mw-overall-progress';
+		var overallLab = el(
+			'label',
+			'radius-mw-overall-progress-heading',
+			i18n.overallProgressHeading || 'Overall progress'
+		);
+		overallLab.setAttribute('for', 'radius-mw-overall-bar');
+		var overallBar = el('progress', 'radius-mw-overall-bar', '');
+		overallBar.id = 'radius-mw-overall-bar';
+		overallBar.max = 100;
+		overallBar.value = 0;
+		overallBar.setAttribute('aria-valuemin', '0');
+		overallBar.setAttribute('aria-valuemax', '100');
+		overallBar.setAttribute('aria-valuenow', '0');
+		var overallPct = el(
+			'p',
+			'radius-mw-overall-progress-label',
+			''
+		);
+		overallPct.id = 'radius-mw-overall-progress-label';
+		overallWrap.appendChild(overallLab);
+		overallWrap.appendChild(overallBar);
+		overallWrap.appendChild(overallPct);
+
 		var stepsOl = el('ol', 'radius-mw-steps radius-mw-steps--checklist', '');
 		stepsOl.appendChild(
-			createStepRow('mw-step-places', i18n.stepPlaces, 'bar', 'places')
+			createStepRow('mw-step-places', i18n.stepPlaces, 'spin', 'places')
 		);
 		stepsOl.appendChild(
 			createStepRow(
@@ -277,10 +343,38 @@
 				'magic_pages'
 			)
 		);
-
-		var deploySec = createDeploySection(payload);
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-magic-page-plugin',
+				i18n.stepMagicPagePlugin || '',
+				'spin',
+				'magic_page_plugin',
+				true
+			)
+		);
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-deploy-areas',
+				i18n.stepDeployAreas || '',
+				'spin',
+				'deploy_areas'
+			)
+		);
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-deploy-landings',
+				i18n.stepDeployLandings || '',
+				'spin',
+				'deploy_landings'
+			)
+		);
 
 		var run = el('div', 'radius-mw-run', '');
+		var completion = el('div', 'radius-mw-completion', '');
+		completion.id = 'radius-mw-completion';
+		completion.setAttribute('role', 'status');
+		completion.hidden = true;
+
 		var foot = el('div', 'radius-mw-foot', '');
 
 		var start = el('button', 'button button-primary', i18n.start || 'Start');
@@ -298,16 +392,18 @@
 
 		panel.appendChild(head);
 		panel.appendChild(intro);
+		panel.appendChild(overallWrap);
 		panel.appendChild(stepsOl);
-		panel.appendChild(deploySec);
 		panel.appendChild(run);
 		panel.appendChild(summary);
+		panel.appendChild(completion);
 		panel.appendChild(foot);
 		overlayEl.appendChild(panel);
 		document.body.appendChild(overlayEl);
 
 		start.addEventListener('click', onStart);
 		dismiss.addEventListener('click', onDismiss);
+		bindMagicPagePluginButtons();
 		rootEl = panel;
 		if (payload && payload.steps) {
 			applyPrefilledSteps(payload.steps);
@@ -321,7 +417,74 @@
 		}
 	}
 
-	function createStepRow(id, label, mode, stepKey) {
+	function bindMagicPagePluginButtons() {
+		var row = document.getElementById('mw-step-magic-page-plugin');
+		if (!row) {
+			return;
+		}
+		var deact = row.querySelector('[data-radius-mw-mp-deactivate]');
+		var del = row.querySelector('[data-radius-mw-mp-delete]');
+		function refreshFromServer() {
+			postWizard('status').then(function (st) {
+				if (st.success && st.data && st.data.steps) {
+					mergeCfgFromPayload(st.data);
+					refreshStepRows(st.data.steps);
+				}
+			});
+		}
+		if (deact) {
+			deact.addEventListener('click', function (e) {
+				e.preventDefault();
+				deact.disabled = true;
+				postWizard('magic_page_plugin_deactivate')
+					.then(function (r) {
+						if (!r.success) {
+							window.alert(
+								(r.data && r.data.message) ||
+									i18n.requestFailed ||
+									'Request failed'
+							);
+							return;
+						}
+						refreshFromServer();
+					})
+					.finally(function () {
+						deact.disabled = false;
+					});
+			});
+		}
+		if (del) {
+			del.addEventListener('click', function (e) {
+				e.preventDefault();
+				if (
+					!window.confirm(
+						i18n.confirmDeleteMagicPage ||
+							'Delete the Magic Page plugin files from this site?'
+					)
+				) {
+					return;
+				}
+				del.disabled = true;
+				postWizard('magic_page_plugin_delete')
+					.then(function (r) {
+						if (!r.success) {
+							window.alert(
+								(r.data && r.data.message) ||
+									i18n.requestFailed ||
+									'Request failed'
+							);
+							return;
+						}
+						refreshFromServer();
+					})
+					.finally(function () {
+						del.disabled = false;
+					});
+			});
+		}
+	}
+
+	function createStepRow(id, label, mode, stepKey, pluginRow) {
 		var li = el('li', 'radius-mw-step', '');
 		li.id = id;
 		li.setAttribute('data-step-key', stepKey);
@@ -339,11 +502,25 @@
 		var main = el('div', 'radius-mw-step-main', '');
 		var lab = el('span', 'radius-mw-step-label', label);
 		main.appendChild(lab);
-		if (mode === 'bar') {
-			var bar = el('progress', 'radius-mw-step-progress', '');
-			bar.max = 100;
-			bar.value = 0;
-			main.appendChild(bar);
+		if (pluginRow) {
+			var pa = el('div', 'radius-mw-step-plugin-actions');
+			var bDeact = el(
+				'button',
+				'button button-small',
+				i18n.deactivateMagicPage || 'Deactivate'
+			);
+			bDeact.type = 'button';
+			bDeact.setAttribute('data-radius-mw-mp-deactivate', '1');
+			var bDel = el(
+				'button',
+				'button button-small',
+				i18n.deleteMagicPagePlugin || 'Delete plugin'
+			);
+			bDel.type = 'button';
+			bDel.setAttribute('data-radius-mw-mp-delete', '1');
+			pa.appendChild(bDeact);
+			pa.appendChild(bDel);
+			main.appendChild(pa);
 		}
 
 		var meta = el('div', 'radius-mw-step-meta', '');
@@ -408,15 +585,18 @@
 		row.removeAttribute('data-done');
 	}
 
-	function setPlacesProgress(pct) {
-		var row = document.getElementById('mw-step-places');
-		if (!row) {
+	function showMigrationCompleteBanner() {
+		var el = document.getElementById('radius-mw-completion');
+		if (!el) {
 			return;
 		}
-		var bar = row.querySelector('progress');
-		if (bar && typeof pct === 'number') {
-			bar.value = Math.min(100, Math.max(0, Math.round(pct)));
-		}
+		el.innerHTML =
+			'<p class="radius-mw-completion-msg"><strong>' +
+			esc(i18n.migrationCompletedTitle || 'Migration complete') +
+			'</strong> ' +
+			esc(i18n.migrationCompletedBody || '') +
+			'</p>';
+		el.hidden = false;
 	}
 
 	function showSummary(data) {
@@ -427,11 +607,6 @@
 		var depUrl = cfg.deployPageUrl || 'admin.php?page=radius-deploy';
 		var areasUrl = cfg.serviceAreasUrl || '#';
 		var locUrl = cfg.locationsLibraryUrl || '#';
-
-		var deployBlock = document.getElementById('radius-mw-deploy-block');
-		if (deployBlock) {
-			deployBlock.hidden = true;
-		}
 
 		var parts = [];
 		if (data && data.allDone) {
@@ -593,17 +768,16 @@
 				);
 			}
 		}
+		var summaryTitle =
+			data && data.migrationFullyCompleted
+				? i18n.summaryAfterDeploy || i18n.deployCta || 'Ready'
+				: i18n.deployCta || 'Ready';
 		sum.innerHTML =
 			'<h2 class="radius-mw-summary-title">' +
-			esc(i18n.deployCta || 'Ready') +
+			esc(summaryTitle) +
 			'</h2>' +
 			parts.join('') +
 			'<p class="radius-mw-deploy-actions radius-mw-deploy-actions--summary">' +
-			'<a class="button button-primary" href="' +
-			escAttr(depUrl) +
-			'">' +
-			esc(i18n.goDeploy || 'Open Deploy') +
-			'</a> ' +
 			'<a class="button" href="' +
 			escAttr(locUrl) +
 			'">' +
@@ -613,12 +787,21 @@
 			escAttr(areasUrl) +
 			'">' +
 			esc(i18n.serviceAreasBtn || 'Service areas') +
+			'</a> ' +
+			'<a class="button" href="' +
+			escAttr(depUrl) +
+			'">' +
+			esc(i18n.goDeploy || 'Open Deploy') +
 			'</a>' +
 			'</p>';
 		sum.hidden = false;
 		var intro = document.querySelector('.radius-mw-intro');
 		if (intro) {
 			intro.hidden = true;
+		}
+		var overall = document.getElementById('radius-mw-overall-progress');
+		if (overall) {
+			overall.hidden = true;
 		}
 		var steps = document.querySelector('.radius-mw-steps');
 		if (steps) {
@@ -680,18 +863,59 @@
 		return m;
 	}
 
+	async function runDeployBatchRequest(templateId, target, continuing) {
+		var fd = new FormData();
+		fd.append('action', 'radius_deploy_batch');
+		fd.append('nonce', cfg.deployBatchNonce || '');
+		fd.append('radius_template_id', String(templateId));
+		fd.append('radius_deploy_target', target);
+		if (continuing) {
+			fd.append('radius_deploy_continue', '1');
+		}
+		var res = await fetch(cfg.ajaxurl, {
+			method: 'POST',
+			body: fd,
+			credentials: 'same-origin',
+			headers: {
+				Accept: 'application/json, text/javascript, */*; q=0.01',
+			},
+		});
+		return res.json();
+	}
+
+	async function runDeployChain(templateId, target) {
+		var cont = false;
+		for (;;) {
+			var json = await runDeployBatchRequest(templateId, target, cont);
+			if (!json || typeof json.success !== 'boolean') {
+				throw new Error(i18n.deployBadResponse || 'Unexpected deploy response.');
+			}
+			if (!json.success) {
+				var msg =
+					json.data &&
+					typeof json.data.message === 'string' &&
+					json.data.message !== ''
+						? json.data.message
+						: i18n.deployFailed || 'Deploy failed.';
+				throw new Error(msg);
+			}
+			var d = json.data || {};
+			if (d.done) {
+				return d;
+			}
+			cont = true;
+		}
+	}
+
 	async function onStart() {
 		var userWants = {};
 		STEP_KEYS.forEach(function (k) {
 			userWants[k] = wantsRun(k);
 		});
-		var ran = {
-			places: false,
-			templates: false,
-			replacers: false,
-			anchors: false,
-			magic_pages: false,
-		};
+		var ran = {};
+		STEP_KEYS.forEach(function (k) {
+			ran[k] = false;
+		});
 
 		var start = document.getElementById('radius-mw-start');
 		if (start) {
@@ -704,6 +928,11 @@
 				esc(i18n.running || 'Working…') +
 				'</p>';
 			run.hidden = false;
+		}
+		var completionEl = document.getElementById('radius-mw-completion');
+		if (completionEl) {
+			completionEl.hidden = true;
+			completionEl.innerHTML = '';
 		}
 
 		var stFresh = await postWizard('status');
@@ -746,6 +975,23 @@
 			return userWants[k];
 		});
 
+		if (anyRunDesired) {
+			try {
+				validatePriorStepsForRun(userWants, steps);
+			} catch (ve) {
+				if (run) {
+					run.innerHTML =
+						'<p class="radius-mw-error">' +
+						esc(String(ve && ve.message ? ve.message : ve)) +
+						'</p>';
+				}
+				if (start) {
+					start.disabled = false;
+				}
+				return;
+			}
+		}
+
 		if (allDone && !anyRunDesired) {
 			placeStats = { success: true, skipped: true };
 			showSummary({ allDone: true });
@@ -760,26 +1006,20 @@
 		}
 
 		window.radiusLegacyImportSkipExisting = '0';
-		window.radiusLegacyImportOnOverall = function (o) {
-			if (o && typeof o.pct === 'number') {
-				setPlacesProgress(o.pct);
-			}
-		};
 
 		placeStats = null;
 		var tpl = {};
 		var jRepData = {};
 		var jAncData = {};
 		var jMpData = {};
-		var skips = {
-			places: false,
-			templates: false,
-			replacers: false,
-			anchors: false,
-			magic_pages: false,
-		};
+		var skips = {};
+		STEP_KEYS.forEach(function (k) {
+			skips[k] = false;
+		});
+		var migrationFullyCompleted = false;
 
 		try {
+			ensurePriorStepsComplete(steps, 0);
 			if (userWants.places) {
 				setStepState('mw-step-places', 'wait');
 				if (typeof window.radiusLegacyImportRunAll !== 'function') {
@@ -795,15 +1035,29 @@
 							'Legacy location import did not complete.'
 					);
 				}
-				setPlacesProgress(100);
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data) {
+					mergeCfgFromPayload(stFresh.data);
+					steps = stFresh.data.steps || {};
+				}
+				if (!steps.places || !steps.places.done) {
+					throw new Error(
+						i18n.placesCountMismatch ||
+							'The place library does not match the legacy location count. Import all legacy locations on the Locations screen, then try again.'
+					);
+				}
 				setStepState('mw-step-places', 'done');
 				await postWizard('step_complete', { step: 'places' });
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('places', steps);
 			} else {
 				if (steps.places && steps.places.done) {
-					setPlacesProgress(100);
 					setStepState('mw-step-places', 'done');
 				} else {
-					setPlacesProgress(0);
 					setStepState('mw-step-places', 'idle');
 				}
 				skips.places = true;
@@ -816,6 +1070,7 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			ensurePriorStepsComplete(steps, 1);
 			if (userWants.templates) {
 				setStepState('mw-step-templates', 'wait');
 				var jTpl = await postWizard('templates_pipeline');
@@ -828,6 +1083,12 @@
 				}
 				tpl = jTpl.data || {};
 				setStepState('mw-step-templates', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('templates', steps);
 			} else {
 				if (steps.templates && steps.templates.done) {
 					setStepState('mw-step-templates', 'done');
@@ -844,6 +1105,7 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			ensurePriorStepsComplete(steps, 2);
 			if (userWants.replacers) {
 				setStepState('mw-step-replacers', 'wait');
 				var jRep = await postWizard('site_replacers');
@@ -856,6 +1118,12 @@
 				}
 				jRepData = jRep.data || {};
 				setStepState('mw-step-replacers', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('replacers', steps);
 			} else {
 				if (steps.replacers && steps.replacers.done) {
 					setStepState('mw-step-replacers', 'done');
@@ -872,6 +1140,7 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			ensurePriorStepsComplete(steps, 3);
 			if (userWants.anchors) {
 				setStepState('mw-step-anchors', 'wait');
 				var jAnc = await postWizard('service_anchors');
@@ -884,6 +1153,12 @@
 				}
 				jAncData = jAnc.data || {};
 				setStepState('mw-step-anchors', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('anchors', steps);
 			} else {
 				if (steps.anchors && steps.anchors.done) {
 					setStepState('mw-step-anchors', 'done');
@@ -900,6 +1175,7 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			ensurePriorStepsComplete(steps, 4);
 			if (userWants.magic_pages) {
 				setStepState('mw-step-magic-pages', 'wait');
 				var jMp = await postWizard('magic_pages_cleanup');
@@ -912,6 +1188,12 @@
 				}
 				jMpData = jMp.data || {};
 				setStepState('mw-step-magic-pages', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('magic_pages', steps);
 			} else {
 				if (steps.magic_pages && steps.magic_pages.done) {
 					setStepState('mw-step-magic-pages', 'done');
@@ -928,14 +1210,158 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			ensurePriorStepsComplete(steps, 5);
+			var runServiceAreas =
+				userWants.deploy_areas || userWants.deploy_landings;
+			if (userWants.magic_page_plugin) {
+				setStepState('mw-step-magic-page-plugin', 'wait');
+				var jRm = await postWizard('magic_page_plugin_remove');
+				if (!jRm.success) {
+					throw new Error(
+						(jRm.data && jRm.data.message) ||
+							i18n.requestFailed ||
+							'Request failed'
+					);
+				}
+				setStepState('mw-step-magic-page-plugin', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('magic_page_plugin', steps);
+			} else {
+				if (steps.magic_page_plugin && steps.magic_page_plugin.done) {
+					setStepState('mw-step-magic-page-plugin', 'done');
+				} else {
+					setStepState('mw-step-magic-page-plugin', 'idle');
+				}
+				skips.magic_page_plugin = true;
+			}
+			ran.magic_page_plugin = true;
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data) {
+				mergeCfgFromPayload(stFresh.data);
+				steps = stFresh.data.steps || {};
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
+			}
+
+			ensurePriorStepsComplete(steps, 6);
+			if (!cfg.deployBatchNonce) {
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data) {
+					mergeCfgFromPayload(stFresh.data);
+				}
+			}
+
+			if (runServiceAreas) {
+				setStepState('mw-step-deploy-areas', 'wait');
+				var statusPayload =
+					stFresh.success && stFresh.data ? stFresh.data : {};
+				var saId =
+					cfg.serviceAreaTemplateId ||
+					statusPayload.service_area_template_id ||
+					0;
+				saId = parseInt(saId, 10) || 0;
+				if (saId <= 0) {
+					throw new Error(
+						i18n.deployMissingServiceAreaTemplate ||
+							'Set the service area template under Radius → Settings → General, save, then run deployment again.'
+					);
+				}
+				await runDeployChain(saId, 'radius_service_area');
+				await postWizard('step_complete', { step: 'deploy_areas' });
+				setStepState('mw-step-deploy-areas', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('deploy_areas', steps);
+			} else {
+				if (steps.deploy_areas && steps.deploy_areas.done) {
+					setStepState('mw-step-deploy-areas', 'done');
+				} else {
+					setStepState('mw-step-deploy-areas', 'idle');
+				}
+				skips.deploy_areas = true;
+			}
+			ran.deploy_areas = true;
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data && stFresh.data.steps) {
+				steps = stFresh.data.steps;
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
+			}
+
+			ensurePriorStepsComplete(steps, 7);
+			if (userWants.deploy_landings) {
+				setStepState('mw-step-deploy-landings', 'wait');
+				var landingIds = cfg.deployLandingTemplateIds || [];
+				var lastPayload =
+					stFresh.success && stFresh.data ? stFresh.data : {};
+				if (
+					(!landingIds || !landingIds.length) &&
+					Array.isArray(lastPayload.deploy_landing_template_ids)
+				) {
+					landingIds = lastPayload.deploy_landing_template_ids;
+				}
+				if (!landingIds || !landingIds.length) {
+					throw new Error(
+						i18n.deployMissingLandingTemplates ||
+							'Could not find published service templates (towing, roadside, heavy, equipment). Run the templates step first.'
+					);
+				}
+				for (var ti = 0; ti < landingIds.length; ti++) {
+					await runDeployChain(landingIds[ti], 'radius_landing');
+				}
+				await postWizard('step_complete', { step: 'deploy_landings' });
+				setStepState('mw-step-deploy-landings', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('deploy_landings', steps);
+				migrationFullyCompleted = true;
+				await postWizard('complete');
+				showMigrationCompleteBanner();
+			} else {
+				if (steps.deploy_landings && steps.deploy_landings.done) {
+					setStepState('mw-step-deploy-landings', 'done');
+				} else {
+					setStepState('mw-step-deploy-landings', 'idle');
+				}
+				skips.deploy_landings = true;
+			}
+			ran.deploy_landings = true;
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data && stFresh.data.steps) {
+				steps = stFresh.data.steps;
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
+			}
+
 			showSummary({
 				templates: tpl,
 				replacers: jRepData,
 				anchors: jAncData,
 				magic_pages: jMpData,
 				skips: skips,
+				migrationFullyCompleted: migrationFullyCompleted,
 			});
+			if (run) {
+				run.innerHTML = '';
+				run.hidden = true;
+			}
 		} catch (err) {
+			postWizard('status').then(function (st) {
+				if (st.success && st.data && st.data.steps) {
+					mergeCfgFromPayload(st.data);
+					refreshStepRows(st.data.steps);
+				}
+			});
 			if (run) {
 				run.innerHTML =
 					'<p class="radius-mw-error">' +
@@ -945,8 +1371,6 @@
 			if (start) {
 				start.disabled = false;
 			}
-		} finally {
-			window.radiusLegacyImportOnOverall = null;
 		}
 	}
 
@@ -1019,7 +1443,17 @@
 			if (!d || !d.success || !cfg.wizardNonce) {
 				return;
 			}
-			postWizard('step_complete', { step: 'places' });
+			postWizard('status').then(function (st) {
+				if (
+					st.success &&
+					st.data &&
+					st.data.steps &&
+					st.data.steps.places &&
+					st.data.steps.places.done
+				) {
+					postWizard('step_complete', { step: 'places' });
+				}
+			});
 		});
 
 		var full = document.getElementById('radius-migration-run-full');

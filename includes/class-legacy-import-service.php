@@ -113,6 +113,80 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Active Magic Page plugin basename (plugin_dir/file.php) for deactivate/delete, or empty.
+	 *
+	 * @return string
+	 */
+	public static function get_active_magic_page_plugin_basename() {
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		$candidates = apply_filters(
+			'radius_magic_page_plugin_basename',
+			array(
+				'magic-page/magic-page.php',
+				'magic-page-plugin/magic-page.php',
+				'seo-magic-page/magic-page.php',
+			)
+		);
+		if ( is_array( $candidates ) ) {
+			foreach ( $candidates as $basename ) {
+				$b = is_string( $basename ) ? trim( $basename ) : '';
+				if ( $b !== '' && is_plugin_active( $b ) ) {
+					return $b;
+				}
+			}
+		}
+		$active = (array) get_option( 'active_plugins', array() );
+		if ( is_multisite() ) {
+			$net = (array) get_site_option( 'active_sitewide_plugins', array() );
+			if ( ! empty( $net ) ) {
+				$active = array_merge( $active, array_keys( $net ) );
+			}
+		}
+		foreach ( $active as $rel ) {
+			if ( ! is_string( $rel ) || $rel === '' ) {
+				continue;
+			}
+			if ( false === stripos( $rel, 'magic-page' ) ) {
+				continue;
+			}
+			if ( is_plugin_active( $rel ) ) {
+				return $rel;
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Active Magic Page plugin basename, or an inactive install matching “magic-page”, for deletion.
+	 *
+	 * @return string
+	 */
+	public static function find_magic_page_plugin_basename_for_removal() {
+		$b = self::get_active_magic_page_plugin_basename();
+		if ( $b !== '' ) {
+			return $b;
+		}
+		if ( ! function_exists( 'get_plugins' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		$all = get_plugins();
+		if ( ! is_array( $all ) ) {
+			return '';
+		}
+		foreach ( array_keys( $all ) as $plugin_file ) {
+			if ( ! is_string( $plugin_file ) || $plugin_file === '' ) {
+				continue;
+			}
+			if ( false !== stripos( $plugin_file, 'magic-page' ) ) {
+				return $plugin_file;
+			}
+		}
+		return '';
+	}
+
+	/**
 	 * Meta keys Elementor regenerates — omit when cloning so the editor rebuilds CSS/cache.
 	 *
 	 * @return string[]
