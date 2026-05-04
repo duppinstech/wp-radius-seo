@@ -1917,12 +1917,16 @@ class Radius_Legacy_Import_Service {
 				$legacy_rows = $opt['locations'];
 			}
 		}
-		if ( ! is_array( $legacy_rows ) || empty( $legacy_rows ) ) {
+		if ( ! is_array( $legacy_rows ) ) {
+			$legacy_rows = array();
+		}
+
+		$legacy_rows = self::merge_magic_page_template_anchor_rows( $legacy_rows );
+
+		if ( empty( $legacy_rows ) ) {
 			return $out;
 		}
 
-		$legacy_tax = self::legacy_location_taxonomy();
-		$radius_tax = Radius_Place_Taxonomy::TAXONOMY;
 		$anchors_in = array();
 
 		foreach ( $legacy_rows as $row ) {
@@ -1939,16 +1943,15 @@ class Radius_Legacy_Import_Service {
 				$miles = 25.0;
 			}
 
-			$term = $legacy_tid > 0 ? get_term( $legacy_tid, $legacy_tax ) : null;
-			if ( ! $term || is_wp_error( $term ) ) {
-				if ( ! empty( $row['slug'] ) ) {
-					$term = get_term_by( 'slug', sanitize_title( (string) $row['slug'] ), $legacy_tax );
-				}
-			}
-			if ( ! $term || is_wp_error( $term ) ) {
+			if ( $legacy_tid <= 0 ) {
 				continue;
 			}
-			$r_term = get_term_by( 'slug', $term->slug, $radius_tax );
+
+			$place_id = self::map_legacy_location_term_to_radius_place_id( $legacy_tid, $row );
+			if ( $place_id <= 0 ) {
+				continue;
+			}
+			$r_term = get_term( $place_id, Radius_Place_Taxonomy::TAXONOMY );
 			if ( ! $r_term || is_wp_error( $r_term ) ) {
 				continue;
 			}
@@ -1970,6 +1973,240 @@ class Radius_Legacy_Import_Service {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Merge legacy anchor rows from Magic Page template posts (location select / Elementor) when the option store is empty.
+	 *
+	 * @param array<int,array<string,mixed>> $legacy_rows Existing rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function merge_magic_page_template_anchor_rows( array $legacy_rows ) {
+		$by_tid = array();
+		foreach ( $legacy_rows as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$tid = isset( $row['legacy_term_id'] ) ? (int) $row['legacy_term_id'] : 0;
+			if ( $tid <= 0 && isset( $row['term_id'] ) ) {
+				$tid = (int) $row['term_id'];
+			}
+			if ( $tid > 0 ) {
+				$by_tid[ $tid ] = $row;
+			}
+		}
+
+		foreach ( self::legacy_term_ids_from_magicpage_template_posts() as $tid ) {
+			if ( $tid <= 0 || isset( $by_tid[ $tid ] ) ) {
+				continue;
+			}
+			$by_tid[ $tid ] = array(
+				'legacy_term_id' => $tid,
+				'source'         => 'magicpage_template',
+			);
+		}
+
+		return array_values( $by_tid );
+	}
+
+	/**
+	 * Legacy location term IDs referenced on magicpage template posts (HTML location control, Elementor settings, meta).
+	 *
+	 * @return int[]
+	 */
+	private static function legacy_term_ids_from_magicpage_template_posts() {
+		$pt = self::legacy_template_post_type();
+		if ( ! post_type_exists( $pt ) ) {
+			return array();
+		}
+		$post_ids = get_posts(
+			array(
+				'post_type'      => $pt,
+				'post_status'    => 'any',
+				'posts_per_page' => 50,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'fields'         => 'ids',
+			)
+		);
+		if ( empty( $post_ids ) ) {
+			return array();
+		}
+		$found = array();
+		foreach ( $post_ids as $pid ) {
+			$found = array_merge( $found, self::extract_legacy_location_term_ids_from_magicpage_post( (int) $pid ) );
+		}
+		$found = array_values( array_unique( array_filter( array_map( 'absint', $found ) ) ) );
+		return apply_filters( 'radius_magic_page_template_legacy_location_ids', $found, $post_ids );
+	}
+
+	/**
+	 * @param int $post_id magicpage post ID.
+	 * @return int[]
+	 */
+	private static function extract_legacy_location_term_ids_from_magicpage_post( $post_id ) {
+		$post_id = (int) $post_id;
+		$found   = array();
+		$post    = get_post( $post_id );
+		if ( $post && is_string( $post->post_content ) && $post->post_content !== '' ) {
+			$html = $post->post_content;
+			if ( preg_match_all( '/<select[^>]+name\s*=\s*["\']location["\'][^>]*>([\s\S]*?)<\/select>/i', $html, $blocks ) ) {
+				foreach ( $blocks[1] as $inner ) {
+					if ( preg_match( '/<option[^>]*\bselected\b[^>]*value\s*=\s*["\']?(\d+)/i', $inner, $m ) ) {
+						$found[] = (int) $m[1];
+					}
+					if ( preg_match( '/<option[^>]*value\s*=\s*["\']?(\d+)[^>]*\bselected\b/i', $inner, $m2 ) ) {
+						$found[] = (int) $m2[1];
+					}
+				}
+			}
+			if ( preg_match_all( '/["\']location["\']\s*:\s*["\']?(\d+)/', $html, $mj ) ) {
+				foreach ( $mj[1] as $v ) {
+					$found[] = (int) $v;
+				}
+			}
+		}
+
+		$meta_keys = array( 'location', '_location', 'magic_page_location', '_magic_page_location', 'service_location', 'location_id', '_location_id' );
+		foreach ( $meta_keys as $mk ) {
+			$v = get_post_meta( $post_id, $mk, true );
+			if ( $v !== '' && $v !== false && is_numeric( $v ) ) {
+				$found[] = absint( $v );
+			}
+		}
+
+		$elementor = get_post_meta( $post_id, '_elementor_data', true );
+		if ( is_string( $elementor ) ) {
+			$elementor = json_decode( $elementor, true );
+		}
+		if ( is_array( $elementor ) ) {
+			$found = array_merge( $found, self::elementor_collect_legacy_location_term_ids( $elementor ) );
+		}
+
+		return array_unique( array_filter( array_map( 'absint', $found ) ) );
+	}
+
+	/**
+	 * @param array<int,mixed> $elements Elementor elements tree.
+	 * @return int[]
+	 */
+	private static function elementor_collect_legacy_location_term_ids( $elements ) {
+		$ids = array();
+		if ( ! is_array( $elements ) ) {
+			return $ids;
+		}
+		foreach ( $elements as $el ) {
+			if ( ! is_array( $el ) ) {
+				continue;
+			}
+			if ( ! empty( $el['elements'] ) && is_array( $el['elements'] ) ) {
+				$ids = array_merge( $ids, self::elementor_collect_legacy_location_term_ids( $el['elements'] ) );
+			}
+			if ( empty( $el['settings'] ) || ! is_array( $el['settings'] ) ) {
+				continue;
+			}
+			foreach ( $el['settings'] as $k => $v ) {
+				$ks = is_string( $k ) ? $k : '';
+				if ( preg_match( '/location/i', $ks ) && is_numeric( $v ) && (int) $v > 0 ) {
+					$ids[] = (int) $v;
+				}
+				if ( is_array( $v ) ) {
+					foreach ( $v as $vk => $vv ) {
+						$vks = is_string( $vk ) ? $vk : '';
+						if ( preg_match( '/location/i', $vks ) && is_numeric( $vv ) && (int) $vv > 0 ) {
+							$ids[] = (int) $vv;
+						}
+					}
+				}
+			}
+		}
+		return $ids;
+	}
+
+	/**
+	 * Resolve imported radius_place term ID from a legacy location term ID (import bridge, slug, or zip).
+	 *
+	 * @param int                  $legacy_term_id Legacy taxonomy term ID (often still valid in DB after import).
+	 * @param array<string,mixed> $row            Optional row context (slug).
+	 * @return int
+	 */
+	private static function map_legacy_location_term_to_radius_place_id( $legacy_term_id, array $row = array() ) {
+		$legacy_term_id = (int) $legacy_term_id;
+		if ( $legacy_term_id <= 0 ) {
+			return 0;
+		}
+
+		$radius_tax = Radius_Place_Taxonomy::TAXONOMY;
+		$legacy_tax = self::legacy_location_taxonomy();
+
+		$imported = get_terms(
+			array(
+				'taxonomy'   => $radius_tax,
+				'hide_empty' => false,
+				'number'     => 1,
+				'meta_query' => array(
+					array(
+						'key'   => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
+						'value' => $legacy_term_id,
+					),
+				),
+			)
+		);
+		if ( ! is_wp_error( $imported ) && ! empty( $imported[0] ) ) {
+			return (int) $imported[0]->term_id;
+		}
+
+		$term = get_term( $legacy_term_id, $legacy_tax );
+		if ( ! $term || is_wp_error( $term ) ) {
+			if ( ! empty( $row['slug'] ) ) {
+				$term = get_term_by( 'slug', sanitize_title( (string) $row['slug'] ), $legacy_tax );
+			}
+		}
+		if ( ! $term || is_wp_error( $term ) ) {
+			return 0;
+		}
+
+		$r_slug = get_term_by( 'slug', $term->slug, $radius_tax );
+		if ( $r_slug && ! is_wp_error( $r_slug ) ) {
+			return (int) $r_slug->term_id;
+		}
+
+		$zip = get_term_meta( $legacy_term_id, 'zip', true );
+		if ( ! is_string( $zip ) || $zip === '' ) {
+			return 0;
+		}
+		$zip_norm = preg_replace( '/\D/', '', $zip );
+		if ( $zip_norm === '' ) {
+			return 0;
+		}
+		if ( strlen( $zip_norm ) > 5 ) {
+			$zip_norm = substr( $zip_norm, 0, 5 );
+		}
+
+		$candidates = get_terms(
+			array(
+				'taxonomy'   => $radius_tax,
+				'hide_empty' => false,
+				'number'     => 10,
+				'meta_query' => array(
+					array(
+						'key'     => Radius_Data_Registry::TERM_META_POSTAL,
+						'value'   => $zip_norm,
+						'compare' => '=',
+					),
+				),
+			)
+		);
+		if ( is_wp_error( $candidates ) || empty( $candidates ) ) {
+			return 0;
+		}
+		foreach ( $candidates as $cand ) {
+			if ( $cand->slug === $term->slug ) {
+				return (int) $cand->term_id;
+			}
+		}
+
+		return (int) $candidates[0]->term_id;
 	}
 
 	private static function copy_legacy_term_meta_to_radius_place( $legacy_term_id, $radius_term_id ) {

@@ -83,6 +83,33 @@ final class Radius_Migration_Wizard {
 	}
 
 	/**
+	 * Clear the recorded completion flag for one step so the migration wizard can run it again.
+	 *
+	 * @param string $step One of places|templates|replacers|anchors.
+	 * @return void
+	 */
+	public static function clear_recorded_step( $step ) {
+		$step = sanitize_key( (string) $step );
+		if ( ! in_array( $step, self::step_keys(), true ) ) {
+			return;
+		}
+		$cur = get_option( self::OPTION_STEPS, array() );
+		if ( ! is_array( $cur ) || empty( $cur[ $step ] ) ) {
+			return;
+		}
+		unset( $cur[ $step ] );
+		update_option( self::OPTION_STEPS, $cur, false );
+		self::append_activity_log(
+			sprintf(
+				/* translators: %s: step key */
+				__( 'Migration step reset so it can run again: %s.', 'radius' ),
+				$step
+			),
+			array( 'source' => 'manual' )
+		);
+	}
+
+	/**
 	 * Append one line to the activity log (newest first, capped).
 	 *
 	 * @param string               $message Human-readable line.
@@ -409,6 +436,14 @@ final class Radius_Migration_Wizard {
 					),
 					array( 'source' => 'manual' )
 				);
+				wp_send_json_success( array( 'steps' => self::build_steps_status() ) );
+				return;
+			case 'step_reset':
+				$step = isset( $_POST['step'] ) ? sanitize_key( wp_unslash( $_POST['step'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				if ( ! in_array( $step, self::step_keys(), true ) ) {
+					wp_send_json_error( array( 'message' => __( 'Invalid step.', 'radius' ) ), 400 );
+				}
+				self::clear_recorded_step( $step );
 				wp_send_json_success( array( 'steps' => self::build_steps_status() ) );
 				return;
 			case 'templates_pipeline':

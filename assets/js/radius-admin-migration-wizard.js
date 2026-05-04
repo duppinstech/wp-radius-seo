@@ -95,7 +95,11 @@
 		return STEP_IDS[key] || '';
 	}
 
-	function refreshStepRows(steps) {
+	/**
+	 * @param {Record<string,{done?:boolean}>|null|undefined} steps
+	 * @param {Record<string,boolean>|null|undefined} preserveRunFor If set, keeps run checkbox checked for pending re-runs.
+	 */
+	function refreshStepRows(steps, preserveRunFor) {
 		if (!steps) {
 			return;
 		}
@@ -126,6 +130,9 @@
 			}
 			if (cb) {
 				cb.checked = !done;
+				if (preserveRunFor && preserveRunFor[key]) {
+					cb.checked = true;
+				}
 			}
 			if (done) {
 				row.setAttribute('data-done', '1');
@@ -622,7 +629,28 @@
 		return cb ? cb.checked : true;
 	}
 
+	function preserveAfterRan(userWants, ran) {
+		var m = {};
+		STEP_KEYS.forEach(function (k) {
+			if (userWants[k] && !ran[k]) {
+				m[k] = true;
+			}
+		});
+		return m;
+	}
+
 	async function onStart() {
+		var userWants = {};
+		STEP_KEYS.forEach(function (k) {
+			userWants[k] = wantsRun(k);
+		});
+		var ran = {
+			places: false,
+			templates: false,
+			replacers: false,
+			anchors: false,
+		};
+
 		var start = document.getElementById('radius-mw-start');
 		if (start) {
 			start.disabled = true;
@@ -652,13 +680,28 @@
 		mergeCfgFromPayload(stFresh.data);
 		var steps = stFresh.data.steps || {};
 
-		applyPrefilledSteps(steps);
+		var resetPromises = [];
+		STEP_KEYS.forEach(function (k) {
+			if (userWants[k] && steps[k] && steps[k].recorded) {
+				resetPromises.push(postWizard('step_reset', { step: k }));
+			}
+		});
+		if (resetPromises.length) {
+			await Promise.all(resetPromises);
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data) {
+				mergeCfgFromPayload(stFresh.data);
+				steps = stFresh.data.steps || {};
+			}
+		}
+
+		refreshStepRows(steps, preserveAfterRan(userWants, ran));
 
 		var allDone = STEP_KEYS.every(function (k) {
 			return steps[k] && steps[k].done;
 		});
 		var anyRunDesired = STEP_KEYS.some(function (k) {
-			return wantsRun(k);
+			return userWants[k];
 		});
 
 		if (allDone && !anyRunDesired) {
@@ -693,7 +736,7 @@
 		};
 
 		try {
-			if (wantsRun('places')) {
+			if (userWants.places) {
 				setStepState('mw-step-places', 'wait');
 				if (typeof window.radiusLegacyImportRunAll !== 'function') {
 					throw new Error(
@@ -721,14 +764,15 @@
 				}
 				skips.places = true;
 			}
+			ran.places = true;
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
-				refreshStepRows(steps);
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
-			if (wantsRun('templates')) {
+			if (userWants.templates) {
 				setStepState('mw-step-templates', 'wait');
 				var jTpl = await postWizard('templates_pipeline');
 				if (!jTpl.success) {
@@ -748,14 +792,15 @@
 				}
 				skips.templates = true;
 			}
+			ran.templates = true;
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
-				refreshStepRows(steps);
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
-			if (wantsRun('replacers')) {
+			if (userWants.replacers) {
 				setStepState('mw-step-replacers', 'wait');
 				var jRep = await postWizard('site_replacers');
 				if (!jRep.success) {
@@ -775,14 +820,15 @@
 				}
 				skips.replacers = true;
 			}
+			ran.replacers = true;
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
-				refreshStepRows(steps);
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
-			if (wantsRun('anchors')) {
+			if (userWants.anchors) {
 				setStepState('mw-step-anchors', 'wait');
 				var jAnc = await postWizard('service_anchors');
 				if (!jAnc.success) {
@@ -802,11 +848,12 @@
 				}
 				skips.anchors = true;
 			}
+			ran.anchors = true;
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {
 				steps = stFresh.data.steps;
-				refreshStepRows(steps);
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
 			showSummary({
