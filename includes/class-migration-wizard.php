@@ -92,30 +92,50 @@ final class Radius_Migration_Wizard {
 	}
 
 	/**
-	 * Clear the recorded completion flag for one step so the migration wizard can run it again.
+	 * Clear recorded completion flags for one or more steps in a single option write (one activity log line).
+	 *
+	 * @param array<int,string> $steps Step keys.
+	 * @return void
+	 */
+	public static function clear_recorded_steps( array $steps ) {
+		$keys = self::step_keys();
+		$cur  = get_option( self::OPTION_STEPS, array() );
+		if ( ! is_array( $cur ) ) {
+			$cur = array();
+		}
+		$cleared = array();
+		foreach ( $steps as $step ) {
+			$step = sanitize_key( (string) $step );
+			if ( ! in_array( $step, $keys, true ) ) {
+				continue;
+			}
+			if ( ! empty( $cur[ $step ] ) ) {
+				unset( $cur[ $step ] );
+				$cleared[] = $step;
+			}
+		}
+		if ( empty( $cleared ) ) {
+			return;
+		}
+		update_option( self::OPTION_STEPS, $cur, false );
+		self::append_activity_log(
+			sprintf(
+				/* translators: %s: comma-separated step keys */
+				__( 'Migration steps reset so they can run again: %s.', 'radius' ),
+				implode( ', ', $cleared )
+			),
+			array( 'source' => 'manual' )
+		);
+	}
+
+	/**
+	 * Clear the recorded completion flag for one step (delegates to clear_recorded_steps).
 	 *
 	 * @param string $step One of step_keys().
 	 * @return void
 	 */
 	public static function clear_recorded_step( $step ) {
-		$step = sanitize_key( (string) $step );
-		if ( ! in_array( $step, self::step_keys(), true ) ) {
-			return;
-		}
-		$cur = get_option( self::OPTION_STEPS, array() );
-		if ( ! is_array( $cur ) || empty( $cur[ $step ] ) ) {
-			return;
-		}
-		unset( $cur[ $step ] );
-		update_option( self::OPTION_STEPS, $cur, false );
-		self::append_activity_log(
-			sprintf(
-				/* translators: %s: step key */
-				__( 'Migration step reset so it can run again: %s.', 'radius' ),
-				$step
-			),
-			array( 'source' => 'manual' )
-		);
+		self::clear_recorded_steps( array( (string) $step ) );
 	}
 
 	/**
@@ -584,6 +604,21 @@ final class Radius_Migration_Wizard {
 					wp_send_json_error( array( 'message' => __( 'Invalid step.', 'radius' ) ), 400 );
 				}
 				self::clear_recorded_step( $step );
+				wp_send_json_success( array( 'steps' => self::build_steps_status() ) );
+				return;
+			case 'steps_reset':
+				// Comma-separated step keys — single round-trip instead of N× step_reset (fewer admin-ajax POSTs).
+				$raw = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				$list = array();
+				if ( is_string( $raw ) && $raw !== '' ) {
+					foreach ( explode( ',', $raw ) as $part ) {
+						$s = sanitize_key( trim( (string) $part ) );
+						if ( $s !== '' ) {
+							$list[] = $s;
+						}
+					}
+				}
+				self::clear_recorded_steps( $list );
 				wp_send_json_success( array( 'steps' => self::build_steps_status() ) );
 				return;
 			case 'templates_pipeline':

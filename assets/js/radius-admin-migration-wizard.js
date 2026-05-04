@@ -113,7 +113,44 @@
 				Accept: 'application/json, text/javascript, */*; q=0.01',
 			},
 		}).then(function (res) {
-			return res.json();
+			return res.text().then(function (raw) {
+				var bad =
+					i18n.requestFailed ||
+					'Request failed.';
+				if (!res.ok) {
+					return {
+						success: false,
+						data: {
+							message:
+								bad +
+								' (HTTP ' +
+								res.status +
+								' — if this is 403, your host/WAF may be blocking admin-ajax POSTs.)',
+						},
+					};
+				}
+				var t = (raw || '').trim();
+				if (!t || (t.charAt(0) !== '{' && t.charAt(0) !== '[')) {
+					return {
+						success: false,
+						data: {
+							message:
+								bad +
+								' Non-JSON response (often an HTML error page from a firewall).',
+						},
+					};
+				}
+				try {
+					return JSON.parse(raw);
+				} catch (parseErr) {
+					return {
+						success: false,
+						data: {
+							message: bad,
+						},
+					};
+				}
+			});
 		});
 	}
 
@@ -951,17 +988,15 @@
 		mergeCfgFromPayload(stFresh.data);
 		var steps = stFresh.data.steps || {};
 
-		// One step_reset at a time — avoids burst POSTs to admin-ajax.php (some WAFs allow only one in flight).
-		var didReset = false;
-		var rk;
-		for (rk = 0; rk < STEP_KEYS.length; rk++) {
-			var resetKey = STEP_KEYS[rk];
-			if (userWants[resetKey] && steps[resetKey] && steps[resetKey].recorded) {
-				await postWizard('step_reset', { step: resetKey });
-				didReset = true;
+		// Single steps_reset replaces N× step_reset — clears persisted “recorded” flags only (needed so deploy-only steps can re-run and the log stays honest).
+		var stepsToReset = [];
+		STEP_KEYS.forEach(function (k) {
+			if (userWants[k] && steps[k] && steps[k].recorded) {
+				stepsToReset.push(k);
 			}
-		}
-		if (didReset) {
+		});
+		if (stepsToReset.length) {
+			await postWizard('steps_reset', { steps: stepsToReset.join(',') });
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data) {
 				mergeCfgFromPayload(stFresh.data);
