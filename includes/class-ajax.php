@@ -120,6 +120,11 @@ class Radius_Ajax {
 			$options['skip_existing'] = ( '1' === $skip_post );
 		}
 
+		// term_id cursor avoids slow SQL OFFSET for large legacy taxonomies (JS sends from batch 2 onward).
+		if ( isset( $_POST['cursor_term_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$options['cursor_term_id'] = absint( wp_unslash( $_POST['cursor_term_id'] ) );
+		}
+
 		$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
 
 		if ( ! isset( $res['total_legacy'] ) ) {

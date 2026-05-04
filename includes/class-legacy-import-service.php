@@ -1510,13 +1510,70 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Fetch the next legacy taxonomy batch using term_id > cursor (fast) instead of SQL OFFSET (slow for deep pages).
+	 *
+	 * @param string $taxonomy Legacy taxonomy slug.
+	 * @param int    $limit    Max terms.
+	 * @param int    $after_id Include terms with term_id strictly greater than this (0 = start).
+	 * @return array<int,\WP_Term>|\WP_Error
+	 */
+	private static function get_legacy_terms_after_term_id( $taxonomy, $limit, $after_id ) {
+		global $wpdb;
+
+		$taxonomy = sanitize_key( (string) $taxonomy );
+		$limit    = max( 1, (int) $limit );
+		$after    = max( 0, (int) $after_id );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names are literal $wpdb properties.
+		$sql = $wpdb->prepare(
+			"SELECT t.term_id FROM {$wpdb->terms} AS t
+			INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			WHERE t.term_id > %d
+			ORDER BY t.term_id ASC
+			LIMIT %d",
+			$taxonomy,
+			$after,
+			$limit
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built with prepare().
+		$ids = $wpdb->get_col( $sql );
+		if ( ! is_array( $ids ) ) {
+			$ids = array();
+		}
+		$ids = array_values( array_filter( array_map( 'absint', $ids ) ) );
+
+		if ( empty( $ids ) ) {
+			return array();
+		}
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => $taxonomy,
+				'include'    => $ids,
+				'orderby'    => 'term_id',
+				'order'      => 'ASC',
+				'hide_empty' => false,
+				'number'     => 0,
+			)
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			return $terms;
+		}
+
+		return is_array( $terms ) ? $terms : array();
+	}
+
+	/**
 	 * Copy legacy location terms into radius_place. Updates existing terms when slug matches.
 	 *
 	 * @param int      $limit       Max legacy terms per run.
-	 * @param int      $offset      Legacy term offset (stable ordering by term_id).
+	 * @param int      $offset      Legacy term offset (stable ordering by term_id), or cumulative progress when using cursor.
 	 * @param int|null $total_known Total legacy terms if already counted (skips a DB count per batch).
-	 * @param array<string,mixed> $options Optional: skip_existing (bool), slug_lookup_chunk (int).
-	 * @return array{imported:int,updated:int,skipped:int,skipped_existing:int,errors:string[],has_more:bool,next_offset:int}
+	 * @param array<string,mixed> $options Optional: skip_existing (bool), slug_lookup_chunk (int), cursor_term_id (int) — when set, fetch batch via term_id cursor (AJAX); omit for OFFSET pagination (legacy form).
+	 * @return array{imported:int,updated:int,skipped:int,skipped_existing:int,errors:string[],has_more:bool,next_offset:int,total_legacy?:int,next_cursor_term_id?:int}
 	 */
 	public static function import_places( $limit = 50, $offset = 0, $total_known = null, array $options = array() ) {
 		$out = array(
@@ -1564,25 +1621,57 @@ class Radius_Legacy_Import_Service {
 		$lim = max( 1, (int) $limit );
 		$off = max( 0, (int) $offset );
 
-		$terms = get_terms(
-			array(
-				'taxonomy'   => $tax,
-				'hide_empty' => false,
-				'number'     => $lim,
-				'offset'     => $off,
-				'orderby'    => 'term_id',
-				'order'      => 'ASC',
-			)
-		);
+		$use_cursor = array_key_exists( 'cursor_term_id', $options )
+			&& apply_filters( 'radius_legacy_import_places_use_term_id_cursor', true, $tax, $options );
+
+		if ( $use_cursor ) {
+			$cursor_in = max( 0, (int) $options['cursor_term_id'] );
+			$terms     = self::get_legacy_terms_after_term_id( $tax, $lim, $cursor_in );
+		} else {
+			$terms = get_terms(
+				array(
+					'taxonomy'   => $tax,
+					'hide_empty' => false,
+					'number'     => $lim,
+					'offset'     => $off,
+					'orderby'    => 'term_id',
+					'order'      => 'ASC',
+				)
+			);
+		}
 
 		if ( is_wp_error( $terms ) ) {
 			$out['errors'][] = $terms->get_error_message();
 			return $out;
 		}
 
+		if ( ! is_array( $terms ) ) {
+			$terms = array();
+		}
+
 		$n_batch = count( $terms );
 		$out['next_offset'] = $off + $n_batch;
-		$out['has_more']    = $out['next_offset'] < $total_legacy;
+
+		if ( 0 === $n_batch ) {
+			$out['has_more'] = false;
+			if ( $use_cursor ) {
+				$out['next_cursor_term_id'] = isset( $options['cursor_term_id'] )
+					? max( 0, (int) $options['cursor_term_id'] )
+					: 0;
+			}
+			$out['total_legacy'] = $total_legacy;
+			return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+		}
+
+		$out['has_more'] = $out['next_offset'] < $total_legacy;
+
+		if ( $use_cursor ) {
+			$max_tid = 0;
+			foreach ( $terms as $term ) {
+				$max_tid = max( $max_tid, (int) $term->term_id );
+			}
+			$out['next_cursor_term_id'] = $max_tid;
+		}
 
 		$lf_tax = Radius_Place_Taxonomy::TAXONOMY;
 		$slugs  = wp_list_pluck( $terms, 'slug' );

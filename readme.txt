@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.28
+Stable tag: 1.6.29
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -30,6 +30,7 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_location_taxonomy` — default legacy location taxonomy slug for migration.
 * `radius_landing_content` — filter rendered landing HTML.
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
+* `radius_legacy_import_places_use_term_id_cursor` — return false to use SQL `OFFSET` for legacy place batches instead of `term_id` cursor pagination (default true; cursor avoids slow deep offsets).
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
 * `radius_github_updater_cache_ttl` — seconds to cache GitHub Releases API JSON (default 3600).
 * `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
@@ -58,6 +59,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.29 =
+* **Legacy place import (AJAX):** Batches use **term_id cursor** pagination (`term_id > last`) instead of **OFFSET** for loading legacy terms. Deep imports (thousands of locations) stay much closer to **constant** query cost per batch instead of slowing as the offset grows. New POST param `cursor_term_id`; response includes `next_cursor_term_id`. Filter `radius_legacy_import_places_use_term_id_cursor` to opt out. Non-AJAX single batch form is unchanged (OFFSET).
 
 = 1.6.28 =
 * **Migration wizard:** One AJAX **`steps_reset`** replaces multiple **`step_reset`** calls when you re-run recorded steps (fewer POSTs to `admin-ajax.php`). **`postWizard`** parses responses safely so HTTP 403 / HTML firewall pages no longer throw JSON syntax errors in the console.

@@ -193,6 +193,7 @@
 		}
 
 		var offset = 0;
+		var cursorTermId = 0;
 		var totalLegacy = 0;
 		var interBatchMs =
 			typeof cfg.interBatchDelayMs === 'number' && cfg.interBatchDelayMs >= 0
@@ -212,6 +213,7 @@
 				fd.append('action', 'radius_legacy_places_batch');
 				fd.append('nonce', cfg.nonce);
 				fd.append('offset', String(offset));
+				fd.append('cursor_term_id', String(cursorTermId));
 				if (totalLegacy > 0) {
 					fd.append('total_legacy', String(totalLegacy));
 				}
@@ -399,6 +401,13 @@
 					};
 				}
 				offset = nextOff;
+
+				if (d.next_cursor_term_id != null && d.next_cursor_term_id !== '') {
+					cursorTermId = parseInt(d.next_cursor_term_id, 10);
+					if (isNaN(cursorTermId)) {
+						cursorTermId = 0;
+					}
+				}
 
 				if (interBatchMs > 0) {
 					setProgressBar(batch, 0);
