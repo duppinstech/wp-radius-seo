@@ -37,6 +37,8 @@ class Radius_Elementor_Compat {
 	 * @return void
 	 */
 	public static function register_elementor_hooks() {
+		// Fix _elementor_page_settings stored as JSON string (import bug) before Elementor editor scripts run.
+		add_action( 'load-post.php', array( __CLASS__, 'maybe_normalize_imported_template_page_settings' ), 5 );
 		add_action( 'pre_get_posts', array( __CLASS__, 'force_main_query_for_elementor_preview' ), 1 );
 		add_action( 'pre_get_posts', array( __CLASS__, 'exclude_radius_from_elementor_admin_queries' ), 999 );
 		add_filter( 'elementor/editor/v2/scripts/env', array( __CLASS__, 'ensure_editor_site_navigation_env' ), 999999 );
@@ -49,6 +51,30 @@ class Radius_Elementor_Compat {
 		add_action( 'elementor/frontend/after_enqueue_scripts', array( __CLASS__, 'patch_preview_frontend_config' ), 999 );
 		add_action( 'wp_footer', array( __CLASS__, 'patch_preview_frontend_config_footer' ), 15 );
 		add_action( 'elementor/preview/enqueue_scripts', array( __CLASS__, 'patch_preview_frontend_config' ), 999 );
+	}
+
+	/**
+	 * If page settings were saved as a JSON string, Elementor’s Page manager throws on PHP 8+ — normalize to an array.
+	 *
+	 * @return void
+	 */
+	public static function maybe_normalize_imported_template_page_settings() {
+		if ( ! is_admin() || ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification -- Read-only context check for post.php?action=edit.
+		if ( ! isset( $_GET['post'], $_GET['action'] ) || 'edit' !== $_GET['action'] ) {
+			return;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0;
+		if ( $id <= 0 || 'radius_template' !== get_post_type( $id ) ) {
+			return;
+		}
+		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return;
+		}
+		Radius_Legacy_Import_Service::normalize_elementor_page_settings_meta( $id );
 	}
 
 	/**

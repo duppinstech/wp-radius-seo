@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.11
+Stable tag: 1.6.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +44,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_clear_imported_template_content_when_elementor_builder` — return false to keep classic/block `post_content` after import when Elementor builder data exists (default true: clear so Elementor-only templates do not show duplicate classic markup).
 * `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
 == Changelog ==
+
+= 1.6.12 =
+* Magic Page / Elementor import: store `_elementor_page_settings` as a PHP array (WordPress-serialized), not a JSON string — fixes Elementor editor fatal on PHP 8+ (“Cannot access offset of type string on string” in `Page\Manager::get_saved_settings`). Keyword swaps use the same rule.
+* On **Templates → Edit**, normalize page settings once when opening a `radius_template` so already-imported broken rows self-heal without re-import.
 
 = 1.6.11 =
 * Admin notice: only show the “Apply recommended updates” banner after **LocaleForge → Radius** database migration (lf_* / `localeforge_settings` detected), not on every fresh install. Schema bumps and service-area slug saves still flush permalinks automatically in the background without nagging.

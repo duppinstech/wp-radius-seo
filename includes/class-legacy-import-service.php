@@ -260,6 +260,54 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Decode meta value to array for Elementor page settings (serialized array or JSON string).
+	 *
+	 * @param mixed $raw Post meta value.
+	 * @return array|null
+	 */
+	private static function elementor_meta_decode_to_array( $raw ) {
+		if ( is_array( $raw ) ) {
+			return $raw;
+		}
+		if ( ! is_string( $raw ) || $raw === '' ) {
+			return null;
+		}
+		$decoded = json_decode( $raw, true );
+		if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+			return $decoded;
+		}
+		$maybe = maybe_unserialize( $raw );
+		return is_array( $maybe ) ? $maybe : null;
+	}
+
+	/**
+	 * Elementor's Page Settings manager expects `_elementor_page_settings` as a PHP array in post meta,
+	 * not a JSON string — storing JSON breaks editor loader (PHP 8: "Cannot access offset of type string on string").
+	 *
+	 * @param int $post_id Post ID (e.g. radius_template).
+	 * @return void
+	 */
+	public static function normalize_elementor_page_settings_meta( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( $post_id <= 0 ) {
+			return;
+		}
+		$key = '_elementor_page_settings';
+		$raw = get_post_meta( $post_id, $key, true );
+		if ( is_array( $raw ) ) {
+			return;
+		}
+		if ( $raw === '' || false === $raw ) {
+			return;
+		}
+		$decoded = self::elementor_meta_decode_to_array( $raw );
+		if ( is_array( $decoded ) ) {
+			update_post_meta( $post_id, $key, $decoded );
+			clean_post_cache( $post_id );
+		}
+	}
+
+	/**
 	 * After importing a magicpage row into radius_template: convert legacy tokens in post fields + Elementor JSON meta.
 	 *
 	 * @param int $radius_template_id New radius_template post ID.
@@ -283,12 +331,23 @@ class Radius_Legacy_Import_Service {
 			'radius_migration_import_deep_token_meta_keys',
 			array( '_elementor_data', '_elementor_page_settings' )
 		);
+		$page_settings_key = '_elementor_page_settings';
 		foreach ( $meta_keys as $mk ) {
 			if ( ! is_string( $mk ) || $mk === '' ) {
 				continue;
 			}
 			$raw = get_post_meta( $radius_template_id, $mk, true );
 			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			// Page settings must stay as a serialized PHP array (Elementor Page\Manager::get_saved_settings).
+			if ( $page_settings_key === $mk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$changed = self::deep_convert_legacy_magic_page_tokens( $decoded );
+				update_post_meta( $radius_template_id, $mk, $changed );
 				continue;
 			}
 			if ( is_string( $raw ) ) {
@@ -330,6 +389,7 @@ class Radius_Legacy_Import_Service {
 				'post_excerpt' => $excerpt,
 			)
 		);
+		self::normalize_elementor_page_settings_meta( $radius_template_id );
 		clean_post_cache( $radius_template_id );
 	}
 
@@ -371,6 +431,8 @@ class Radius_Legacy_Import_Service {
 		if ( self::legacy_post_has_elementor_document_data( $target_post_id ) ) {
 			update_post_meta( $target_post_id, '_elementor_edit_mode', 'builder' );
 		}
+
+		self::normalize_elementor_page_settings_meta( $target_post_id );
 
 		clean_post_cache( $target_post_id );
 	}
@@ -486,9 +548,19 @@ class Radius_Legacy_Import_Service {
 			array( '_elementor_data', '_elementor_page_settings', '_radius_spintax_blocks', '_radius_xfields', '_radius_slot_variations' )
 		);
 
+		$page_settings_key = '_elementor_page_settings';
 		foreach ( $json_keys as $jk ) {
 			$raw = get_post_meta( $template_id, $jk, true );
 			if ( $raw === '' || $raw === false ) {
+				continue;
+			}
+			if ( $page_settings_key === $jk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$changed = self::deep_replace_in_mixed( $decoded, $pairs );
+				update_post_meta( $template_id, $jk, $changed );
 				continue;
 			}
 			if ( is_string( $raw ) ) {
@@ -545,6 +617,7 @@ class Radius_Legacy_Import_Service {
 			}
 		}
 
+		self::normalize_elementor_page_settings_meta( $template_id );
 		clean_post_cache( $template_id );
 		return true;
 	}
