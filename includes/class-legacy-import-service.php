@@ -2433,29 +2433,56 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Fill site replacer values from Magic Page–style xfields on the base imported template.
+	 * Normalize Magic Page wp_option `_magic_page_xfields` (serialized map of key => array( value, custom )).
+	 *
+	 * @param mixed $raw Option value.
+	 * @return array<string,mixed> Map of field key => entry.
+	 */
+	private static function parse_magic_page_xfields_option( $raw ) {
+		if ( null === $raw || false === $raw ) {
+			return array();
+		}
+		if ( is_string( $raw ) && $raw !== '' ) {
+			$un = maybe_unserialize( $raw );
+			$raw = is_array( $un ) ? $un : array();
+		}
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		return $raw;
+	}
+
+	/**
+	 * String value from one Magic Page xfield bucket (`value` key or plain string).
+	 *
+	 * @param mixed $entry Row from `_magic_page_xfields`.
+	 * @return string
+	 */
+	private static function magic_page_xfield_entry_to_string( $entry ) {
+		if ( is_string( $entry ) ) {
+			return $entry;
+		}
+		if ( ! is_array( $entry ) ) {
+			return '';
+		}
+		if ( isset( $entry['value'] ) ) {
+			if ( is_string( $entry['value'] ) ) {
+				return $entry['value'];
+			}
+			if ( is_scalar( $entry['value'] ) ) {
+				return (string) $entry['value'];
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Fill site replacer values from Magic Page xfields: `_magic_page_xfields` in wp_options and/or `_radius_xfields` on the imported template.
 	 *
 	 * @return array<string,mixed>
 	 */
 	public static function automated_migration_merge_site_replacers_from_xfields() {
 		$out = array( 'updated' => 0, 'keys' => array() );
-
-		$base_slug = (string) apply_filters( 'radius_migration_base_legacy_slug', 'towing' );
-		$base_id   = self::find_radius_template_by_legacy_post_slug( $base_slug );
-		if ( $base_id <= 0 ) {
-			$base_id = self::first_imported_radius_template_id();
-		}
-		if ( $base_id <= 0 ) {
-			return $out;
-		}
-
-		$raw = get_post_meta( $base_id, '_radius_xfields', true );
-		if ( is_string( $raw ) ) {
-			$raw = json_decode( $raw, true );
-		}
-		if ( ! is_array( $raw ) ) {
-			return $out;
-		}
 
 		$rows = Radius_Settings::get()['site_replacements'];
 		if ( ! is_array( $rows ) ) {
@@ -2471,6 +2498,23 @@ class Radius_Legacy_Import_Service {
 			$k = sanitize_key( (string) $def['key'] );
 			if ( $k !== '' && ! isset( $by_key[ $k ] ) ) {
 				$by_key[ $k ] = $def;
+			}
+		}
+
+		$base_slug = (string) apply_filters( 'radius_migration_base_legacy_slug', 'towing' );
+		$base_id   = self::find_radius_template_by_legacy_post_slug( $base_slug );
+		if ( $base_id <= 0 ) {
+			$base_id = self::first_imported_radius_template_id();
+		}
+
+		$raw = array();
+		if ( $base_id > 0 ) {
+			$raw = get_post_meta( $base_id, '_radius_xfields', true );
+			if ( is_string( $raw ) ) {
+				$raw = json_decode( $raw, true );
+			}
+			if ( ! is_array( $raw ) ) {
+				$raw = array();
 			}
 		}
 
@@ -2500,8 +2544,37 @@ class Radius_Legacy_Import_Service {
 			}
 			$by_key[ $target ]['values'] = array( $first );
 			$out['keys'][]               = $target;
-			++$out['updated'];
 		}
+
+		$opt_names = apply_filters(
+			'radius_magic_page_xfields_option_names',
+			array( '_magic_page_xfields' )
+		);
+		if ( ! is_array( $opt_names ) ) {
+			$opt_names = array( '_magic_page_xfields' );
+		}
+		foreach ( $opt_names as $opt_name ) {
+			$opt_name = is_string( $opt_name ) ? trim( $opt_name ) : '';
+			if ( $opt_name === '' ) {
+				continue;
+			}
+			$map = self::parse_magic_page_xfields_option( get_option( $opt_name, null ) );
+			foreach ( $map as $field_key => $entry ) {
+				$rk = sanitize_key( (string) $field_key );
+				if ( $rk === '' || ! isset( $by_key[ $rk ] ) ) {
+					continue;
+				}
+				$str = self::magic_page_xfield_entry_to_string( $entry );
+				if ( $str === '' ) {
+					continue;
+				}
+				$by_key[ $rk ]['values'] = array( $str );
+				$out['keys'][]           = $rk;
+			}
+		}
+
+		$out['keys']    = array_values( array_unique( array_filter( $out['keys'] ) ) );
+		$out['updated'] = count( $out['keys'] );
 
 		Radius_Settings::update( array( 'site_replacements' => Radius_Settings::sanitize_site_replacements( array_values( $by_key ) ) ) );
 
