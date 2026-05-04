@@ -62,7 +62,7 @@
 									? ' <span class="lf-no-coords">(' + (cfg.i18n && cfg.i18n.noCoords ? cfg.i18n.noCoords : 'no lat/lng') + ')</span>'
 									: '';
 							return (
-								'<button type="button" class="lf-suggest-item" data-id="' +
+								'<button type="button" class="lf-suggest-item radius-suggest-item" data-id="' +
 								p.id +
 								'" data-label="' +
 								escapeAttr(p.name + (p.slug ? ' — ' + p.slug : '')) +
@@ -98,7 +98,7 @@
 		});
 
 		box.addEventListener('click', function (e) {
-			var btn = e.target.closest('.radius-suggest-item');
+			var btn = e.target.closest('.lf-suggest-item, .radius-suggest-item');
 			if (!btn) {
 				return;
 			}

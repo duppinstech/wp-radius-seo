@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.2
+Stable tag: 1.6.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -32,7 +32,18 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
 * `radius_github_updater_cache_ttl` — seconds to cache GitHub Releases API JSON (default 3600).
+* `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
+* `radius_maintenance_applied` — action after maintenance apply finishes (rewrites, updater cache bust, optional object cache).
 == Changelog ==
+
+= 1.6.4 =
+* Migration: Magic Page wizard records completed steps and activity; resumes without redoing work already done or detected on the site (places, templates, replacers, service anchors); Import tab shows a progress checklist and log.
+* Admin: removed the dashboard header logo so notices and layout are less cramped.
+* Legacy template import: copies Elementor/builder post meta where present; legacy place import fires a completion event for the migration wizard.
+* Service areas: location suggestion buttons share Radius CSS classes so styling and clicks behave consistently.
+
+= 1.6.3 =
+* Admin: WooCommerce-style **Apply recommended updates** banner (flush permalinks hard, bust GitHub release cache, optional object cache via filter) after LocaleForge migration, schema bumps, or service-area slug changes; dismiss without applying still supported.
 
 = 1.6.2 =
 * GitHub updater: clear stale release cache whenever WordPress refreshes plugin updates (so new releases appear immediately after “Check again”); default API cache shortened to 1 hour (filter `radius_github_updater_cache_ttl`).

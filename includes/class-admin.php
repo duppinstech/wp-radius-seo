@@ -17,13 +17,23 @@ class Radius_Admin {
 	const PARENT_SLUG = 'radius';
 
 	/**
+	 * @var bool
+	 */
+	private static $legacy_import_scripts_enqueued = false;
+
+	/**
+	 * @var bool
+	 */
+	private static $migration_wizard_scripts_enqueued = false;
+
+	/**
 	 * @return void
 	 */
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ), 5 );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
-		add_action( 'admin_notices', array( __CLASS__, 'prefix_migration_admin_notice' ), 9 );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
+		Radius_Admin_Maintenance::init();
 		Radius_Form_Handlers::init();
 		add_action( 'admin_init', array( 'Radius_Settings', 'register' ) );
 	}
@@ -53,26 +63,6 @@ class Radius_Admin {
 				'tab'  => sanitize_key( $tab ),
 			),
 			admin_url( 'admin.php' )
-		);
-	}
-
-	/**
-	 * One-time notice after DB identifiers migrate from LocaleForge / lf_* to radius_*.
-	 *
-	 * @return void
-	 */
-	public static function prefix_migration_admin_notice() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-		$msg = get_transient( 'radius_prefix_migration_notice' );
-		if ( ! is_string( $msg ) || $msg === '' ) {
-			return;
-		}
-		delete_transient( 'radius_prefix_migration_notice' );
-		printf(
-			'<div class="notice notice-info is-dismissible"><p>%s</p></div>',
-			wp_kses_post( $msg )
 		);
 	}
 
@@ -197,10 +187,144 @@ class Radius_Admin {
 	}
 
 	/**
+	 * True on Radius submenu screens and Radius CPT list/edit screens.
+	 *
+	 * @param string $hook_suffix Admin hook suffix.
+	 * @return bool
+	 */
+	private static function is_radius_admin_screen( $hook_suffix ) {
+		if ( strpos( $hook_suffix, 'radius_page_' ) === 0 || 'toplevel_page_radius' === $hook_suffix ) {
+			return true;
+		}
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		return $screen && ! empty( $screen->post_type )
+			&& in_array( $screen->post_type, array( 'radius_template', 'radius_landing', 'radius_service_area' ), true );
+	}
+
+	/**
+	 * Migration modal: legacy place batch script + wizard (any Radius admin screen when eligible).
+	 *
+	 * @param string $hook_suffix Hook.
+	 * @return void
+	 */
+	private static function maybe_enqueue_migration_wizard_bundle( $hook_suffix ) {
+		if ( ! self::is_radius_admin_screen( $hook_suffix ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_options' ) || ! class_exists( 'Radius_Migration_Wizard' ) ) {
+			return;
+		}
+		if ( ! Radius_Migration_Wizard::should_enqueue_assets() ) {
+			return;
+		}
+		if ( self::$legacy_import_scripts_enqueued ) {
+			return;
+		}
+		self::$legacy_import_scripts_enqueued    = true;
+		self::$migration_wizard_scripts_enqueued = true;
+
+		self::enqueue_admin_style();
+		$radius_settings = Radius_Settings::get();
+		$inter_ms          = isset( $radius_settings['legacy_import_inter_batch_ms'] ) ? (int) $radius_settings['legacy_import_inter_batch_ms'] : 1200;
+		$inter_ms          = (int) apply_filters( 'radius_legacy_import_inter_batch_delay_ms', $inter_ms );
+		wp_enqueue_script(
+			'radius-legacy-import',
+			RADIUS_URL . 'assets/js/radius-admin-legacy-import.js',
+			array(),
+			RADIUS_VERSION,
+			true
+		);
+		$batch_size = max( 5, min( 100, (int) ( $radius_settings['legacy_import_size'] ?? 25 ) ) );
+		wp_localize_script(
+			'radius-legacy-import',
+			'radiusLegacyImport',
+			array(
+				'ajaxurl'           => admin_url( 'admin-ajax.php' ),
+				'nonce'             => wp_create_nonce( 'radius_legacy_pl_import' ),
+				'batchSize'         => $batch_size,
+				'interBatchDelayMs' => max( 0, $inter_ms ),
+				'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
+				'i18n'              => array(
+					'start'            => __( 'Run legacy place import (all batches)', 'radius' ),
+					'running'          => __( 'Importing…', 'radius' ),
+					'done'             => __( 'Legacy place import finished.', 'radius' ),
+					'stopped'          => __( 'Import stopped.', 'radius' ),
+					'errorPrefix'      => __( 'Error:', 'radius' ),
+					'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}.', 'radius' ),
+					'progressFmt'      => __( 'Overall: {pct}% of legacy terms ({done} / {total}).', 'radius' ),
+					'overallLabel'     => __( 'Overall progress (all legacy terms)', 'radius' ),
+					'batchLabel'       => __( 'Current batch (this request)', 'radius' ),
+					'batchWorkingFmt'  => __( 'This batch: ~{pct}% — server is processing up to {size} terms (estimate until the response returns).', 'radius' ),
+					'batchCompleteFmt' => __( 'This batch: complete ({pct}%).', 'radius' ),
+					'startingFmt'      => __( 'Starting… requesting first batch.', 'radius' ),
+					'waitingTotalFmt'  => __( 'Working… total legacy count will appear after the first batch.', 'radius' ),
+					'pauseFmt'         => __( 'Waiting {ms} ms before next batch…', 'radius' ),
+					'errorsFmt'        => __( 'Messages: {errors}', 'radius' ),
+					'nonJsonFail'      => __( 'Still not getting JSON after retries. Allow admin-ajax.php for your user role in Wordfence (or similar), raise PHP max execution time, or lower the legacy batch size under Settings.', 'radius' ),
+				),
+			)
+		);
+		wp_enqueue_script(
+			'radius-migration-wizard',
+			RADIUS_URL . 'assets/js/radius-admin-migration-wizard.js',
+			array( 'radius-legacy-import' ),
+			RADIUS_VERSION,
+			true
+		);
+		wp_localize_script(
+			'radius-migration-wizard',
+			'radiusMigrationWizard',
+			array(
+				'ajaxurl'        => admin_url( 'admin-ajax.php' ),
+				'nonce'          => wp_create_nonce( 'radius_migration' ),
+				'wizardNonce'    => wp_create_nonce( 'radius_migration_wizard' ),
+				'wizardAction'   => 'radius_migration_wizard',
+				'openOnLoad'     => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+				'deployPageUrl'  => admin_url( 'admin.php?page=radius-deploy' ),
+				'importPageUrl'  => admin_url( 'admin.php?page=radius-import&tab=migration' ),
+				'i18n'           => array(
+					'errorPrefix'            => __( 'Error:', 'radius' ),
+					'requestFailed'          => __( 'Request failed.', 'radius' ),
+					'title'                  => __( 'Magic Page → Radius migration', 'radius' ),
+					'intro'                  => __( 'This assistant imports legacy locations, publishes your four service templates with the correct URLs, copies spintax and company details, and sets service areas. You only need the summary at the end—then open Deploy.', 'radius' ),
+					'stepPlaces'             => __( 'Import legacy locations into the place library', 'radius' ),
+					'stepTemplates'          => __( 'Import templates, set slugs, import spintax by prefix', 'radius' ),
+					'stepReplacers'          => __( 'Copy company & phone into site replacers', 'radius' ),
+					'stepAnchors'            => __( 'Set service area anchors (25 mi)', 'radius' ),
+					'running'                => __( 'Working…', 'radius' ),
+					'dismiss'                => __( 'Not now', 'radius' ),
+					'start'                  => __( 'Start migration', 'radius' ),
+					'summaryLocations'       => __( 'Locations imported (legacy terms processed)', 'radius' ),
+					'summaryTemplates'       => __( 'Service templates ready', 'radius' ),
+					'summaryAnchors'         => __( 'Service areas', 'radius' ),
+					'summaryReplacers'       => __( 'Site replacers updated', 'radius' ),
+					'deployCta'              => __( 'Site is ready for deployment', 'radius' ),
+					'goDeploy'               => __( 'Open Deploy', 'radius' ),
+					'placesProgress'         => __( 'Locations', 'radius' ),
+					'legacyImportMissing'    => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
+					'importingTemplates'     => __( 'Importing legacy templates…', 'radius' ),
+					'templatesResultFmt'     => __( 'Templates imported: {i}, skipped: {s}.', 'radius' ),
+					'cloningVariants'        => __( 'Creating variant drafts…', 'radius' ),
+					'cloneDone'              => __( 'Variant drafts ready.', 'radius' ),
+					'pickBase'               => __( 'Choose the towing blueprint template first.', 'radius' ),
+					'stepNext'               => __( 'Next: use the Spintax tab for global spintax + prefix filters; verify templates in Elementor; deploy when ready.', 'radius' ),
+					'done'                   => __( 'Automated steps finished.', 'radius' ),
+					'summarySkippedPlaces'   => __( 'Location library already populated — import skipped.', 'radius' ),
+					'summarySkippedTemplates'=> __( 'Templates already present — step skipped.', 'radius' ),
+					'summarySkippedReplacers'=> __( 'Site replacers already filled — merge skipped.', 'radius' ),
+					'summarySkippedAnchors'  => __( 'Service anchors already set — step skipped.', 'radius' ),
+					'allStepsDone'         => __( 'All migration steps are already complete for this site. You can go to Deploy when ready.', 'radius' ),
+				),
+			)
+		);
+	}
+
+	/**
 	 * @param string $hook_suffix Hook.
 	 * @return void
 	 */
 	public static function enqueue_assets( $hook_suffix ) {
+		self::maybe_enqueue_migration_wizard_bundle( $hook_suffix );
 		if ( 'radius_page_radius-settings' === $hook_suffix ) {
 			self::enqueue_admin_style();
 			wp_enqueue_script(
@@ -343,76 +467,105 @@ class Radius_Admin {
 		}
 		if ( 'radius_page_radius-import' === $hook_suffix ) {
 			self::enqueue_admin_style();
-			$radius_settings = Radius_Settings::get();
-			$inter_ms   = isset( $radius_settings['legacy_import_inter_batch_ms'] ) ? (int) $radius_settings['legacy_import_inter_batch_ms'] : 1200;
-			$inter_ms   = (int) apply_filters( 'radius_legacy_import_inter_batch_delay_ms', $inter_ms );
-			wp_enqueue_script(
-				'radius-legacy-import',
-				RADIUS_URL . 'assets/js/radius-admin-legacy-import.js',
-				array(),
-				RADIUS_VERSION,
-				true
-			);
-			$batch_size = max( 5, min( 100, (int) ( $radius_settings['legacy_import_size'] ?? 25 ) ) );
-			wp_localize_script(
-				'radius-legacy-import',
-				'radiusLegacyImport',
-				array(
-					'ajaxurl'              => admin_url( 'admin-ajax.php' ),
-					'nonce'                => wp_create_nonce( 'radius_legacy_pl_import' ),
-					'batchSize'            => $batch_size,
-					'interBatchDelayMs'    => max( 0, $inter_ms ),
-					'maxRetries'           => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
-					'i18n'                 => array(
-						'start'            => __( 'Run legacy place import (all batches)', 'radius' ),
-						'running'          => __( 'Importing…', 'radius' ),
-						'done'             => __( 'Legacy place import finished.', 'radius' ),
-						'stopped'          => __( 'Import stopped.', 'radius' ),
-						'errorPrefix'      => __( 'Error:', 'radius' ),
-						'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}.', 'radius' ),
-						'progressFmt'      => __( 'Overall: {pct}% of legacy terms ({done} / {total}).', 'radius' ),
-						'overallLabel'     => __( 'Overall progress (all legacy terms)', 'radius' ),
-						'batchLabel'       => __( 'Current batch (this request)', 'radius' ),
-						'batchWorkingFmt'  => __( 'This batch: ~{pct}% — server is processing up to {size} terms (estimate until the response returns).', 'radius' ),
-						'batchCompleteFmt' => __( 'This batch: complete ({pct}%).', 'radius' ),
-						'startingFmt'      => __( 'Starting… requesting first batch.', 'radius' ),
-						'waitingTotalFmt'  => __( 'Working… total legacy count will appear after the first batch.', 'radius' ),
-						'pauseFmt'         => __( 'Waiting {ms} ms before next batch…', 'radius' ),
-						'errorsFmt'        => __( 'Messages: {errors}', 'radius' ),
-						'nonJsonFail'      => __( 'Still not getting JSON after retries. Allow admin-ajax.php for your user role in Wordfence (or similar), raise PHP max execution time, or lower the legacy batch size under Settings.', 'radius' ),
-					),
-				)
-			);
-			wp_enqueue_script(
-				'radius-migration-wizard',
-				RADIUS_URL . 'assets/js/radius-admin-migration-wizard.js',
-				array( 'radius-legacy-import' ),
-				RADIUS_VERSION,
-				true
-			);
-			wp_localize_script(
-				'radius-migration-wizard',
-				'radiusMigrationWizard',
-				array(
-					'ajaxurl' => admin_url( 'admin-ajax.php' ),
-					'nonce'   => wp_create_nonce( 'radius_migration' ),
-					'i18n'    => array(
-						'errorPrefix'           => __( 'Error:', 'radius' ),
-						'requestFailed'         => __( 'Request failed.', 'radius' ),
-						'importingTemplates'    => __( 'Importing legacy templates…', 'radius' ),
-						'templatesResultFmt'    => __( 'Templates imported: {i}, skipped: {s}.', 'radius' ),
-						'cloningVariants'       => __( 'Creating variant drafts…', 'radius' ),
-						'cloneDone'             => __( 'Variant drafts ready.', 'radius' ),
-						'pickBase'              => __( 'Choose the towing blueprint template first.', 'radius' ),
-						'stepPlaces'            => __( 'Step 1 — Legacy locations…', 'radius' ),
-						'stepTemplates'         => __( 'Step 2 — Magic Page templates…', 'radius' ),
-						'stepVariants'          => __( 'Step 3 — Roadside / heavy / equipment drafts…', 'radius' ),
-						'stepNext'              => __( 'Next: use the Spintax tab for global spintax + prefix filters; verify templates in Elementor; deploy when ready.', 'radius' ),
-						'done'                  => __( 'Automated steps finished.', 'radius' ),
-						'legacyImportMissing'   => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
-					),
-				)
-			);
+			if ( ! self::$legacy_import_scripts_enqueued ) {
+				$radius_settings = Radius_Settings::get();
+				$inter_ms        = isset( $radius_settings['legacy_import_inter_batch_ms'] ) ? (int) $radius_settings['legacy_import_inter_batch_ms'] : 1200;
+				$inter_ms        = (int) apply_filters( 'radius_legacy_import_inter_batch_delay_ms', $inter_ms );
+				wp_enqueue_script(
+					'radius-legacy-import',
+					RADIUS_URL . 'assets/js/radius-admin-legacy-import.js',
+					array(),
+					RADIUS_VERSION,
+					true
+				);
+				$batch_size = max( 5, min( 100, (int) ( $radius_settings['legacy_import_size'] ?? 25 ) ) );
+				wp_localize_script(
+					'radius-legacy-import',
+					'radiusLegacyImport',
+					array(
+						'ajaxurl'           => admin_url( 'admin-ajax.php' ),
+						'nonce'             => wp_create_nonce( 'radius_legacy_pl_import' ),
+						'batchSize'         => $batch_size,
+						'interBatchDelayMs' => max( 0, $inter_ms ),
+						'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
+						'i18n'              => array(
+							'start'            => __( 'Run legacy place import (all batches)', 'radius' ),
+							'running'          => __( 'Importing…', 'radius' ),
+							'done'             => __( 'Legacy place import finished.', 'radius' ),
+							'stopped'          => __( 'Import stopped.', 'radius' ),
+							'errorPrefix'      => __( 'Error:', 'radius' ),
+							'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}.', 'radius' ),
+							'progressFmt'      => __( 'Overall: {pct}% of legacy terms ({done} / {total}).', 'radius' ),
+							'overallLabel'     => __( 'Overall progress (all legacy terms)', 'radius' ),
+							'batchLabel'       => __( 'Current batch (this request)', 'radius' ),
+							'batchWorkingFmt'  => __( 'This batch: ~{pct}% — server is processing up to {size} terms (estimate until the response returns).', 'radius' ),
+							'batchCompleteFmt' => __( 'This batch: complete ({pct}%).', 'radius' ),
+							'startingFmt'      => __( 'Starting… requesting first batch.', 'radius' ),
+							'waitingTotalFmt'  => __( 'Working… total legacy count will appear after the first batch.', 'radius' ),
+							'pauseFmt'         => __( 'Waiting {ms} ms before next batch…', 'radius' ),
+							'errorsFmt'        => __( 'Messages: {errors}', 'radius' ),
+							'nonJsonFail'      => __( 'Still not getting JSON after retries. Allow admin-ajax.php for your user role in Wordfence (or similar), raise PHP max execution time, or lower the legacy batch size under Settings.', 'radius' ),
+						),
+					)
+				);
+				self::$legacy_import_scripts_enqueued = true;
+			}
+			if ( ! self::$migration_wizard_scripts_enqueued && current_user_can( 'manage_options' ) && class_exists( 'Radius_Migration_Wizard' ) && Radius_Migration_Wizard::should_enqueue_assets() ) {
+				wp_enqueue_script(
+					'radius-migration-wizard',
+					RADIUS_URL . 'assets/js/radius-admin-migration-wizard.js',
+					array( 'radius-legacy-import' ),
+					RADIUS_VERSION,
+					true
+				);
+				wp_localize_script(
+					'radius-migration-wizard',
+					'radiusMigrationWizard',
+					array(
+						'ajaxurl'       => admin_url( 'admin-ajax.php' ),
+						'nonce'         => wp_create_nonce( 'radius_migration' ),
+						'wizardNonce'   => wp_create_nonce( 'radius_migration_wizard' ),
+						'wizardAction'  => 'radius_migration_wizard',
+						'openOnLoad'    => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+						'deployPageUrl' => admin_url( 'admin.php?page=radius-deploy' ),
+						'importPageUrl' => admin_url( 'admin.php?page=radius-import&tab=migration' ),
+						'i18n'          => array(
+							'errorPrefix'         => __( 'Error:', 'radius' ),
+							'requestFailed'       => __( 'Request failed.', 'radius' ),
+							'title'               => __( 'Magic Page → Radius migration', 'radius' ),
+							'intro'               => __( 'This assistant imports legacy locations, publishes your four service templates with the correct URLs, copies spintax and company details, and sets service areas. You only need the summary at the end—then open Deploy.', 'radius' ),
+							'stepPlaces'          => __( 'Import legacy locations into the place library', 'radius' ),
+							'stepTemplates'       => __( 'Import templates, set slugs, import spintax by prefix', 'radius' ),
+							'stepReplacers'       => __( 'Copy company & phone into site replacers', 'radius' ),
+							'stepAnchors'         => __( 'Set service area anchors (25 mi)', 'radius' ),
+							'running'             => __( 'Working…', 'radius' ),
+							'dismiss'             => __( 'Not now', 'radius' ),
+							'start'               => __( 'Start migration', 'radius' ),
+							'summaryLocations'    => __( 'Locations imported (legacy terms processed)', 'radius' ),
+							'summaryTemplates'    => __( 'Service templates ready', 'radius' ),
+							'summaryAnchors'      => __( 'Service areas', 'radius' ),
+							'summaryReplacers'    => __( 'Site replacers updated', 'radius' ),
+							'deployCta'           => __( 'Site is ready for deployment', 'radius' ),
+							'goDeploy'            => __( 'Open Deploy', 'radius' ),
+							'placesProgress'      => __( 'Locations', 'radius' ),
+							'legacyImportMissing' => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
+							'importingTemplates'  => __( 'Importing legacy templates…', 'radius' ),
+							'templatesResultFmt'  => __( 'Templates imported: {i}, skipped: {s}.', 'radius' ),
+							'cloningVariants'     => __( 'Creating variant drafts…', 'radius' ),
+							'cloneDone'           => __( 'Variant drafts ready.', 'radius' ),
+							'pickBase'            => __( 'Choose the towing blueprint template first.', 'radius' ),
+							'stepNext'             => __( 'Next: use the Spintax tab for global spintax + prefix filters; verify templates in Elementor; deploy when ready.', 'radius' ),
+							'done'                 => __( 'Automated steps finished.', 'radius' ),
+							'summarySkippedPlaces' => __( 'Location library already populated — import skipped.', 'radius' ),
+							'summarySkippedTemplates' => __( 'Templates already present — step skipped.', 'radius' ),
+							'summarySkippedReplacers' => __( 'Site replacers already filled — merge skipped.', 'radius' ),
+							'summarySkippedAnchors' => __( 'Service anchors already set — step skipped.', 'radius' ),
+							'allStepsDone'        => __( 'All migration steps are already complete for this site. You can go to Deploy when ready.', 'radius' ),
+						),
+					)
+				);
+				self::$migration_wizard_scripts_enqueued = true;
+			}
 			return;
 		}
 		if ( 'radius_page_radius-locations' === $hook_suffix ) {
@@ -557,15 +710,10 @@ class Radius_Admin {
 		$analytics_url = admin_url( 'admin.php?page=radius-analytics' );
 		?>
 		<div class="wrap radius-admin">
-			<div class="radius-brand">
-				<img src="<?php echo esc_url( RADIUS_URL . 'assets/images/radius-logo.svg' ); ?>" width="200" height="40" alt="<?php esc_attr_e( 'Radius', 'radius' ); ?>" class="radius-brand__logo" decoding="async" />
-				<div class="radius-brand__text">
-					<h1 class="radius-brand__title"><?php esc_html_e( 'Radius', 'radius' ); ?></h1>
-					<p class="radius-lead radius-brand__lead">
-						<?php esc_html_e( 'Shortcuts to every area of the plugin — templates, landings, deploy, analytics, import/export, your place library, and settings.', 'radius' ); ?>
-					</p>
-				</div>
-			</div>
+			<h1 class="radius-dashboard-heading"><?php esc_html_e( 'Radius', 'radius' ); ?></h1>
+			<p class="radius-lead radius-dashboard-lead">
+				<?php esc_html_e( 'Shortcuts to every area of the plugin — templates, landings, deploy, analytics, import/export, your place library, and settings.', 'radius' ); ?>
+			</p>
 
 			<div class="radius-cards radius-cards--dashboard">
 				<div class="radius-card">
@@ -1646,7 +1794,9 @@ class Radius_Admin {
 		$mp_raw_n = Radius_Legacy_Import_Service::magic_page_spintax_raw_row_count();
 		$mp_rows  = Radius_Legacy_Import_Service::magic_page_spintax_rows();
 		$mp_env   = Radius_Legacy_Import_Service::detect_magic_page_environment();
-		$mp_active = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
+		$mp_active        = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
+		$migration_steps  = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::build_steps_status() : array();
+		$migration_log      = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_activity_log() : array();
 		?>
 		<div class="wrap radius-admin">
 			<h1><?php esc_html_e( 'Import / export', 'radius' ); ?></h1>
@@ -1818,6 +1968,50 @@ Fast roadside help in {{region}}
 				<?php if ( ! current_user_can( 'manage_options' ) ) : ?>
 					<p><?php esc_html_e( 'You need an administrator account to run migration tools.', 'radius' ); ?></p>
 				<?php else : ?>
+					<?php if ( ! empty( $migration_steps ) ) : ?>
+						<h3><?php esc_html_e( 'Migration progress (wizard + manual work detected)', 'radius' ); ?></h3>
+						<p class="description"><?php esc_html_e( 'A step shows as done if you completed it in the pop-up wizard, on this tab, or if the site already has the expected data (e.g. places in the library). The automated migration can continue from the next step.', 'radius' ); ?></p>
+						<ul class="radius-migration-checklist" style="list-style:none;padding-left:0;">
+							<?php
+							$labels = array(
+								'places'    => __( 'Locations in the place library', 'radius' ),
+								'templates' => __( 'Service templates (import & variants)', 'radius' ),
+								'replacers' => __( 'Site replacers (company & phone)', 'radius' ),
+								'anchors'   => __( 'Service area anchors', 'radius' ),
+							);
+							foreach ( $labels as $k => $label ) {
+								$st  = isset( $migration_steps[ $k ] ) ? $migration_steps[ $k ] : null;
+								$ok  = is_array( $st ) && ! empty( $st['done'] );
+								$src = is_array( $st ) && ! empty( $st['recorded'] ) ? __( 'recorded', 'radius' ) : ( is_array( $st ) && ! empty( $st['inferred'] ) ? __( 'detected on site', 'radius' ) : '' );
+								?>
+								<li style="margin:6px 0;">
+									<?php echo $ok ? '&#10003; ' : '&#9714; '; ?>
+									<strong><?php echo esc_html( $label ); ?></strong>
+									<?php if ( $ok && $src ) : ?>
+										<span class="description">(<?php echo esc_html( $src ); ?>)</span>
+									<?php endif; ?>
+								</li>
+							}
+							?>
+						</ul>
+						<?php if ( ! empty( $migration_log ) ) : ?>
+							<h3><?php esc_html_e( 'Activity log', 'radius' ); ?></h3>
+							<pre class="radius-legacy-import-log" style="max-height:200px;overflow:auto;"><?php
+							foreach ( $migration_log as $row ) {
+								if ( ! is_array( $row ) || empty( $row['m'] ) ) {
+									continue;
+								}
+								$t = isset( $row['t'] ) ? (int) $row['t'] : 0;
+								$line = $t > 0 ? wp_date( 'Y-m-d H:i', $t ) . ' — ' : '';
+								$line .= (string) $row['m'];
+								echo esc_html( $line ) . "\n";
+							}
+							?></pre>
+						<?php else : ?>
+							<p class="description"><?php esc_html_e( 'No migration log lines yet. They appear as you use the pop-up wizard or mark steps on this site.', 'radius' ); ?></p>
+						<?php endif; ?>
+						<hr class="radius-tab-hr" />
+					<?php endif; ?>
 					<p class="description"><?php esc_html_e( 'Guided flow for sites that still have Magic Page data in this database: copy locations, import blueprint templates (including Elementor documents), create roadside/heavy/equipment template drafts from your towing blueprint, then finish spintax and deploy on the other tabs.', 'radius' ); ?></p>
 					<ul style="list-style:disc;padding-left:1.25em;">
 						<li>
@@ -2413,63 +2607,80 @@ Fast roadside help in {{region}}
 				</div>
 
 				<div id="radius-panel-database" class="radius-settings-panel" style="<?php echo $tab === 'database' ? '' : 'display:none;'; ?>">
-					<?php
-					$mp_db = Radius_Legacy_Import_Service::get_magic_page_storage_footprint();
-					?>
-					<h2 class="screen-reader-text"><?php esc_html_e( 'Database', 'radius' ); ?></h2>
-					<p class="description"><?php esc_html_e( 'Legacy Magic Page data may remain in options and post meta after migration. Sizes below are approximate: MySQL sums the stored length of keys and values (actual disk usage includes row overhead and indexes).', 'radius' ); ?></p>
-					<table class="widefat striped radius-mp-db-matrix" style="max-width:720px;margin-top:12px;">
-						<thead>
+					<?php if ( $tab === 'database' ) : ?>
+						<?php $mp_db = Radius_Legacy_Import_Service::get_magic_page_storage_footprint(); ?>
+						<h2 class="screen-reader-text"><?php esc_html_e( 'Database', 'radius' ); ?></h2>
+						<p class="description"><?php esc_html_e( 'Legacy Magic Page data may remain in options and post meta after migration. Sizes below are approximate: MySQL sums the stored length of keys and values (actual disk usage includes row overhead and indexes).', 'radius' ); ?></p>
+						<table class="widefat striped radius-mp-db-matrix" style="max-width:720px;margin-top:12px;">
+							<thead>
+								<tr>
+									<th scope="col"><?php esc_html_e( 'Table', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Matching rows', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Approx. data', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Scope', 'radius' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td><code><?php echo esc_html( $mp_db['options']['label'] ); ?></code></td>
+									<td><?php echo esc_html( number_format_i18n( (int) $mp_db['options']['rows'] ) ); ?></td>
+									<td><?php echo esc_html( size_format( (int) $mp_db['options']['bytes'], 2 ) ); ?></td>
+									<td><?php esc_html_e( 'Removed by “Delete Magic Page options” below.', 'radius' ); ?></td>
+								</tr>
+								<tr>
+									<td><code><?php echo esc_html( $mp_db['postmeta']['label'] ); ?></code></td>
+									<td><?php echo esc_html( number_format_i18n( (int) $mp_db['postmeta']['rows'] ) ); ?></td>
+									<td>
+										<?php
+										if ( ! empty( $mp_db['postmeta_bytes_omitted'] ) ) {
+											echo esc_html( '—' );
+										} else {
+											echo esc_html( size_format( (int) $mp_db['postmeta']['bytes'], 2 ) );
+										}
+										?>
+									</td>
+									<td><?php esc_html_e( 'Informational — not deleted by that button.', 'radius' ); ?></td>
+								</tr>
+							</tbody>
+						</table>
+						<?php if ( ! empty( $mp_db['postmeta_bytes_omitted'] ) ) : ?>
+							<p class="description" style="margin-top:8px;">
+								<?php esc_html_e( 'Post meta byte total was skipped because the matching row count is very large (aggregating sizes would be too slow). Row count above is still accurate.', 'radius' ); ?>
+							</p>
+						<?php endif; ?>
+						<p class="description" style="margin-top:12px;">
+							<?php
+							printf(
+								/* translators: %s: formatted byte size */
+								esc_html__( 'Approximate space reclaimable by running cleanup on options: %s', 'radius' ),
+								'<strong>' . esc_html( size_format( (int) $mp_db['cleanup_bytes'], 2 ) ) . '</strong>'
+							);
+							?>
+						</p>
+						<table class="form-table" style="margin-top:1.5em;">
 							<tr>
-								<th scope="col"><?php esc_html_e( 'Table', 'radius' ); ?></th>
-								<th scope="col"><?php esc_html_e( 'Matching rows', 'radius' ); ?></th>
-								<th scope="col"><?php esc_html_e( 'Approx. data', 'radius' ); ?></th>
-								<th scope="col"><?php esc_html_e( 'Scope', 'radius' ); ?></th>
+								<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
+								<td>
+									<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page or magic_page_). This reduces options table bloat.', 'radius' ); ?></p>
+									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+										<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+										<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+										<p>
+											<label>
+												<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
+												<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
+											</label>
+										</p>
+										<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
+									</form>
+								</td>
 							</tr>
-						</thead>
-						<tbody>
-							<tr>
-								<td><code><?php echo esc_html( $mp_db['options']['label'] ); ?></code></td>
-								<td><?php echo esc_html( number_format_i18n( (int) $mp_db['options']['rows'] ) ); ?></td>
-								<td><?php echo esc_html( size_format( (int) $mp_db['options']['bytes'], 2 ) ); ?></td>
-								<td><?php esc_html_e( 'Removed by “Delete Magic Page options” below.', 'radius' ); ?></td>
-							</tr>
-							<tr>
-								<td><code><?php echo esc_html( $mp_db['postmeta']['label'] ); ?></code></td>
-								<td><?php echo esc_html( number_format_i18n( (int) $mp_db['postmeta']['rows'] ) ); ?></td>
-								<td><?php echo esc_html( size_format( (int) $mp_db['postmeta']['bytes'], 2 ) ); ?></td>
-								<td><?php esc_html_e( 'Informational — not deleted by that button.', 'radius' ); ?></td>
-							</tr>
-						</tbody>
-					</table>
-					<p class="description" style="margin-top:12px;">
-						<?php
-						printf(
-							/* translators: %s: formatted byte size */
-							esc_html__( 'Approximate space reclaimable by running cleanup on options: %s', 'radius' ),
-							'<strong>' . esc_html( size_format( (int) $mp_db['cleanup_bytes'], 2 ) ) . '</strong>'
-						);
-						?>
-					</p>
-					<table class="form-table" style="margin-top:1.5em;">
-						<tr>
-							<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
-							<td>
-								<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page or magic_page_). This reduces options table bloat.', 'radius' ); ?></p>
-								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
-									<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
-									<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
-									<p>
-										<label>
-											<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
-											<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
-										</label>
-									</p>
-									<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
-								</form>
-							</td>
-						</tr>
-					</table>
+						</table>
+					<?php else : ?>
+						<p class="description">
+							<?php esc_html_e( 'Open the Database tab to load the Magic Page storage summary. Other settings tabs skip that query so the admin stays fast.', 'radius' ); ?>
+						</p>
+					<?php endif; ?>
 				</div>
 
 				<div id="radius-panel-integrations" class="radius-settings-panel" style="<?php echo $tab === 'integrations' ? '' : 'display:none;'; ?>">

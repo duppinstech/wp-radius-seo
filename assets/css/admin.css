@@ -1,4 +1,16 @@
 /* Radius — unified admin */
+.radius-dashboard-heading {
+	margin: 0 0 12px;
+	padding: 0;
+	font-size: 1.65rem;
+	line-height: 1.2;
+	font-weight: 600;
+}
+.radius-dashboard-lead {
+	margin: 0 0 22px;
+	max-width: 720px;
+}
+
 .radius-brand {
 	display: flex;
 	align-items: center;
@@ -1174,4 +1186,136 @@
 }
 .radius-license-price-card__action .button {
 	min-width: 8em;
+}
+
+/* Migration wizard modal */
+.radius-mw-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	background: rgba(0, 0, 0, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	box-sizing: border-box;
+}
+.radius-mw-panel {
+	background: #fff;
+	max-width: 560px;
+	width: 100%;
+	max-height: 90vh;
+	overflow: auto;
+	border-radius: 4px;
+	box-shadow: 0 3px 30px rgba(0, 0, 0, 0.2);
+	padding: 20px 24px 16px;
+}
+.radius-mw-title {
+	margin: 0 0 8px;
+	font-size: 1.25rem;
+}
+.radius-mw-intro {
+	margin: 0 0 16px;
+	color: #50575e;
+	font-size: 14px;
+}
+.radius-mw-steps {
+	margin: 0 0 16px;
+	padding-left: 1.2em;
+}
+.radius-mw-step {
+	margin: 0 0 10px;
+	padding-left: 0.2em;
+	list-style: decimal;
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: center;
+	gap: 12px;
+}
+.radius-mw-step-label {
+	grid-column: 1 / -1;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+.radius-mw-step progress.radius-mw-step-progress {
+	width: 100%;
+	max-width: 280px;
+	height: 10px;
+	grid-column: 1;
+}
+.radius-mw-step-state {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.5rem;
+	min-height: 1.5rem;
+	grid-column: 2;
+	justify-self: end;
+}
+.radius-mw-step-state[data-state="wait"]::before {
+	content: "";
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	border: 2px solid #c3c4c7;
+	border-top-color: #2271b1;
+	border-radius: 50%;
+	animation: radius-mw-spin 0.7s linear infinite;
+}
+.radius-mw-step-state[data-state="done"]::before {
+	content: "✓";
+	color: #00a32a;
+	font-weight: 700;
+	font-size: 14px;
+}
+.radius-mw-run {
+	margin: 8px 0 12px;
+	min-height: 1.5em;
+}
+.radius-mw-running {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+}
+.radius-mw-spinner {
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	border: 2px solid #c3c4c7;
+	border-top-color: #2271b1;
+	border-radius: 50%;
+	animation: radius-mw-spin 0.7s linear infinite;
+}
+@keyframes radius-mw-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.radius-mw-foot {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	margin-top: 8px;
+	padding-top: 12px;
+	border-top: 1px solid #dcdcde;
+}
+.radius-mw-summary-title {
+	margin: 0 0 12px;
+	font-size: 1.1rem;
+}
+.radius-mw-list {
+	margin: 4px 0 12px;
+	padding-left: 1.2em;
+}
+.radius-mw-warn {
+	color: #b32d2e;
+}
+.radius-mw-error {
+	color: #b32d2e;
+}
+.radius-migration-wizard-banner .radius-migration-wizard-continue {
+	margin-left: 8px;
+	vertical-align: middle;
 }

@@ -153,14 +153,18 @@
 		var batchCap = el('radius-legacy-import-batch-caption');
 		var batchWrap = el('radius-legacy-import-batch-wrap');
 
-		if (!btn || !cfg.ajaxurl || !cfg.nonce) {
-			return;
+		if (!cfg.ajaxurl || !cfg.nonce) {
+			return { success: false, error: 'missing config' };
 		}
 
 		var batchSize = getBatchSize();
+		var sumImported = 0;
+		var sumUpdated = 0;
 
-		btn.disabled = true;
-		btn.textContent = i18n.running || 'Importing…';
+		if (btn) {
+			btn.disabled = true;
+			btn.textContent = i18n.running || 'Importing…';
+		}
 		if (wrap) {
 			wrap.hidden = false;
 		}
@@ -195,6 +199,12 @@
 				? cfg.interBatchDelayMs
 				: 1200;
 		var skipCb = el('radius-legacy-import-skip-existing');
+		function getSkipExisting() {
+			if (typeof window.radiusLegacyImportSkipExisting === 'string') {
+				return window.radiusLegacyImportSkipExisting === '1' ? '1' : '0';
+			}
+			return skipCb && skipCb.checked ? '1' : '0';
+		}
 
 		try {
 			while (true) {
@@ -205,7 +215,7 @@
 				if (totalLegacy > 0) {
 					fd.append('total_legacy', String(totalLegacy));
 				}
-				fd.append('skip_existing', skipCb && skipCb.checked ? '1' : '0');
+				fd.append('skip_existing', getSkipExisting());
 
 				if (batchCap) {
 					batchCap.textContent = replaceAll(i18n.batchWorkingFmt || '', {
@@ -268,6 +278,9 @@
 				var d = j.data;
 				totalLegacy = d.total_legacy || totalLegacy;
 
+				sumImported += d.imported != null ? d.imported : 0;
+				sumUpdated += d.updated != null ? d.updated : 0;
+
 				var batchLine = replaceAll(i18n.batchFmt || '', {
 					'{offset}': String(offset),
 					'{new}': String(d.imported != null ? d.imported : 0),
@@ -310,6 +323,13 @@
 						'{total}': String(totalLegacy),
 					});
 				}
+				if (typeof window.radiusLegacyImportOnOverall === 'function') {
+					window.radiusLegacyImportOnOverall({
+						pct: totalLegacy > 0 ? pct : 0,
+						done: totalLegacy > 0 ? Math.min(done, totalLegacy) : 0,
+						total: totalLegacy,
+					});
+				}
 
 				if (!d.has_more) {
 					setProgressBar(overall, 100);
@@ -335,7 +355,34 @@
 							'{pct}': '100',
 						});
 					}
-					break;
+					if (typeof window.radiusLegacyImportOnOverall === 'function') {
+						window.radiusLegacyImportOnOverall({
+							pct: 100,
+							done: totalLegacy,
+							total: totalLegacy,
+						});
+					}
+					var _ret = {
+						success: true,
+						totalLegacy: totalLegacy,
+						sumImported: sumImported,
+						sumUpdated: sumUpdated,
+					};
+					if (
+						_ret.sumImported + _ret.sumUpdated > 0 ||
+						_ret.totalLegacy > 0
+					) {
+						try {
+							window.dispatchEvent(
+								new CustomEvent('radiusLegacyImportComplete', {
+									detail: _ret,
+								})
+							);
+						} catch (e1) {
+							/* ignore */
+						}
+					}
+					return _ret;
 				}
 
 				var nextOff = d.next_offset != null ? d.next_offset : offset;
@@ -343,7 +390,13 @@
 					if (log) {
 						log.textContent += 'Import did not advance offset; stopping.\n';
 					}
-					break;
+					return {
+						success: false,
+						error: 'offset_stalled',
+						totalLegacy: totalLegacy,
+						sumImported: sumImported,
+						sumUpdated: sumUpdated,
+					};
 				}
 				offset = nextOff;
 
@@ -364,10 +417,13 @@
 			if (line) {
 				line.textContent = i18n.stopped || 'Import stopped.';
 			}
+			return { success: false, error: String(e) };
+		} finally {
+			if (btn) {
+				btn.disabled = false;
+				btn.textContent = i18n.start || 'Run legacy place import (all batches)';
+			}
 		}
-
-		btn.disabled = false;
-		btn.textContent = i18n.start || 'Run legacy place import (all batches)';
 	}
 
 	window.radiusLegacyImportRunAll = runChain;

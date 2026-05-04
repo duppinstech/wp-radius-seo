@@ -198,7 +198,7 @@ class Radius_API_License {
 		if ( $plain === '' ) {
 			return;
 		}
-		Radius_Settings::update( array( 'api_key' => $plain ) );
+		Radius_Settings::update( array( 'api_key' => self::encrypt_api_key_for_storage( $plain ) ) );
 	}
 
 	/**
@@ -269,6 +269,9 @@ class Radius_API_License {
 			return;
 		}
 
+		// Force a fresh validation on each save attempt (avoid a prior failed check cached for hours).
+		delete_transient( self::TRANSIENT_CHECK );
+
 		if ( ! self::validate_key_with_remote( $sanitized ) ) {
 			set_transient(
 				'radius_license_notice',
@@ -283,7 +286,7 @@ class Radius_API_License {
 
 		Radius_Settings::update(
 			array(
-				'api_key'          => $sanitized,
+				'api_key'          => self::encrypt_api_key_for_storage( $sanitized ),
 				'api_key_saved_at' => current_time( 'mysql' ),
 			)
 		);
@@ -328,14 +331,7 @@ class Radius_API_License {
 		 */
 		$pre = apply_filters( 'radius_license_pre_validate', null, $key );
 		if ( is_bool( $pre ) ) {
-			set_transient(
-				self::TRANSIENT_CHECK,
-				array(
-					'k'  => wp_hash( $key ),
-					'ok' => $pre ? 1 : 0,
-				),
-				12 * HOUR_IN_SECONDS
-			);
+			self::set_license_check_transient( $key, $pre );
 			return $pre;
 		}
 
@@ -350,16 +346,37 @@ class Radius_API_License {
 		 */
 		$ok = (bool) apply_filters( 'radius_license_valid', $ok, $key );
 
+		self::set_license_check_transient( $key, $ok );
+
+		return $ok;
+	}
+
+	/**
+	 * Cache validation: successes last hours; failures expire quickly so retries are not stuck.
+	 *
+	 * @param string $key Sanitized key.
+	 * @param bool   $ok  Whether valid.
+	 * @return void
+	 */
+	private static function set_license_check_transient( $key, $ok ) {
+		$ttl = $ok
+			? (int) apply_filters( 'radius_license_cache_ttl_valid', 12 * HOUR_IN_SECONDS )
+			: (int) apply_filters( 'radius_license_cache_ttl_invalid', 2 * MINUTE_IN_SECONDS );
+		if ( $ttl < 0 ) {
+			$ttl = 0;
+		}
+		if ( $ttl === 0 ) {
+			delete_transient( self::TRANSIENT_CHECK );
+			return;
+		}
 		set_transient(
 			self::TRANSIENT_CHECK,
 			array(
 				'k'  => wp_hash( $key ),
 				'ok' => $ok ? 1 : 0,
 			),
-			12 * HOUR_IN_SECONDS
+			$ttl
 		);
-
-		return $ok;
 	}
 
 	/**

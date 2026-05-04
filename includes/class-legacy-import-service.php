@@ -417,14 +417,33 @@ class Radius_Legacy_Import_Service {
 		return array_values( array_unique( $out ) );
 	}
 
+	/** @var string Site transient: cached footprint payload. */
+	private const FOOTPRINT_CACHE_KEY = 'radius_magic_page_footprint';
+
+	/**
+	 * Drop cached Magic Page storage footprint (options cleanup or tests).
+	 *
+	 * @return void
+	 */
+	public static function bust_magic_page_footprint_cache() {
+		delete_transient( self::FOOTPRINT_CACHE_KEY );
+	}
+
 	/**
 	 * Row counts and approximate stored size for Magic Page–related data.
 	 *
 	 * Options rows match what “Delete Magic Page options” removes. Postmeta is shown for awareness only.
+	 * Result is cached (see {@see bust_magic_page_footprint_cache()}). Large postmeta sets skip the byte
+	 * sum to avoid full-table aggregations.
 	 *
-	 * @return array{options: array{label:string,rows:int,bytes:int}, postmeta: array{label:string,rows:int,bytes:int}, cleanup_bytes:int}
+	 * @return array{options: array{label:string,rows:int,bytes:int}, postmeta: array{label:string,rows:int,bytes:int}, cleanup_bytes:int, postmeta_bytes_omitted: bool}
 	 */
 	public static function get_magic_page_storage_footprint() {
+		$cached = get_transient( self::FOOTPRINT_CACHE_KEY );
+		if ( is_array( $cached ) && isset( $cached['options'], $cached['postmeta'], $cached['cleanup_bytes'] ) && isset( $cached['postmeta_bytes_omitted'] ) ) {
+			return $cached;
+		}
+
 		global $wpdb;
 
 		$opt_patterns = self::magic_page_option_name_like_patterns();
@@ -461,20 +480,36 @@ class Radius_Legacy_Import_Service {
 		}
 		$pm_clean = array_values( array_unique( $pm_clean ) );
 
-		$pm_rows  = 0;
-		$pm_bytes = 0;
+		$pm_rows                 = 0;
+		$pm_bytes                = 0;
+		$postmeta_bytes_omitted = false;
 		if ( ! empty( $pm_clean ) ) {
-			$holders = implode( ' OR ', array_fill( 0, count( $pm_clean ), 'meta_key LIKE %s' ) );
-			$sql     = "SELECT COUNT(*), COALESCE(SUM(CHAR_LENGTH(meta_key) + CHAR_LENGTH(IFNULL(meta_value, ''))), 0) FROM {$wpdb->postmeta} WHERE {$holders}";
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built from counted patterns.
-			$row = $wpdb->get_row( $wpdb->prepare( $sql, $pm_clean ), ARRAY_N );
-			if ( is_array( $row ) && isset( $row[0], $row[1] ) ) {
-				$pm_rows  = (int) $row[0];
-				$pm_bytes = (int) $row[1];
+			$holders  = implode( ' OR ', array_fill( 0, count( $pm_clean ), 'meta_key LIKE %s' ) );
+			$count_sql = "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE {$holders}";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$pm_rows = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $pm_clean ) );
+
+			/**
+			 * Max matching postmeta rows for which we still run SUM(CHAR_LENGTH …) (expensive on huge sets).
+			 *
+			 * @param int $max     Default 50000.
+			 * @param int $pm_rows Current matching row count.
+			 */
+			$max_sum_rows = (int) apply_filters( 'radius_magic_page_footprint_postmeta_byte_sum_max_rows', 50000, $pm_rows );
+			if ( $max_sum_rows < 0 ) {
+				$max_sum_rows = 0;
+			}
+
+			if ( $pm_rows > 0 && $pm_rows <= $max_sum_rows ) {
+				$sum_sql = "SELECT COALESCE(SUM(CHAR_LENGTH(meta_key) + CHAR_LENGTH(IFNULL(meta_value, ''))), 0) FROM {$wpdb->postmeta} WHERE {$holders}";
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$pm_bytes = (int) $wpdb->get_var( $wpdb->prepare( $sum_sql, $pm_clean ) );
+			} elseif ( $pm_rows > $max_sum_rows ) {
+				$postmeta_bytes_omitted = true;
 			}
 		}
 
-		return array(
+		$out = array(
 			'options' => array(
 				'label' => $wpdb->options,
 				'rows'  => $opt_rows,
@@ -485,8 +520,21 @@ class Radius_Legacy_Import_Service {
 				'rows'  => $pm_rows,
 				'bytes' => $pm_bytes,
 			),
-			'cleanup_bytes' => $opt_bytes,
+			'cleanup_bytes'          => $opt_bytes,
+			'postmeta_bytes_omitted' => $postmeta_bytes_omitted,
 		);
+
+		/**
+		 * Seconds to cache the Magic Page storage footprint (Settings → Database only).
+		 *
+		 * @param int $seconds Default 600.
+		 */
+		$ttl = (int) apply_filters( 'radius_magic_page_footprint_cache_ttl', 10 * MINUTE_IN_SECONDS );
+		if ( $ttl > 0 ) {
+			set_transient( self::FOOTPRINT_CACHE_KEY, $out, $ttl );
+		}
+
+		return $out;
 	}
 
 	/**
@@ -518,6 +566,8 @@ class Radius_Legacy_Import_Service {
 		foreach ( $names as $opt ) {
 			delete_option( $opt );
 		}
+
+		self::bust_magic_page_footprint_cache();
 
 		return array(
 			'deleted' => count( $names ),
@@ -1247,6 +1297,377 @@ class Radius_Legacy_Import_Service {
 
 			++$out['templates'];
 			$out['blocks_added'] += $added_here;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Locate imported radius_template linked to a legacy magicpage post slug (post_name).
+	 *
+	 * @param string $legacy_slug Legacy template slug.
+	 * @return int radius_template post ID or 0.
+	 */
+	public static function find_radius_template_by_legacy_post_slug( $legacy_slug ) {
+		$legacy_slug = sanitize_title( (string) $legacy_slug );
+		if ( $legacy_slug === '' ) {
+			return 0;
+		}
+		$legacy = get_posts(
+			array(
+				'post_type'      => self::legacy_template_post_type(),
+				'name'           => $legacy_slug,
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+			)
+		);
+		if ( empty( $legacy ) ) {
+			return 0;
+		}
+		$lid = (int) $legacy[0]->ID;
+		$found = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					array(
+						'key'   => '_radius_imported_from',
+						'value' => $lid,
+					),
+				),
+			)
+		);
+		return empty( $found ) ? 0 : (int) $found[0];
+	}
+
+	/**
+	 * First radius_template that was imported from legacy (lowest ID).
+	 *
+	 * @return int
+	 */
+	public static function first_imported_radius_template_id() {
+		$found = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'meta_query'     => array(
+					array(
+						'key'     => '_radius_imported_from',
+						'compare' => 'EXISTS',
+					),
+				),
+				'fields'         => 'ids',
+			)
+		);
+		return empty( $found ) ? 0 : (int) $found[0];
+	}
+
+	/**
+	 * Publish a radius_template and set its URL slug (unique within type).
+	 *
+	 * @param int    $post_id Post ID.
+	 * @param string $slug    Desired slug.
+	 * @return bool
+	 */
+	public static function migration_publish_radius_template( $post_id, $slug ) {
+		$post_id = (int) $post_id;
+		if ( $post_id <= 0 ) {
+			return false;
+		}
+		$post = get_post( $post_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return false;
+		}
+		$slug = sanitize_title( (string) $slug );
+		if ( $slug === '' ) {
+			return false;
+		}
+		$unique = wp_unique_post_slug( $slug, $post_id, 'publish', 'radius_template', 0 );
+		$u      = wp_update_post(
+			array(
+				'ID'          => $post_id,
+				'post_status' => 'publish',
+				'post_name'   => $unique,
+			),
+			true
+		);
+		return ! is_wp_error( $u );
+	}
+
+	/**
+	 * Import Magic Page templates, publish base + variants with fixed slugs, import global spintax by prefix per template.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function automated_migration_templates_pipeline() {
+		$out = array(
+			'import'           => null,
+			'base_id'          => 0,
+			'variant_ids'      => array(),
+			'slugs'            => array(),
+			'spintax'          => array(),
+			'errors'           => array(),
+			'service_template_labels' => array(),
+		);
+
+		$imp = self::import_templates();
+		$out['import'] = $imp;
+		if ( ! empty( $imp['errors'] ) ) {
+			$out['errors'] = array_merge( $out['errors'], $imp['errors'] );
+		}
+
+		$base_slug = (string) apply_filters( 'radius_migration_base_legacy_slug', 'towing' );
+		$base_id   = self::find_radius_template_by_legacy_post_slug( $base_slug );
+		if ( $base_id <= 0 ) {
+			$base_id = self::first_imported_radius_template_id();
+		}
+		if ( $base_id <= 0 ) {
+			$out['errors'][] = __( 'No imported Radius template found. Import Magic Page templates first.', 'radius' );
+			return $out;
+		}
+		$out['base_id'] = $base_id;
+
+		$slug_base = (string) apply_filters( 'radius_migration_automated_base_slug', 'towing' );
+		if ( ! self::migration_publish_radius_template( $base_id, $slug_base ) ) {
+			$out['errors'][] = __( 'Could not publish the base template with slug “towing”.', 'radius' );
+		}
+		$out['slugs']['towing'] = $slug_base;
+
+		$titles   = self::migration_variant_default_titles();
+		$slug_map = apply_filters(
+			'radius_migration_automated_variant_slugs',
+			array(
+				'roadside'  => 'roadside-assistance',
+				'heavy'     => 'heavy-towing',
+				'equipment' => 'heavy-equipment-towing',
+			)
+		);
+
+		$variant_ids = array();
+		foreach ( array( 'roadside', 'heavy', 'equipment' ) as $variant ) {
+			$title = isset( $titles[ $variant ] ) ? (string) $titles[ $variant ] : $variant;
+			$r     = self::duplicate_radius_template_for_migration_variant( $base_id, $title, $variant );
+			if ( is_wp_error( $r ) ) {
+				$out['errors'][] = $r->get_error_message();
+				continue;
+			}
+			$vid = (int) $r;
+			$slug = isset( $slug_map[ $variant ] ) ? sanitize_title( (string) $slug_map[ $variant ] ) : $variant;
+			if ( ! self::migration_publish_radius_template( $vid, $slug ) ) {
+				$out['errors'][] = sprintf(
+					/* translators: %s variant slug */
+					__( 'Could not publish variant template (%s).', 'radius' ),
+					$variant
+				);
+			}
+			$variant_ids[ $variant ] = $vid;
+			$out['slugs'][ $variant ] = $slug;
+		}
+		$out['variant_ids'] = $variant_ids;
+
+		$prefix_map = apply_filters(
+			'radius_migration_automated_spintax_prefix_map',
+			array(
+				$base_id                => array( 'towing' ),
+				$variant_ids['roadside'] => array( 'roadside' ),
+				$variant_ids['heavy']    => array( 'heavy' ),
+				$variant_ids['equipment'] => array( 'equipment' ),
+			),
+			$base_id,
+			$variant_ids
+		);
+
+		foreach ( $prefix_map as $tid => $prefixes ) {
+			$tid = (int) $tid;
+			if ( $tid <= 0 || ! is_array( $prefixes ) || empty( $prefixes ) ) {
+				continue;
+			}
+			if ( ! get_post( $tid ) ) {
+				continue;
+			}
+			$sp = self::import_magic_page_spintax_into_templates(
+				'one',
+				$tid,
+				true,
+				true,
+				false,
+				array( 'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ) )
+			);
+			$out['spintax'][ $tid ] = $sp;
+			if ( ! empty( $sp['errors'] ) ) {
+				$out['errors'] = array_merge( $out['errors'], $sp['errors'] );
+			}
+		}
+
+		$labels = array(
+			array(
+				'key'   => 'towing',
+				'label' => __( 'Towing', 'radius' ),
+				'id'    => $base_id,
+			),
+		);
+		foreach ( $variant_ids as $vk => $vid ) {
+			$labels[] = array(
+				'key'   => $vk,
+				'label' => isset( $titles[ $vk ] ) ? $titles[ $vk ] : $vk,
+				'id'    => (int) $vid,
+			);
+		}
+		$out['service_template_labels'] = $labels;
+
+		return $out;
+	}
+
+	/**
+	 * Fill site replacer values from Magic Page–style xfields on the base imported template.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function automated_migration_merge_site_replacers_from_xfields() {
+		$out = array( 'updated' => 0, 'keys' => array() );
+
+		$base_slug = (string) apply_filters( 'radius_migration_base_legacy_slug', 'towing' );
+		$base_id   = self::find_radius_template_by_legacy_post_slug( $base_slug );
+		if ( $base_id <= 0 ) {
+			$base_id = self::first_imported_radius_template_id();
+		}
+		if ( $base_id <= 0 ) {
+			return $out;
+		}
+
+		$raw = get_post_meta( $base_id, '_radius_xfields', true );
+		if ( is_string( $raw ) ) {
+			$raw = json_decode( $raw, true );
+		}
+		if ( ! is_array( $raw ) ) {
+			return $out;
+		}
+
+		$rows = Radius_Settings::get()['site_replacements'];
+		if ( ! is_array( $rows ) ) {
+			$rows = Radius_Settings::default_site_replacements();
+		}
+		$by_key = array();
+		foreach ( $rows as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+		foreach ( Radius_Settings::default_site_replacements() as $def ) {
+			$k = sanitize_key( (string) $def['key'] );
+			if ( $k !== '' && ! isset( $by_key[ $k ] ) ) {
+				$by_key[ $k ] = $def;
+			}
+		}
+
+		foreach ( $raw as $xrow ) {
+			if ( ! is_array( $xrow ) || empty( $xrow['key'] ) ) {
+				continue;
+			}
+			$xk = strtolower( (string) $xrow['key'] );
+			$vals = Radius_Template_Tokens::normalize_xfield_values( $xrow );
+			$first = isset( $vals[0] ) ? (string) $vals[0] : '';
+			if ( $first === '' ) {
+				continue;
+			}
+
+			$target = '';
+			if ( preg_match( '/company|business/i', $xk ) && preg_match( '/short|abbr/i', $xk ) ) {
+				$target = 'company-short';
+			} elseif ( preg_match( '/company|business/i', $xk ) ) {
+				$target = 'company-name';
+			} elseif ( preg_match( '/phone|tel/i', $xk ) && preg_match( '/tel|href|link/i', $xk ) ) {
+				$target = 'phone-tel';
+			} elseif ( preg_match( '/phone|tel|mobile/i', $xk ) ) {
+				$target = 'phone-number';
+			}
+			if ( $target === '' || ! isset( $by_key[ $target ] ) ) {
+				continue;
+			}
+			$by_key[ $target ]['values'] = array( $first );
+			$out['keys'][]               = $target;
+			++$out['updated'];
+		}
+
+		Radius_Settings::update( array( 'site_replacements' => Radius_Settings::sanitize_site_replacements( array_values( $by_key ) ) ) );
+
+		return $out;
+	}
+
+	/**
+	 * Map Magic Page legacy location + radius rows into Radius service anchors (place_id + miles).
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function automated_migration_apply_magic_page_anchors() {
+		$out = array(
+			'anchors_count' => 0,
+			'anchor_labels' => array(),
+		);
+
+		$legacy_rows = apply_filters( 'radius_magic_page_legacy_anchor_rows', null );
+		if ( null === $legacy_rows ) {
+			$legacy_rows = array();
+			$opt = get_option( 'magic_page_location_radius_settings', null );
+			if ( is_array( $opt ) && ! empty( $opt['locations'] ) && is_array( $opt['locations'] ) ) {
+				$legacy_rows = $opt['locations'];
+			}
+		}
+		if ( ! is_array( $legacy_rows ) || empty( $legacy_rows ) ) {
+			return $out;
+		}
+
+		$legacy_tax = self::legacy_location_taxonomy();
+		$radius_tax = Radius_Place_Taxonomy::TAXONOMY;
+		$anchors_in = array();
+
+		foreach ( $legacy_rows as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$legacy_tid = isset( $row['legacy_term_id'] ) ? (int) $row['legacy_term_id'] : 0;
+			if ( $legacy_tid <= 0 && isset( $row['term_id'] ) ) {
+				$legacy_tid = (int) $row['term_id'];
+			}
+			// Wizard migration standardizes on 25 mi; Magic Page row radius is ignored unless filtered.
+			$miles = (float) apply_filters( 'radius_migration_anchor_radius_miles', 25.0, $row );
+			if ( ! is_finite( $miles ) || $miles <= 0 ) {
+				$miles = 25.0;
+			}
+
+			$term = $legacy_tid > 0 ? get_term( $legacy_tid, $legacy_tax ) : null;
+			if ( ! $term || is_wp_error( $term ) ) {
+				if ( ! empty( $row['slug'] ) ) {
+					$term = get_term_by( 'slug', sanitize_title( (string) $row['slug'] ), $legacy_tax );
+				}
+			}
+			if ( ! $term || is_wp_error( $term ) ) {
+				continue;
+			}
+			$r_term = get_term_by( 'slug', $term->slug, $radius_tax );
+			if ( ! $r_term || is_wp_error( $r_term ) ) {
+				continue;
+			}
+			$anchors_in[] = array(
+				'place_id'     => (int) $r_term->term_id,
+				'radius_miles' => $miles,
+				'label'        => $r_term->name,
+			);
+		}
+
+		if ( empty( $anchors_in ) ) {
+			return $out;
+		}
+
+		Radius_Settings::update( array( 'service_anchors' => Radius_Settings::sanitize_anchors( $anchors_in ) ) );
+		$out['anchors_count'] = count( $anchors_in );
+		foreach ( $anchors_in as $a ) {
+			$out['anchor_labels'][] = isset( $a['label'] ) ? (string) $a['label'] : '';
 		}
 
 		return $out;

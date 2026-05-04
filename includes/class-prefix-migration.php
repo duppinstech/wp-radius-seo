@@ -30,18 +30,7 @@ final class Radius_Prefix_Migration {
 		self::run();
 		update_option( Radius_Data_Registry::OPTION_PREFIX_MIGRATION_DONE, '1', false );
 		update_option( Radius_Data_Registry::OPTION_NEEDS_REWRITE_FLUSH, true, false );
-
-		if ( is_admin() ) {
-			set_transient(
-				'radius_prefix_migration_notice',
-				sprintf(
-					/* translators: %s: product name */
-					__( 'Radius updated stored identifiers (templates, landings, places, settings) from legacy LocaleForge / “lf_” keys to %s-style keys. Save Settings once and visit Permalinks if URLs look wrong.', 'radius' ),
-					'<code>radius_</code>'
-				),
-				3600
-			);
-		}
+		Radius_Admin_Maintenance::flag_banner();
 	}
 
 	/**
