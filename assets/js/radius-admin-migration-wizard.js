@@ -951,14 +951,17 @@
 		mergeCfgFromPayload(stFresh.data);
 		var steps = stFresh.data.steps || {};
 
-		var resetPromises = [];
-		STEP_KEYS.forEach(function (k) {
-			if (userWants[k] && steps[k] && steps[k].recorded) {
-				resetPromises.push(postWizard('step_reset', { step: k }));
+		// One step_reset at a time — avoids burst POSTs to admin-ajax.php (some WAFs allow only one in flight).
+		var didReset = false;
+		var rk;
+		for (rk = 0; rk < STEP_KEYS.length; rk++) {
+			var resetKey = STEP_KEYS[rk];
+			if (userWants[resetKey] && steps[resetKey] && steps[resetKey].recorded) {
+				await postWizard('step_reset', { step: resetKey });
+				didReset = true;
 			}
-		});
-		if (resetPromises.length) {
-			await Promise.all(resetPromises);
+		}
+		if (didReset) {
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data) {
 				mergeCfgFromPayload(stFresh.data);

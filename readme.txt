@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.26
+Stable tag: 1.6.27
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.27 =
+* **Migration wizard:** When re-running selected steps, **step reset** requests run **one after another** instead of in parallel, reducing burst POSTs to `admin-ajax.php` (helps strict WAFs / rate limits).
 
 = 1.6.26 =
 * **Migration / Yoast:** After the templates pipeline, each service template gets Yoast **focus keyphrases** (towing, roadside assistance, heavy towing, heavy equipment towing) and **SEO title** / **meta description** set to `{{towing-meta-title}}` … `{{equipment-meta-desc}}` (resolved on deploy from **Settings → Site replacers**). Default replacer rows added; filter `radius_migration_yoast_service_line_map` to customize.
