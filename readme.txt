@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,7 +18,11 @@ Blueprint-first local SEO: templates, CSV place library, batch deploy, tokens, s
 
 == Updates ==
 
-This plugin does not ship a custom WordPress.org–disallowed update checker. To update from [GitHub](https://github.com/oduppinsjr/wp-radius-seo/releases), either upload a new `radius.zip` (release asset with top-level `radius/` folder) via **Plugins → Add New → Upload Plugin**, or install a Git-based updater plugin (for example **Git Updater**) and point it at this repository.
+The plugin checks [GitHub Releases](https://github.com/oduppinsjr/wp-radius-seo/releases/latest) for a newer version and shows an update under **Dashboard → Updates** when the latest release includes a `.zip` asset (built with a single top-level folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`). You can still upload a ZIP manually via **Plugins → Add New → Upload Plugin**.
+
+Disable GitHub checks: `add_filter( 'radius_github_updater_enabled', '__return_false' );`
+
+Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'owner/wp-radius-seo' );`
 
 == Hooks ==
 
@@ -28,6 +32,10 @@ This plugin does not ship a custom WordPress.org–disallowed update checker. To
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
 == Changelog ==
+
+= 1.6.0 =
+* GitHub Releases updater: Dashboard → Updates when the latest release includes a ZIP asset (see readme Updates section).
+* Rebrand, site replacer defaults, prefix migration, and related admin assets (see git history).
 
 = 1.4.1 =
 * Rebrand: Radius class prefix; Plugin Check cleanups; bundled Chart.js for analytics; GitHub releases documented for manual or Git Updater installs (no bundled custom updater).

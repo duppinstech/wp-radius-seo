@@ -10,7 +10,7 @@ Blueprint-first local SEO for WordPress: templates, CSV-backed place library, ba
 
 ## Install
 
-1. Download a release ZIP from [Releases](https://github.com/oduppinsjr/wp-radius-seo/releases) (use an asset whose root folder is `radius/`, containing `radius.php`).
+1. Download a release ZIP from [Releases](https://github.com/oduppinsjr/wp-radius-seo/releases) (ZIP root must be a single folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`).
 2. In wp-admin: **Plugins → Add New → Upload Plugin**, choose the ZIP, install, and activate.
 
 Or clone this repository into `wp-content/plugins/radius/` (same folder layout).
@@ -28,10 +28,9 @@ Or clone this repository into `wp-content/plugins/radius/` (same folder layout).
 
 ## Updates
 
-This plugin does **not** bundle a custom WordPress.org–disallowed update client. To stay current from GitHub:
+Installed sites poll **GitHub Releases** (latest release must include a `.zip` asset). When your installed version is older than the release tag, **Dashboard → Updates** offers a one-click upgrade.
 
-- Upload a newer release ZIP via **Plugins → Add New → Upload Plugin**, or  
-- Use a Git-based updater (for example [Git Updater](https://git-updater.com/)) pointed at this repository.
+You can still upload a newer ZIP manually or use [Git Updater](https://git-updater.com/) if you prefer. Filters: `radius_github_updater_enabled`, `radius_github_updater_repo`.
 
 WordPress.org–style metadata and hooks are documented in **`readme.txt`** (used for directory submissions and translators).
 

@@ -33,6 +33,7 @@ require_once RADIUS_PATH . 'includes/class-place-taxonomy.php';
 require_once RADIUS_PATH . 'includes/class-place-term-admin.php';
 require_once RADIUS_PATH . 'includes/class-settings.php';
 require_once RADIUS_PATH . 'includes/class-api-license.php';
+require_once RADIUS_PATH . 'includes/class-github-updater.php';
 require_once RADIUS_PATH . 'includes/class-token-engine.php';
 require_once RADIUS_PATH . 'includes/class-template-tokens.php';
 require_once RADIUS_PATH . 'includes/class-geo-service.php';
@@ -61,6 +62,7 @@ function radius_boot() {
 	load_plugin_textdomain( 'radius', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 	Radius_SEO_Integrations::init();
 	Radius_API_License::init();
+	Radius_GitHub_Updater::init();
 	Radius_Plugin::instance();
 }
 
