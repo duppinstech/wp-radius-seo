@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.17
+Stable tag: 1.6.18
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,6 +47,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_legacy_location_zip_meta_keys` — legacy location term meta keys tried when resolving zip for service-area anchor mapping (default `zip`, `Zip`, `ZIP`, `postal_code`, `postal`, `Postcode`).
 * `radius_migration_clone_elementor_meta_keys_exclude` — list of `_elementor*` post meta key names to skip in the bulk meta copy before Elementor’s document copy runs when cloning migration variants (default: every `_elementor` key found on the source template).
 == Changelog ==
+
+= 1.6.18 =
+* **Magic Page migration wizard:** Before cloning variants, normalize imported towing template `{spintax_towing…}` → `{{towing…}}` across Elementor + Radius meta; set default towing title to “24/7 Towing Company in {{place_name}}, {{region}}.” (filter `radius_migration_towing_template_title`).
+* **Variant clones:** replace `{{towing-…}}` / `{{towing_…}}` / `{{towing}}` with the correct service prefix (`roadside`, `heavy`, `equipment`) so cloned templates are not left with towing tokens.
+* **Cleanup:** optional (`radius_migration_delete_previous_templates_before_run`, default true) delete prior migration-sourced `radius_template` posts (`_radius_imported_from` / `_radius_migration_clone_of`) before re-import so you end up with exactly four service templates.
 
 = 1.6.17 =
 * **Revert** the global `{spintax_*}` → `{{*}}` catch-all in `convert_legacy_magic_page_tokens_to_curly` — it turned leftover `{spintax_towing-…}` into `{{towing-…}}` on roadside/heavy/equipment templates (wrong service line).

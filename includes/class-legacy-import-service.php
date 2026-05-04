@@ -526,6 +526,166 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Apply a string callback everywhere in nested arrays / JSON-like structures.
+	 *
+	 * @param mixed    $data Mixed tree.
+	 * @param callable $cb   function ( string $s ): string.
+	 * @return mixed
+	 */
+	public static function deep_map_strings_in_mixed( $data, callable $cb ) {
+		if ( is_string( $data ) ) {
+			return $cb( $data );
+		}
+		if ( is_array( $data ) ) {
+			foreach ( $data as $k => $v ) {
+				$data[ $k ] = self::deep_map_strings_in_mixed( $v, $cb );
+			}
+		}
+		return $data;
+	}
+
+	/**
+	 * Magic Page exports `{spintax_towing-…}` with single outer braces; normalize to Radius `{{towing-…}}`.
+	 *
+	 * @param string $text HTML / Elementor string fragment.
+	 * @return string
+	 */
+	public static function rewrite_magic_page_spintax_towing_tokens_to_double_braces( $text ) {
+		$text = (string) $text;
+		if ( $text === '' || stripos( $text, '{spintax_towing' ) === false ) {
+			return $text;
+		}
+		$text = (string) preg_replace( '/\{spintax_towing-([^\}]*)\}/i', '{{towing-$1}}', $text );
+		$text = (string) preg_replace( '/\{spintax_towing_([^\}]*)\}/i', '{{towing_$1}}', $text );
+		$text = (string) preg_replace( '/\{spintax_towing\}/i', '{{towing}}', $text );
+		return $text;
+	}
+
+	/**
+	 * Run towing `{spintax_towing…}` → `{{towing…}}` across post fields + template JSON meta (same scope as keyword swaps).
+	 *
+	 * @param int $template_id radius_template (imported towing blueprint).
+	 * @return void
+	 */
+	public static function normalize_imported_towing_migration_template_tokens( $template_id ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return;
+		}
+		$post = get_post( $template_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return;
+		}
+
+		$cb = array( __CLASS__, 'rewrite_magic_page_spintax_towing_tokens_to_double_braces' );
+
+		$json_keys = apply_filters(
+			'radius_migration_template_json_meta_keys',
+			array( '_elementor_data', '_elementor_page_settings', '_radius_spintax_blocks', '_radius_xfields', '_radius_slot_variations' )
+		);
+		$page_settings_key = '_elementor_page_settings';
+
+		foreach ( $json_keys as $jk ) {
+			if ( ! is_string( $jk ) || $jk === '' ) {
+				continue;
+			}
+			$raw = get_post_meta( $template_id, $jk, true );
+			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			if ( $page_settings_key === $jk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$changed = self::deep_map_strings_in_mixed( $decoded, $cb );
+				update_post_meta( $template_id, $jk, $changed );
+				continue;
+			}
+			if ( is_string( $raw ) ) {
+				$decoded = json_decode( $raw, true );
+				if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+					$changed = self::deep_map_strings_in_mixed( $decoded, $cb );
+					$enc     = wp_json_encode( $changed );
+					if ( false !== $enc ) {
+						update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+					}
+				} else {
+					$new = call_user_func( $cb, $raw );
+					if ( $new !== $raw ) {
+						update_post_meta( $template_id, $jk, $new );
+					}
+				}
+				continue;
+			}
+			if ( is_array( $raw ) ) {
+				$changed = self::deep_map_strings_in_mixed( $raw, $cb );
+				$enc     = wp_json_encode( $changed );
+				if ( false !== $enc ) {
+					update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+				}
+			}
+		}
+
+		$title   = call_user_func( $cb, (string) $post->post_title );
+		$content = call_user_func( $cb, (string) $post->post_content );
+		$excerpt = call_user_func( $cb, (string) $post->post_excerpt );
+		if ( $title !== $post->post_title || $content !== $post->post_content || $excerpt !== $post->post_excerpt ) {
+			wp_update_post(
+				array(
+					'ID'           => $template_id,
+					'post_title'   => $title,
+					'post_content' => $content,
+					'post_excerpt' => $excerpt,
+				)
+			);
+		}
+
+		self::normalize_elementor_page_settings_meta( $template_id );
+		clean_post_cache( $template_id );
+	}
+
+	/**
+	 * Delete radius_template rows created by a previous migration (import or clone) so the wizard can rebuild exactly four service templates.
+	 *
+	 * @return int Number of posts deleted.
+	 */
+	public static function delete_migration_sourced_radius_templates() {
+		if ( ! apply_filters( 'radius_migration_delete_previous_templates_before_run', true ) ) {
+			return 0;
+		}
+		$ids = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					'relation' => 'OR',
+					array(
+						'key'     => '_radius_imported_from',
+						'compare' => 'EXISTS',
+					),
+					array(
+						'key'     => '_radius_migration_clone_of',
+						'compare' => 'EXISTS',
+					),
+				),
+			)
+		);
+		if ( empty( $ids ) ) {
+			return 0;
+		}
+		$n = 0;
+		foreach ( $ids as $pid ) {
+			if ( wp_delete_post( (int) $pid, true ) ) {
+				++$n;
+			}
+		}
+		return $n;
+	}
+
+	/**
 	 * Ordered replacement pairs for service-line template variants (tags like towing_* → roadside_*).
 	 *
 	 * @param string $variant One of roadside, heavy, equipment.
@@ -535,8 +695,11 @@ class Radius_Legacy_Import_Service {
 		$variant = sanitize_key( (string) $variant );
 		// Longer / specific substrings first so `spintax_towing` maps before generic `towing_` swaps inside keys.
 		// Order: longest `{spintax_towing-…}` / `{spintax_towing_…}` first so hyphenated tokens remap before bare `spintax_towing`.
+		// Cloned templates copy the finished towing blueprint: `{{towing-…}}` must become `{{roadside-…}}` / `{{heavy-…}}` / `{{equipment-…}}` (longest `{{towing-` first).
 		$map     = array(
 			'roadside'  => array(
+				'{{towing-'        => '{{roadside-',
+				'{{towing_'        => '{{roadside_',
 				'{{towing}}'       => '{{roadside}}',
 				'{spintax_towing-'  => '{spintax_roadside-',
 				'{spintax_towing_'  => '{spintax_roadside_',
@@ -544,6 +707,8 @@ class Radius_Legacy_Import_Service {
 				'towing_'            => 'roadside_',
 			),
 			'heavy'     => array(
+				'{{towing-'        => '{{heavy-',
+				'{{towing_'        => '{{heavy_',
 				'{{towing}}'       => '{{heavy}}',
 				'{spintax_towing-'  => '{spintax_heavy-',
 				'{spintax_towing_'  => '{spintax_heavy_',
@@ -551,6 +716,8 @@ class Radius_Legacy_Import_Service {
 				'towing_'            => 'heavy_',
 			),
 			'equipment' => array(
+				'{{towing-'        => '{{equipment-',
+				'{{towing_'        => '{{equipment_',
 				'{{towing}}'       => '{{equipment}}',
 				'{spintax_towing-'  => '{spintax_equipment-',
 				'{spintax_towing_'  => '{spintax_equipment_',
@@ -1881,7 +2048,10 @@ class Radius_Legacy_Import_Service {
 			'spintax'          => array(),
 			'errors'           => array(),
 			'service_template_labels' => array(),
+			'templates_pruned' => 0,
 		);
+
+		$out['templates_pruned'] = self::delete_migration_sourced_radius_templates();
 
 		$imp = self::import_templates();
 		$out['import'] = $imp;
@@ -1899,6 +2069,23 @@ class Radius_Legacy_Import_Service {
 			return $out;
 		}
 		$out['base_id'] = $base_id;
+
+		self::normalize_imported_towing_migration_template_tokens( $base_id );
+
+		$towing_title = apply_filters(
+			'radius_migration_towing_template_title',
+			__( '24/7 Towing Company in {{place_name}}, {{region}}.', 'radius' ),
+			$base_id
+		);
+		if ( is_string( $towing_title ) && $towing_title !== '' ) {
+			wp_update_post(
+				array(
+					'ID'         => $base_id,
+					'post_title' => $towing_title,
+				)
+			);
+			clean_post_cache( $base_id );
+		}
 
 		$slug_base = (string) apply_filters( 'radius_migration_automated_base_slug', 'towing' );
 		if ( ! self::migration_publish_radius_template( $base_id, $slug_base ) ) {
