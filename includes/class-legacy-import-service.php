@@ -2423,6 +2423,12 @@ class Radius_Legacy_Import_Service {
 		}
 		$out['service_template_labels'] = $labels;
 
+		$service_area_tpl = (int) apply_filters( 'radius_migration_service_area_template_id', $base_id, $out );
+		if ( $service_area_tpl > 0 && get_post( $service_area_tpl ) && 'radius_template' === get_post_type( $service_area_tpl ) ) {
+			Radius_Settings::update( array( 'service_area_template_id' => $service_area_tpl ) );
+			$out['service_area_template_id'] = $service_area_tpl;
+		}
+
 		return $out;
 	}
 
@@ -2503,6 +2509,96 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Load Magic Page “service area” rows from wp_options (supports alternate shapes / JSON / serialized).
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function magic_page_location_option_to_anchor_rows() {
+		$names = apply_filters(
+			'radius_magic_page_anchor_settings_option_names',
+			array( 'magic_page_location_radius_settings' )
+		);
+		if ( ! is_array( $names ) ) {
+			$names = array( 'magic_page_location_radius_settings' );
+		}
+		$rows = array();
+		foreach ( $names as $name ) {
+			$name = is_string( $name ) ? trim( $name ) : '';
+			if ( $name === '' ) {
+				continue;
+			}
+			$opt = get_option( $name, null );
+			$parsed = self::parse_magic_page_location_radius_option( $opt );
+			if ( ! empty( $parsed ) ) {
+				$rows = array_merge( $rows, $parsed );
+			}
+		}
+		return $rows;
+	}
+
+	/**
+	 * Normalize magic_page_location_radius_settings value to a list of rows.
+	 *
+	 * @param mixed $opt Raw option.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function parse_magic_page_location_radius_option( $opt ) {
+		if ( is_string( $opt ) && $opt !== '' ) {
+			$try = json_decode( $opt, true );
+			if ( is_array( $try ) ) {
+				$opt = $try;
+			} else {
+				$un = maybe_unserialize( $opt );
+				$opt = is_array( $un ) ? $un : array();
+			}
+		} elseif ( ! is_array( $opt ) ) {
+			$un = maybe_unserialize( $opt );
+			$opt = is_array( $un ) ? $un : array();
+		}
+		if ( empty( $opt ) || ! is_array( $opt ) ) {
+			return array();
+		}
+		if ( ! empty( $opt['locations'] ) && is_array( $opt['locations'] ) ) {
+			return array_values( $opt['locations'] );
+		}
+		if ( ! empty( $opt['services'] ) && is_array( $opt['services'] ) ) {
+			return array_values( $opt['services'] );
+		}
+		$first = reset( $opt );
+		if ( is_array( $first )
+			&& ( isset( $first['term_id'] ) || isset( $first['location_id'] ) || isset( $first['legacy_term_id'] ) || isset( $first['id'] ) || isset( $first['location'] ) ) ) {
+			return array_values( $opt );
+		}
+		return array();
+	}
+
+	/**
+	 * Legacy location taxonomy term ID from a Magic Page settings / merged row.
+	 *
+	 * @param array<string,mixed> $row Row data.
+	 * @return int
+	 */
+	private static function magic_page_anchor_row_legacy_term_id( array $row ) {
+		$keys = apply_filters(
+			'radius_magic_page_anchor_row_legacy_term_keys',
+			array( 'legacy_term_id', 'term_id', 'location_id', 'location', 'id', 'term', 'wp_term_id' )
+		);
+		if ( ! is_array( $keys ) ) {
+			$keys = array( 'legacy_term_id', 'term_id', 'location_id' );
+		}
+		foreach ( $keys as $k ) {
+			if ( ! is_string( $k ) || $k === '' || ! isset( $row[ $k ] ) ) {
+				continue;
+			}
+			$v = $row[ $k ];
+			if ( is_numeric( $v ) && (int) $v > 0 ) {
+				return (int) $v;
+			}
+		}
+		return 0;
+	}
+
+	/**
 	 * Map Magic Page legacy location + radius rows into Radius service anchors (place_id + miles).
 	 *
 	 * @return array<string,mixed>
@@ -2515,11 +2611,7 @@ class Radius_Legacy_Import_Service {
 
 		$legacy_rows = apply_filters( 'radius_magic_page_legacy_anchor_rows', null );
 		if ( null === $legacy_rows ) {
-			$legacy_rows = array();
-			$opt = get_option( 'magic_page_location_radius_settings', null );
-			if ( is_array( $opt ) && ! empty( $opt['locations'] ) && is_array( $opt['locations'] ) ) {
-				$legacy_rows = $opt['locations'];
-			}
+			$legacy_rows = self::magic_page_location_option_to_anchor_rows();
 		}
 		if ( ! is_array( $legacy_rows ) ) {
 			$legacy_rows = array();
@@ -2537,10 +2629,7 @@ class Radius_Legacy_Import_Service {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
-			$legacy_tid = isset( $row['legacy_term_id'] ) ? (int) $row['legacy_term_id'] : 0;
-			if ( $legacy_tid <= 0 && isset( $row['term_id'] ) ) {
-				$legacy_tid = (int) $row['term_id'];
-			}
+			$legacy_tid = self::magic_page_anchor_row_legacy_term_id( $row );
 			// Wizard migration standardizes on 25 mi; Magic Page row radius is ignored unless filtered.
 			$miles = (float) apply_filters( 'radius_migration_anchor_radius_miles', 25.0, $row );
 			if ( ! is_finite( $miles ) || $miles <= 0 ) {
@@ -2591,10 +2680,7 @@ class Radius_Legacy_Import_Service {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
-			$tid = isset( $row['legacy_term_id'] ) ? (int) $row['legacy_term_id'] : 0;
-			if ( $tid <= 0 && isset( $row['term_id'] ) ) {
-				$tid = (int) $row['term_id'];
-			}
+			$tid = self::magic_page_anchor_row_legacy_term_id( $row );
 			if ( $tid > 0 ) {
 				$by_tid[ $tid ] = $row;
 			}
@@ -2607,6 +2693,16 @@ class Radius_Legacy_Import_Service {
 			$by_tid[ $tid ] = array(
 				'legacy_term_id' => $tid,
 				'source'         => 'magicpage_template',
+			);
+		}
+
+		foreach ( self::legacy_term_ids_from_radius_migration_template_posts() as $tid ) {
+			if ( $tid <= 0 || isset( $by_tid[ $tid ] ) ) {
+				continue;
+			}
+			$by_tid[ $tid ] = array(
+				'legacy_term_id' => $tid,
+				'source'         => 'radius_template',
 			);
 		}
 
@@ -2638,17 +2734,58 @@ class Radius_Legacy_Import_Service {
 		}
 		$found = array();
 		foreach ( $post_ids as $pid ) {
-			$found = array_merge( $found, self::extract_legacy_location_term_ids_from_magicpage_post( (int) $pid ) );
+			$found = array_merge( $found, self::extract_legacy_location_term_ids_from_post( (int) $pid ) );
 		}
 		$found = array_values( array_unique( array_filter( array_map( 'absint', $found ) ) ) );
 		return apply_filters( 'radius_magic_page_template_legacy_location_ids', $found, $post_ids );
 	}
 
 	/**
-	 * @param int $post_id magicpage post ID.
+	 * Location term IDs referenced on imported Radius templates (Elementor / `_location_id` meta).
+	 *
 	 * @return int[]
 	 */
-	private static function extract_legacy_location_term_ids_from_magicpage_post( $post_id ) {
+	private static function legacy_term_ids_from_radius_migration_template_posts() {
+		if ( ! post_type_exists( 'radius_template' ) ) {
+			return array();
+		}
+		$post_ids = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => 50,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					'relation' => 'OR',
+					array(
+						'key'     => '_radius_imported_from',
+						'compare' => 'EXISTS',
+					),
+					array(
+						'key'     => '_radius_migration_clone_of',
+						'compare' => 'EXISTS',
+					),
+				),
+			)
+		);
+		if ( empty( $post_ids ) ) {
+			return array();
+		}
+		$found = array();
+		foreach ( $post_ids as $pid ) {
+			$found = array_merge( $found, self::extract_legacy_location_term_ids_from_post( (int) $pid ) );
+		}
+		$found = array_values( array_unique( array_filter( array_map( 'absint', $found ) ) ) );
+		return apply_filters( 'radius_migration_radius_template_legacy_location_ids', $found, $post_ids );
+	}
+
+	/**
+	 * @param int $post_id Template or legacy magicpage post ID.
+	 * @return int[]
+	 */
+	private static function extract_legacy_location_term_ids_from_post( $post_id ) {
 		$post_id = (int) $post_id;
 		$found   = array();
 		$post    = get_post( $post_id );
