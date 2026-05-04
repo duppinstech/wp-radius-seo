@@ -23,9 +23,11 @@ class Radius_Token_Engine {
 	 * @param string               $text   Raw text.
 	 * @param array<string,string> $tokens Key => value (place_name, region, …).
 	 * @param int                  $seed   Hash seed for spintax picks (e.g. landing ID).
+	 * @param bool                 $spintax_random Random spintax branches per call (dynamic output).
+	 * @param bool                 $strip_unresolved When true, remove leftover `{{token}}` with no map entry and collapse empty `<p></p>` (final HTML). False while composing nested values in `Radius_Template_Tokens::build_map()`.
 	 * @return string
 	 */
-	public static function render( $text, array $tokens, $seed = 0, $spintax_random = false ) {
+	public static function render( $text, array $tokens, $seed = 0, $spintax_random = false, $strip_unresolved = true ) {
 		if ( ! is_string( $text ) || $text === '' ) {
 			return '';
 		}
@@ -33,6 +35,53 @@ class Radius_Token_Engine {
 		$text = self::replace_placeholders( $text, $tokens );
 		$text = self::expand_spintax( $text, $seed, (bool) $spintax_random );
 		$text = self::replace_placeholders( $text, $tokens );
+		if ( $strip_unresolved ) {
+			$text = self::strip_unresolved_placeholders( $text );
+			$text = self::collapse_empty_paragraphs( $text );
+		}
+		return $text;
+	}
+
+	/**
+	 * Remove `{{token}}` substrings that had no replacement (spintax key missing for this template variant).
+	 *
+	 * @param string $text HTML or plain text.
+	 * @return string
+	 */
+	private static function strip_unresolved_placeholders( $text ) {
+		if ( ! is_string( $text ) || strpos( $text, '{{' ) === false ) {
+			return $text;
+		}
+		$out = (string) preg_replace( '/\{\{[a-zA-Z0-9_.-]+\}\}/', '', $text );
+		/**
+		 * Filter text after removing unresolved `{{token}}` placeholders.
+		 *
+		 * @param string $out  Text after stripping.
+		 * @param string $text Original text before stripping.
+		 */
+		return (string) apply_filters( 'radius_token_engine_after_strip_unresolved', $out, $text );
+	}
+
+	/**
+	 * Remove empty paragraph wrappers often left after stripping placeholders.
+	 *
+	 * @param string $text HTML.
+	 * @return string
+	 */
+	private static function collapse_empty_paragraphs( $text ) {
+		if ( ! is_string( $text ) || $text === '' ) {
+			return $text;
+		}
+		if ( ! apply_filters( 'radius_token_engine_collapse_empty_paragraphs', true ) ) {
+			return $text;
+		}
+		for ( $i = 0; $i < 8; $i++ ) {
+			$next = (string) preg_replace( '#<p(\s[^>]*)?>[\s\x{00A0}]*</p>#iu', '', $text );
+			if ( $next === $text ) {
+				break;
+			}
+			$text = $next;
+		}
 		return $text;
 	}
 

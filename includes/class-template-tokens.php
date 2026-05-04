@@ -217,7 +217,7 @@ class Radius_Template_Tokens {
 			if ( $pick === null ) {
 				$pick = $vals[ self::random_variation_index( $vals ) ];
 			}
-			$tokens[ $key ] = Radius_Token_Engine::render( (string) $pick, $tokens, $seed, $per_random );
+			$tokens[ $key ] = Radius_Token_Engine::render( (string) $pick, $tokens, $seed, $per_random, false );
 		}
 
 		$blocks = get_post_meta( $template_id, '_radius_spintax_blocks', true );
@@ -242,7 +242,7 @@ class Radius_Template_Tokens {
 				continue;
 			}
 			$pick = $variations[ self::random_variation_index( $variations ) ];
-			$tokens[ $key ] = Radius_Token_Engine::render( (string) $pick, $tokens, $seed, $per_random );
+			$tokens[ $key ] = Radius_Token_Engine::render( (string) $pick, $tokens, $seed, $per_random, false );
 		}
 
 		$hub = Radius_Geo_Service::hub_context_for_place( $place_id );
