@@ -534,21 +534,28 @@ class Radius_Legacy_Import_Service {
 	public static function migration_variant_replace_pairs( $variant ) {
 		$variant = sanitize_key( (string) $variant );
 		// Longer / specific substrings first so `spintax_towing` maps before generic `towing_` swaps inside keys.
+		// Order: longest `{spintax_towing-…}` / `{spintax_towing_…}` first so hyphenated tokens remap before bare `spintax_towing`.
 		$map     = array(
 			'roadside'  => array(
-				'{{towing}}'     => '{{roadside}}',
-				'spintax_towing' => 'spintax_roadside',
-				'towing_'        => 'roadside_',
+				'{{towing}}'       => '{{roadside}}',
+				'{spintax_towing-'  => '{spintax_roadside-',
+				'{spintax_towing_'  => '{spintax_roadside_',
+				'spintax_towing'     => 'spintax_roadside',
+				'towing_'            => 'roadside_',
 			),
 			'heavy'     => array(
-				'{{towing}}'     => '{{heavy}}',
-				'spintax_towing' => 'spintax_heavy',
-				'towing_'        => 'heavy_',
+				'{{towing}}'       => '{{heavy}}',
+				'{spintax_towing-'  => '{spintax_heavy-',
+				'{spintax_towing_'  => '{spintax_heavy_',
+				'spintax_towing'     => 'spintax_heavy',
+				'towing_'            => 'heavy_',
 			),
 			'equipment' => array(
-				'{{towing}}'     => '{{equipment}}',
-				'spintax_towing' => 'spintax_equipment',
-				'towing_'        => 'equipment_',
+				'{{towing}}'       => '{{equipment}}',
+				'{spintax_towing-'  => '{spintax_equipment-',
+				'{spintax_towing_'  => '{spintax_equipment_',
+				'spintax_towing'     => 'spintax_equipment',
+				'towing_'            => 'equipment_',
 			),
 		);
 		if ( ! isset( $map[ $variant ] ) ) {
@@ -1349,11 +1356,17 @@ class Radius_Legacy_Import_Service {
 	private static function apply_spintax_brace_placeholders_only( $text, array $rows ) {
 		$text = (string) $text;
 		foreach ( $rows as $mp ) {
-			if ( ! is_array( $mp ) || empty( $mp['label'] ) || empty( $mp['key'] ) ) {
+			if ( ! is_array( $mp ) || empty( $mp['key'] ) ) {
 				continue;
 			}
-			$pattern = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
-			$text    = (string) preg_replace( $pattern, '{{' . $mp['key'] . '}}', $text );
+			$key = (string) $mp['key'];
+			// Match by sanitized block key (hyphenated Elementor tokens often match `key`, not the human `label`).
+			$pattern_key = '/\{spintax_' . preg_quote( $key, '/' ) . '\}/iu';
+			$text          = (string) preg_replace( $pattern_key, '{{' . $key . '}}', $text );
+			if ( ! empty( $mp['label'] ) ) {
+				$pattern_label = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
+				$text            = (string) preg_replace( $pattern_label, '{{' . $key . '}}', $text );
+			}
 		}
 		return $text;
 	}
@@ -1504,34 +1517,7 @@ class Radius_Legacy_Import_Service {
 			},
 			$text
 		);
-		// Any leftover Magic Page `{spintax_key-or-label}` not matched by option rows (hyphenated keys, renamed variants, etc.).
-		$text = self::convert_remaining_braced_spintax_to_curly_keys( $text );
 		return $text;
-	}
-
-	/**
-	 * Turn `{spintax_anything}` into `{{anything}}` using sanitize_key so all legacy placeholders convert (no row-by-row limit).
-	 *
-	 * @param string $text HTML/text possibly containing `{spintax_roadside-h2-3}` etc.
-	 * @return string
-	 */
-	private static function convert_remaining_braced_spintax_to_curly_keys( $text ) {
-		$text = (string) $text;
-		if ( $text === '' || strpos( $text, '{spintax_' ) === false ) {
-			return $text;
-		}
-		return (string) preg_replace_callback(
-			'/\{spintax_([^\}]+)\}/',
-			function ( $m ) {
-				$inner = isset( $m[1] ) ? trim( (string) $m[1] ) : '';
-				if ( $inner === '' ) {
-					return $m[0];
-				}
-				$key = sanitize_key( $inner );
-				return $key !== '' ? '{{' . $key . '}}' : $m[0];
-			},
-			$text
-		);
 	}
 
 	/**
@@ -1734,12 +1720,19 @@ class Radius_Legacy_Import_Service {
 			if ( $replace_shortcodes ) {
 				$t_raw = (string) $post->post_title;
 				$c_raw = (string) $post->post_content;
+				$tc = $t_raw . $c_raw;
 				foreach ( $rows as $mp ) {
-					if ( ! is_array( $mp ) || empty( $mp['label'] ) ) {
+					if ( ! is_array( $mp ) ) {
 						continue;
 					}
-					$p = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
-					$repl += (int) preg_match_all( $p, $t_raw . $c_raw );
+					if ( ! empty( $mp['key'] ) ) {
+						$pk = '/\{spintax_' . preg_quote( (string) $mp['key'], '/' ) . '\}/iu';
+						$repl += (int) preg_match_all( $pk, $tc );
+					}
+					if ( ! empty( $mp['label'] ) && ( empty( $mp['key'] ) || (string) $mp['label'] !== (string) $mp['key'] ) ) {
+						$pl = '/\{spintax_' . preg_quote( (string) $mp['label'], '/' ) . '\}/iu';
+						$repl += (int) preg_match_all( $pl, $tc );
+					}
 				}
 				$mid_t   = self::apply_spintax_brace_placeholders_only( $t_raw, $rows );
 				$mid_c   = self::apply_spintax_brace_placeholders_only( $c_raw, $rows );
