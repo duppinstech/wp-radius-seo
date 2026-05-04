@@ -38,6 +38,7 @@ class Radius_Elementor_Compat {
 	 */
 	public static function register_elementor_hooks() {
 		add_action( 'pre_get_posts', array( __CLASS__, 'force_main_query_for_elementor_preview' ), 1 );
+		add_action( 'pre_get_posts', array( __CLASS__, 'exclude_radius_from_elementor_admin_queries' ), 999 );
 		add_filter( 'elementor/editor/v2/scripts/env', array( __CLASS__, 'ensure_editor_site_navigation_env' ), 999999 );
 		add_action( 'elementor/editor/v2/scripts/enqueue', array( __CLASS__, 'patch_editor_v2_env_before_init' ), 5 );
 		/*
@@ -93,6 +94,96 @@ class Radius_Elementor_Compat {
 	 * @param \WP_Query $query Main query.
 	 * @return void
 	 */
+	/**
+	 * Elementor (incl. floating buttons / recent documents) runs WP_Query across every CPT that supports the editor,
+	 * filtered by `_elementor_edit_mode = builder`. Large `radius_landing` libraries make that JOIN scan millions of
+	 * meta rows and stall admin (~10s+). Landings are edited from Radius screens, not Elementor’s global pickers — we
+	 * remove those CPTs from this query fingerprint only; editing still works via `elementor_cpt_support` + direct URLs.
+	 *
+	 * @param \WP_Query $query Query.
+	 * @return void
+	 */
+	public static function exclude_radius_from_elementor_admin_queries( $query ) {
+		if ( ! is_admin() || ! $query instanceof \WP_Query ) {
+			return;
+		}
+		if ( ! self::query_seeks_elementor_builder_meta( $query ) ) {
+			return;
+		}
+		$post_types = $query->get( 'post_type' );
+		if ( ! is_array( $post_types ) ) {
+			return;
+		}
+		/**
+		 * Post types to omit from Elementor’s bulk “built with Elementor” admin queries (recent docs, floating UI).
+		 * Default removes high-volume Radius CPTs; return empty array to disable this optimization.
+		 *
+		 * @param string[] $exclude       CPT slugs to strip from the query.
+		 * @param \WP_Query $query       Query instance.
+		 * @param string[] $post_types   Original post_type array.
+		 */
+		$exclude = apply_filters(
+			'radius_elementor_exclude_post_types_from_admin_meta_queries',
+			array( 'radius_landing', 'radius_service_area' ),
+			$query,
+			$post_types
+		);
+		if ( ! is_array( $exclude ) || $exclude === array() ) {
+			return;
+		}
+		if ( array_intersect( $post_types, $exclude ) === array() ) {
+			return;
+		}
+		// Typical Elementor merged query lists core types + theme CPTs + ours; require multiple types to avoid
+		// stripping a deliberate single-CPT query.
+		if ( count( $post_types ) < 3 ) {
+			return;
+		}
+		$new_types = array_values( array_diff( $post_types, $exclude ) );
+		if ( $new_types === array() ) {
+			return;
+		}
+		$query->set( 'post_type', $new_types );
+	}
+
+	/**
+	 * True when the query filters posts by Elementor builder mode (same fingerprint as slow admin JOINs).
+	 *
+	 * @param \WP_Query $query Query.
+	 * @return bool
+	 */
+	private static function query_seeks_elementor_builder_meta( $query ) {
+		if ( $query->get( 'meta_key' ) === '_elementor_edit_mode' && $query->get( 'meta_value' ) === 'builder' ) {
+			return true;
+		}
+		$mq = $query->get( 'meta_query' );
+		return is_array( $mq ) && self::meta_query_contains_elementor_edit_mode( $mq );
+	}
+
+	/**
+	 * @param array<int|string,mixed> $meta_query Meta query tree.
+	 * @return bool
+	 */
+	private static function meta_query_contains_elementor_edit_mode( array $meta_query ) {
+		foreach ( $meta_query as $k => $clause ) {
+			if ( 'relation' === $k ) {
+				continue;
+			}
+			if ( ! is_array( $clause ) ) {
+				continue;
+			}
+			if ( isset( $clause['key'] ) && $clause['key'] === '_elementor_edit_mode' ) {
+				if ( ! isset( $clause['value'] ) || (string) $clause['value'] === 'builder' ) {
+					return true;
+				}
+			}
+			if ( self::meta_query_contains_elementor_edit_mode( $clause ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static function force_main_query_for_elementor_preview( $query ) {
 		if ( is_admin() || ! $query->is_main_query() ) {
 			return;

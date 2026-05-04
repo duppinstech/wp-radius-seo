@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.6
+Stable tag: 1.6.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -36,7 +36,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_maintenance_applied` — action after maintenance apply finishes (rewrites, updater cache bust, optional object cache).
 * `radius_token_engine_after_strip_unresolved` — filter HTML/text after removing unresolved `{{token}}` placeholders.
 * `radius_token_engine_collapse_empty_paragraphs` — return false to skip removing empty `<p></p>` wrappers after stripping placeholders (default true).
+* `radius_elementor_exclude_post_types_from_admin_meta_queries` — array of CPT slugs to omit from Elementor’s admin `WP_Query` that lists “built with Elementor” across all supported types (reduces load from huge `radius_landing` tables). Return an empty array to keep default Elementor behavior.
 == Changelog ==
+
+= 1.6.7 =
+* Elementor: exclude `radius_landing` and `radius_service_area` from Elementor’s bulk admin queries that join `wp_postmeta` for `_elementor_edit_mode` (recent documents, floating buttons UI, etc.) so very large landing libraries do not slow every Elementor admin request. Editing landings in Elementor is unchanged. Optional filter `radius_elementor_exclude_post_types_from_admin_meta_queries` to adjust or disable.
 
 = 1.6.6 =
 * Deploy / dynamic output: remove unresolved `{{token}}` placeholders when a spintax/x-field key does not exist for that template (e.g. fewer paragraphs on one service variant); optionally collapse empty paragraph tags left behind. Nested token assembly during map building is unchanged.
