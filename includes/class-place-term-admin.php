@@ -1,6 +1,6 @@
 <?php
 /**
- * Term add/edit UI for lf_place meta (coordinates, region, ZIP).
+ * Term add/edit UI for radius_place meta (coordinates, region, ZIP).
  *
  * @package Radius
  */
@@ -31,29 +31,29 @@ class Radius_Place_Term_Admin {
 		wp_nonce_field( 'radius_place_term', 'radius_place_term_nonce' );
 		?>
 		<div class="form-field">
-			<label for="lf_region"><?php esc_html_e( 'Region / county', 'radius' ); ?></label>
-			<input name="lf_region" id="lf_region" type="text" value="" />
+			<label for="radius_region"><?php esc_html_e( 'Region / county', 'radius' ); ?></label>
+			<input name="radius_region" id="radius_region" type="text" value="" />
 		</div>
 		<div class="form-field">
-			<label for="lf_state"><?php esc_html_e( 'State / province', 'radius' ); ?></label>
-			<input name="lf_state" id="lf_state" type="text" value="" />
+			<label for="radius_state"><?php esc_html_e( 'State / province', 'radius' ); ?></label>
+			<input name="radius_state" id="radius_state" type="text" value="" />
 		</div>
 		<div class="form-field">
-			<label for="lf_postal"><?php esc_html_e( 'ZIP / postal code', 'radius' ); ?></label>
-			<input name="lf_postal" id="lf_postal" type="text" value="" />
+			<label for="radius_postal"><?php esc_html_e( 'ZIP / postal code', 'radius' ); ?></label>
+			<input name="radius_postal" id="radius_postal" type="text" value="" />
 		</div>
 		<div class="form-field">
-			<label for="lf_country"><?php esc_html_e( 'Country', 'radius' ); ?></label>
-			<input name="lf_country" id="lf_country" type="text" value="" />
+			<label for="radius_country"><?php esc_html_e( 'Country', 'radius' ); ?></label>
+			<input name="radius_country" id="radius_country" type="text" value="" />
 		</div>
 		<div class="form-field">
-			<label for="lf_lat"><?php esc_html_e( 'Latitude', 'radius' ); ?></label>
-			<input name="lf_lat" id="lf_lat" type="text" value="" class="regular-text" />
+			<label for="radius_lat"><?php esc_html_e( 'Latitude', 'radius' ); ?></label>
+			<input name="radius_lat" id="radius_lat" type="text" value="" class="regular-text" />
 			<p class="description"><?php esc_html_e( 'Decimal degrees (e.g. 39.4143). Used for service-area deploy.', 'radius' ); ?></p>
 		</div>
 		<div class="form-field">
-			<label for="lf_lng"><?php esc_html_e( 'Longitude', 'radius' ); ?></label>
-			<input name="lf_lng" id="lf_lng" type="text" value="" class="regular-text" />
+			<label for="radius_lng"><?php esc_html_e( 'Longitude', 'radius' ); ?></label>
+			<input name="radius_lng" id="radius_lng" type="text" value="" class="regular-text" />
 		</div>
 		<?php
 	}
@@ -65,39 +65,39 @@ class Radius_Place_Term_Admin {
 	public static function render_edit_fields( $term ) {
 		$tid = (int) $term->term_id;
 		wp_nonce_field( 'radius_place_term', 'radius_place_term_nonce' );
-		$region  = (string) get_term_meta( $tid, 'lf_region', true );
-		$state   = (string) get_term_meta( $tid, 'lf_state', true );
-		$postal  = (string) get_term_meta( $tid, 'lf_postal', true );
-		$country = (string) get_term_meta( $tid, 'lf_country', true );
-		$lat     = (string) get_term_meta( $tid, 'lf_lat', true );
-		$lng     = (string) get_term_meta( $tid, 'lf_lng', true );
+		$region  = (string) get_term_meta( $tid, 'radius_region', true );
+		$state   = (string) get_term_meta( $tid, 'radius_state', true );
+		$postal  = (string) get_term_meta( $tid, 'radius_postal', true );
+		$country = (string) get_term_meta( $tid, 'radius_country', true );
+		$lat     = (string) get_term_meta( $tid, 'radius_lat', true );
+		$lng     = (string) get_term_meta( $tid, 'radius_lng', true );
 		?>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_region"><?php esc_html_e( 'Region / county', 'radius' ); ?></label></th>
-			<td><input name="lf_region" id="lf_region" type="text" value="<?php echo esc_attr( $region ); ?>" class="regular-text" /></td>
+			<th scope="row"><label for="radius_region"><?php esc_html_e( 'Region / county', 'radius' ); ?></label></th>
+			<td><input name="radius_region" id="radius_region" type="text" value="<?php echo esc_attr( $region ); ?>" class="regular-text" /></td>
 		</tr>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_state"><?php esc_html_e( 'State / province', 'radius' ); ?></label></th>
-			<td><input name="lf_state" id="lf_state" type="text" value="<?php echo esc_attr( $state ); ?>" class="regular-text" /></td>
+			<th scope="row"><label for="radius_state"><?php esc_html_e( 'State / province', 'radius' ); ?></label></th>
+			<td><input name="radius_state" id="radius_state" type="text" value="<?php echo esc_attr( $state ); ?>" class="regular-text" /></td>
 		</tr>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_postal"><?php esc_html_e( 'ZIP / postal code', 'radius' ); ?></label></th>
-			<td><input name="lf_postal" id="lf_postal" type="text" value="<?php echo esc_attr( $postal ); ?>" class="regular-text" /></td>
+			<th scope="row"><label for="radius_postal"><?php esc_html_e( 'ZIP / postal code', 'radius' ); ?></label></th>
+			<td><input name="radius_postal" id="radius_postal" type="text" value="<?php echo esc_attr( $postal ); ?>" class="regular-text" /></td>
 		</tr>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_country"><?php esc_html_e( 'Country', 'radius' ); ?></label></th>
-			<td><input name="lf_country" id="lf_country" type="text" value="<?php echo esc_attr( $country ); ?>" class="regular-text" /></td>
+			<th scope="row"><label for="radius_country"><?php esc_html_e( 'Country', 'radius' ); ?></label></th>
+			<td><input name="radius_country" id="radius_country" type="text" value="<?php echo esc_attr( $country ); ?>" class="regular-text" /></td>
 		</tr>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_lat"><?php esc_html_e( 'Latitude', 'radius' ); ?></label></th>
+			<th scope="row"><label for="radius_lat"><?php esc_html_e( 'Latitude', 'radius' ); ?></label></th>
 			<td>
-				<input name="lf_lat" id="lf_lat" type="text" value="<?php echo esc_attr( $lat ); ?>" class="regular-text" />
+				<input name="radius_lat" id="radius_lat" type="text" value="<?php echo esc_attr( $lat ); ?>" class="regular-text" />
 				<p class="description"><?php esc_html_e( 'Decimal degrees. Required for service-area deploy when this place is used as an anchor.', 'radius' ); ?></p>
 			</td>
 		</tr>
 		<tr class="form-field">
-			<th scope="row"><label for="lf_lng"><?php esc_html_e( 'Longitude', 'radius' ); ?></label></th>
-			<td><input name="lf_lng" id="lf_lng" type="text" value="<?php echo esc_attr( $lng ); ?>" class="regular-text" /></td>
+			<th scope="row"><label for="radius_lng"><?php esc_html_e( 'Longitude', 'radius' ); ?></label></th>
+			<td><input name="radius_lng" id="radius_lng" type="text" value="<?php echo esc_attr( $lng ); ?>" class="regular-text" /></td>
 		</tr>
 		<?php
 	}
@@ -118,14 +118,14 @@ class Radius_Place_Term_Admin {
 			return;
 		}
 
-		$text_fields = array( 'lf_region', 'lf_state', 'lf_postal', 'lf_country' );
+		$text_fields = array( 'radius_region', 'radius_state', 'radius_postal', 'radius_country' );
 		foreach ( $text_fields as $key ) {
 			if ( ! isset( $_POST[ $key ] ) ) {
 				continue;
 			}
 			update_term_meta( $term_id, $key, sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) );
 		}
-		foreach ( array( 'lf_lat', 'lf_lng' ) as $key ) {
+		foreach ( array( 'radius_lat', 'radius_lng' ) as $key ) {
 			if ( ! isset( $_POST[ $key ] ) ) {
 				continue;
 			}

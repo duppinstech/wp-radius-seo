@@ -65,14 +65,14 @@
 	}
 
 	function syncHidden() {
-		var el = document.getElementById('lf_site_replacements_json');
+		var el = document.getElementById('radius_site_replacements_json');
 		if (el) {
 			el.value = JSON.stringify({ rows: state.rows });
 		}
 	}
 
 	function renderRows() {
-		var tb = document.querySelector('#lf-site-replacements tbody');
+		var tb = document.querySelector('#radius-site-replacements tbody');
 		if (!tb) {
 			return;
 		}
@@ -81,14 +81,14 @@
 			var tr = document.createElement('tr');
 			tr.setAttribute('data-index', String(idx));
 			tr.innerHTML =
-				'<td class="radius-tpl-col-key"><input type="text" class="regular-text lf-site-repl-key" value="" /></td>' +
-				'<td class="lf-site-repl-summary radius-tpl-col-val"></td>' +
-				'<td class="radius-tpl-col-actions"><button type="button" class="button lf-site-repl-edit"></button> ' +
-				'<button type="button" class="button lf-site-repl-remove"></button></td>';
-			tr.querySelector('.lf-site-repl-key').value = row.key || '';
-			tr.querySelector('.lf-site-repl-summary').textContent = summary(row);
-			tr.querySelector('.lf-site-repl-edit').textContent = i18n.editValues || 'Edit values';
-			tr.querySelector('.lf-site-repl-remove').textContent = i18n.remove || 'Remove';
+				'<td class="radius-tpl-col-key"><input type="text" class="regular-text radius-site-repl-key" value="" /></td>' +
+				'<td class="radius-site-repl-summary radius-tpl-col-val"></td>' +
+				'<td class="radius-tpl-col-actions"><button type="button" class="button radius-site-repl-edit"></button> ' +
+				'<button type="button" class="button radius-site-repl-remove"></button></td>';
+			tr.querySelector('.radius-site-repl-key').value = row.key || '';
+			tr.querySelector('.radius-site-repl-summary').textContent = summary(row);
+			tr.querySelector('.radius-site-repl-edit').textContent = i18n.editValues || 'Edit values';
+			tr.querySelector('.radius-site-repl-remove').textContent = i18n.remove || 'Remove';
 			tb.appendChild(tr);
 		});
 		syncHidden();
@@ -97,7 +97,7 @@
 	function appendAreaOverrideRow(container, o) {
 		o = o || { area: '', value: '' };
 		var wrap = document.createElement('div');
-		wrap.className = 'lf-site-repl-ao-row';
+		wrap.className = 'radius-site-repl-ao-row';
 		wrap.style.marginBottom = '14px';
 		var labArea = document.createElement('label');
 		labArea.style.display = 'block';
@@ -105,7 +105,7 @@
 		labArea.style.fontWeight = '600';
 		labArea.textContent = i18n.areaColumn || 'Service area code';
 		var sel = document.createElement('select');
-		sel.className = 'lf-site-repl-ao-area widefat';
+		sel.className = 'radius-site-repl-ao-area widefat';
 		var opt0 = document.createElement('option');
 		opt0.value = '';
 		opt0.textContent = i18n.areaSelectPlaceholder || '— Choose area code —';
@@ -140,14 +140,14 @@
 		labVal.style.fontWeight = '600';
 		labVal.textContent = i18n.customValueColumn || 'Custom value';
 		var ta = document.createElement('textarea');
-		ta.className = 'widefat code lf-site-repl-ao-value';
+		ta.className = 'widefat code radius-site-repl-ao-value';
 		ta.rows = 4;
 		ta.value = o.value || '';
 		var rm = document.createElement('p');
 		rm.style.marginTop = '6px';
 		var rmBtn = document.createElement('button');
 		rmBtn.type = 'button';
-		rmBtn.className = 'button-link lf-site-repl-ao-remove';
+		rmBtn.className = 'button-link radius-site-repl-ao-remove';
 		rmBtn.textContent = i18n.removeAreaOverride || 'Remove';
 		rm.appendChild(rmBtn);
 		wrap.appendChild(labArea);
@@ -162,11 +162,11 @@
 		if (editing < 0) {
 			return;
 		}
-		var body = document.getElementById('lf-site-repl-modal-body');
+		var body = document.getElementById('radius-site-repl-modal-body');
 		if (!body) {
 			return;
 		}
-		var inputs = body.querySelectorAll('textarea.lf-site-repl-value-input');
+		var inputs = body.querySelectorAll('textarea.radius-site-repl-value-input');
 		var vals = [];
 		inputs.forEach(function (ta) {
 			vals.push(ta.value);
@@ -176,12 +176,12 @@
 		}
 		state.rows[editing].values = vals;
 
-		var aow = document.getElementById('lf-site-repl-area-overrides');
+		var aow = document.getElementById('radius-site-repl-area-overrides');
 		var aos = [];
 		if (aow) {
-			aow.querySelectorAll('.lf-site-repl-ao-row').forEach(function (rw) {
-				var s = rw.querySelector('.lf-site-repl-ao-area');
-				var t = rw.querySelector('.lf-site-repl-ao-value');
+			aow.querySelectorAll('.radius-site-repl-ao-row').forEach(function (rw) {
+				var s = rw.querySelector('.radius-site-repl-ao-area');
+				var t = rw.querySelector('.radius-site-repl-ao-value');
 				if (!s || !t) {
 					return;
 				}
@@ -196,7 +196,7 @@
 	}
 
 	function closeModal() {
-		var modal = document.getElementById('lf-site-repl-modal');
+		var modal = document.getElementById('radius-site-repl-modal');
 		if (modal) {
 			modal.style.display = 'none';
 		}
@@ -206,9 +206,9 @@
 
 	function saveModal() {
 		readModal();
-		var tr = document.querySelector('#lf-site-replacements tbody tr[data-index="' + editing + '"]');
+		var tr = document.querySelector('#radius-site-replacements tbody tr[data-index="' + editing + '"]');
 		if (tr) {
-			var sum = tr.querySelector('.lf-site-repl-summary');
+			var sum = tr.querySelector('.radius-site-repl-summary');
 			if (sum) {
 				sum.textContent = summary(state.rows[editing]);
 			}
@@ -223,9 +223,9 @@
 		if (!row) {
 			return;
 		}
-		var modal = document.getElementById('lf-site-repl-modal');
-		var title = document.getElementById('lf-site-repl-modal-title');
-		var body = document.getElementById('lf-site-repl-modal-body');
+		var modal = document.getElementById('radius-site-repl-modal');
+		var title = document.getElementById('radius-site-repl-modal-title');
+		var body = document.getElementById('radius-site-repl-modal-body');
 		if (!modal || !title || !body) {
 			return;
 		}
@@ -234,7 +234,7 @@
 		var vals = row.values && row.values.length ? row.values.slice() : [''];
 		vals.forEach(function (val, vi) {
 			var wrap = document.createElement('div');
-			wrap.className = 'lf-site-repl-modal-row';
+			wrap.className = 'radius-site-repl-modal-row';
 			wrap.style.marginBottom = '14px';
 			var lab = document.createElement('label');
 			lab.style.display = 'block';
@@ -242,14 +242,14 @@
 			lab.style.fontWeight = '600';
 			lab.textContent = (i18n.valueLabel || 'Value') + ' ' + (vi + 1);
 			var ta = document.createElement('textarea');
-			ta.className = 'widefat lf-site-repl-value-input';
+			ta.className = 'widefat radius-site-repl-value-input';
 			ta.rows = 3;
 			ta.value = val;
 			var rm = document.createElement('p');
 			rm.style.marginTop = '6px';
 			var rmBtn = document.createElement('button');
 			rmBtn.type = 'button';
-			rmBtn.className = 'button-link lf-site-repl-remove-value';
+			rmBtn.className = 'button-link radius-site-repl-remove-value';
 			rmBtn.textContent = i18n.removeValue || 'Remove value';
 			rm.appendChild(rmBtn);
 			wrap.appendChild(lab);
@@ -261,7 +261,7 @@
 		var addBtn = document.createElement('button');
 		addBtn.type = 'button';
 		addBtn.className = 'button';
-		addBtn.id = 'lf-site-repl-add-value';
+		addBtn.id = 'radius-site-repl-add-value';
 		addBtn.textContent = i18n.addValue || 'Add value';
 		addP.appendChild(addBtn);
 		body.appendChild(addP);
@@ -284,7 +284,7 @@
 			body.appendChild(emptyAc);
 		}
 		var aoWrap = document.createElement('div');
-		aoWrap.id = 'lf-site-repl-area-overrides';
+		aoWrap.id = 'radius-site-repl-area-overrides';
 		body.appendChild(aoWrap);
 		var ainit = Array.isArray(row.area_overrides) ? row.area_overrides : [];
 		if (ainit.length === 0) {
@@ -297,7 +297,7 @@
 		var addAoP = document.createElement('p');
 		var addAoBtn = document.createElement('button');
 		addAoBtn.type = 'button';
-		addAoBtn.className = 'button lf-site-repl-add-area-override';
+		addAoBtn.className = 'button radius-site-repl-add-area-override';
 		addAoBtn.textContent = i18n.addAreaOverride || 'Add area override';
 		addAoP.appendChild(addAoBtn);
 		body.appendChild(addAoP);
@@ -307,13 +307,13 @@
 	}
 
 	function bindModal() {
-		var modal = document.getElementById('lf-site-repl-modal');
+		var modal = document.getElementById('radius-site-repl-modal');
 		if (!modal) {
 			return;
 		}
-		var saveBtn = document.getElementById('lf-site-repl-modal-save');
-		var cancelBtn = document.getElementById('lf-site-repl-modal-cancel');
-		var dismissBtns = modal.querySelectorAll('.lf-site-repl-modal-dismiss');
+		var saveBtn = document.getElementById('radius-site-repl-modal-save');
+		var cancelBtn = document.getElementById('radius-site-repl-modal-cancel');
+		var dismissBtns = modal.querySelectorAll('.radius-site-repl-modal-dismiss');
 		if (saveBtn) {
 			saveBtn.addEventListener('click', function (e) {
 				e.preventDefault();
@@ -334,7 +334,7 @@
 		});
 		modal.addEventListener('click', function (e) {
 			var t = e.target;
-			if (t && t.classList && t.classList.contains('lf-spintax-modal__backdrop')) {
+			if (t && t.classList && t.classList.contains('radius-spintax-modal__backdrop')) {
 				closeModal();
 			}
 		});
@@ -343,16 +343,16 @@
 			if (!t) {
 				return;
 			}
-			if (t.id === 'lf-site-repl-add-value') {
+			if (t.id === 'radius-site-repl-add-value') {
 				e.preventDefault();
-				var body = document.getElementById('lf-site-repl-modal-body');
+				var body = document.getElementById('radius-site-repl-modal-body');
 				if (!body) {
 					return;
 				}
-				var addAnchor = document.getElementById('lf-site-repl-add-value');
-				var n = body.querySelectorAll('textarea.lf-site-repl-value-input').length;
+				var addAnchor = document.getElementById('radius-site-repl-add-value');
+				var n = body.querySelectorAll('textarea.radius-site-repl-value-input').length;
 				var wrap = document.createElement('div');
-				wrap.className = 'lf-site-repl-modal-row';
+				wrap.className = 'radius-site-repl-modal-row';
 				wrap.style.marginBottom = '14px';
 				var lab = document.createElement('label');
 				lab.style.display = 'block';
@@ -360,14 +360,14 @@
 				lab.style.fontWeight = '600';
 				lab.textContent = (i18n.valueLabel || 'Value') + ' ' + (n + 1);
 				var ta = document.createElement('textarea');
-				ta.className = 'widefat lf-site-repl-value-input';
+				ta.className = 'widefat radius-site-repl-value-input';
 				ta.rows = 3;
 				ta.value = '';
 				var rm = document.createElement('p');
 				rm.style.marginTop = '6px';
 				var rmBtn = document.createElement('button');
 				rmBtn.type = 'button';
-				rmBtn.className = 'button-link lf-site-repl-remove-value';
+				rmBtn.className = 'button-link radius-site-repl-remove-value';
 				rmBtn.textContent = i18n.removeValue || 'Remove value';
 				rm.appendChild(rmBtn);
 				wrap.appendChild(lab);
@@ -379,39 +379,39 @@
 					body.appendChild(wrap);
 				}
 			}
-			if (t.classList && t.classList.contains('lf-site-repl-remove-value')) {
+			if (t.classList && t.classList.contains('radius-site-repl-remove-value')) {
 				e.preventDefault();
-				var row = t.closest('.lf-site-repl-modal-row');
-				var body2 = document.getElementById('lf-site-repl-modal-body');
+				var row = t.closest('.radius-site-repl-modal-row');
+				var body2 = document.getElementById('radius-site-repl-modal-body');
 				if (!row || !body2) {
 					return;
 				}
-				var all = body2.querySelectorAll('textarea.lf-site-repl-value-input');
+				var all = body2.querySelectorAll('textarea.radius-site-repl-value-input');
 				if (all.length <= 1) {
 					return;
 				}
 				row.remove();
-				body2.querySelectorAll('.lf-site-repl-modal-row label').forEach(function (labEl, i) {
+				body2.querySelectorAll('.radius-site-repl-modal-row label').forEach(function (labEl, i) {
 					labEl.textContent = (i18n.valueLabel || 'Value') + ' ' + (i + 1);
 				});
 			}
-			if (t.classList && t.classList.contains('lf-site-repl-add-area-override')) {
+			if (t.classList && t.classList.contains('radius-site-repl-add-area-override')) {
 				e.preventDefault();
-				var aow = document.getElementById('lf-site-repl-area-overrides');
+				var aow = document.getElementById('radius-site-repl-area-overrides');
 				if (aow) {
 					appendAreaOverrideRow(aow, { area: '', value: '' });
 				}
 			}
-			if (t.classList && t.classList.contains('lf-site-repl-ao-remove')) {
+			if (t.classList && t.classList.contains('radius-site-repl-ao-remove')) {
 				e.preventDefault();
-				var srow = t.closest('.lf-site-repl-ao-row');
-				var aow2 = document.getElementById('lf-site-repl-area-overrides');
+				var srow = t.closest('.radius-site-repl-ao-row');
+				var aow2 = document.getElementById('radius-site-repl-area-overrides');
 				if (!srow || !aow2) {
 					return;
 				}
-				if (aow2.querySelectorAll('.lf-site-repl-ao-row').length <= 1) {
-					var sel = srow.querySelector('.lf-site-repl-ao-area');
-					var ta2 = srow.querySelector('.lf-site-repl-ao-value');
+				if (aow2.querySelectorAll('.radius-site-repl-ao-row').length <= 1) {
+					var sel = srow.querySelector('.radius-site-repl-ao-area');
+					var ta2 = srow.querySelector('.radius-site-repl-ao-value');
 					if (sel) {
 						sel.value = '';
 					}
@@ -426,7 +426,7 @@
 	}
 
 	function init() {
-		if (!document.getElementById('lf-site-replacements')) {
+		if (!document.getElementById('radius-site-replacements')) {
 			return;
 		}
 		var rowsIn = cfg.initial && Array.isArray(cfg.initial.rows) ? cfg.initial.rows : [];
@@ -437,7 +437,7 @@
 		var form = document.querySelector('form.radius-settings-form');
 		if (form) {
 			form.addEventListener('submit', function () {
-				document.querySelectorAll('#lf-site-replacements .lf-site-repl-key').forEach(function (inp, i) {
+				document.querySelectorAll('#radius-site-replacements .radius-site-repl-key').forEach(function (inp, i) {
 					if (state.rows[i]) {
 						state.rows[i].key = inp.value;
 					}
@@ -446,7 +446,7 @@
 			});
 		}
 
-		var addBtn = document.getElementById('lf-site-replacements-add');
+		var addBtn = document.getElementById('radius-site-replacements-add');
 		if (addBtn) {
 			addBtn.addEventListener('click', function () {
 				state.rows.push({ key: '', values: [''], area_overrides: [] });
@@ -454,21 +454,21 @@
 			});
 		}
 
-		var tbl = document.getElementById('lf-site-replacements');
+		var tbl = document.getElementById('radius-site-replacements');
 		if (tbl) {
 			tbl.addEventListener('click', function (e) {
 				var t = e.target;
 				if (!t || !t.classList) {
 					return;
 				}
-				if (t.classList.contains('lf-site-repl-edit')) {
+				if (t.classList.contains('radius-site-repl-edit')) {
 					var tr = t.closest('tr');
 					var idx = tr ? parseInt(tr.getAttribute('data-index'), 10) : -1;
 					if (!isNaN(idx) && idx >= 0) {
 						openModal(idx);
 					}
 				}
-				if (t.classList.contains('lf-site-repl-remove')) {
+				if (t.classList.contains('radius-site-repl-remove')) {
 					var tr2 = t.closest('tr');
 					var idx2 = tr2 ? parseInt(tr2.getAttribute('data-index'), 10) : -1;
 					if (!isNaN(idx2) && idx2 >= 0) {
@@ -478,7 +478,7 @@
 				}
 			});
 			tbl.addEventListener('input', function (e) {
-				if (e.target && e.target.classList.contains('lf-site-repl-key')) {
+				if (e.target && e.target.classList.contains('radius-site-repl-key')) {
 					var tr = e.target.closest('tr');
 					var idx = tr ? parseInt(tr.getAttribute('data-index'), 10) : -1;
 					if (!isNaN(idx) && state.rows[idx]) {

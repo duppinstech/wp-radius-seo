@@ -18,8 +18,8 @@
 
 	function bindBulkGuard() {
 		var form = document.getElementById('radius-places-bulk-form');
-		var submit = document.getElementById('lf-places-bulk-submit');
-		var actionSel = document.getElementById('lf_places_bulk_action');
+		var submit = document.getElementById('radius-places-bulk-submit');
+		var actionSel = document.getElementById('radius_places_bulk_action');
 		if (!submit || !form || !actionSel) {
 			return;
 		}
@@ -35,7 +35,7 @@
 				}
 			}
 			var any = false;
-			form.querySelectorAll('.lf-place-cb').forEach(function (cb) {
+			form.querySelectorAll('.radius-place-cb').forEach(function (cb) {
 				if (cb.checked) {
 					any = true;
 				}
@@ -48,13 +48,13 @@
 	}
 
 	function bindSelectAll() {
-		var all = document.getElementById('lf-select-all-places');
+		var all = document.getElementById('radius-select-all-places');
 		var form = document.getElementById('radius-places-bulk-form');
 		if (!all || !form) {
 			return;
 		}
 		all.addEventListener('change', function () {
-			form.querySelectorAll('.lf-place-cb').forEach(function (cb) {
+			form.querySelectorAll('.radius-place-cb').forEach(function (cb) {
 				cb.checked = all.checked;
 			});
 		});

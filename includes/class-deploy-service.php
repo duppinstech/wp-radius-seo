@@ -18,16 +18,16 @@ class Radius_Deploy_Service {
 	 * Create or update landings for each place ID.
 	 *
 	 * @param int   $template_id Template post ID.
-	 * @param int[] $place_ids   lf_place term IDs.
-	 * @param array $args        { update_existing: bool, target_post_type?: 'lf_landing'|'lf_service_area' }
+	 * @param int[] $place_ids   radius_place term IDs.
+	 * @param array $args        { update_existing: bool, target_post_type?: 'radius_landing'|'radius_service_area' }
 	 * @return array{created:int,updated:int,skipped:int,errors:string[]}
 	 */
 	public static function deploy( $template_id, array $place_ids, array $args = array() ) {
 		$template_id = (int) $template_id;
 		$update      = ! empty( $args['update_existing'] );
-		$target_pt   = isset( $args['target_post_type'] ) ? sanitize_key( (string) $args['target_post_type'] ) : 'lf_landing';
-		if ( ! in_array( $target_pt, array( 'lf_landing', 'lf_service_area' ), true ) ) {
-			$target_pt = 'lf_landing';
+		$target_pt   = isset( $args['target_post_type'] ) ? sanitize_key( (string) $args['target_post_type'] ) : 'radius_landing';
+		if ( ! in_array( $target_pt, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$target_pt = 'radius_landing';
 		}
 
 		$out = array(
@@ -37,7 +37,7 @@ class Radius_Deploy_Service {
 			'errors'  => array(),
 		);
 
-		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'lf_template' ) {
+		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'radius_template' ) {
 			$out['errors'][] = __( 'Invalid template.', 'radius' );
 			return $out;
 		}
@@ -62,7 +62,7 @@ class Radius_Deploy_Service {
 			$title   = self::compute_landing_title( $template, $tokens, $seed );
 			$content = Radius_Token_Engine::render( $template->post_content, $tokens, $seed );
 
-			$slug_base = 'lf_service_area' === $target_pt
+			$slug_base = 'radius_service_area' === $target_pt
 				? self::compute_service_area_slug_base( $tokens )
 				: self::compute_landing_slug_base( $template, $tokens, $seed );
 
@@ -127,7 +127,7 @@ class Radius_Deploy_Service {
 	/**
 	 * Re-build a landing from its template + place (new spintax picks, same structure as deploy update).
 	 *
-	 * @param int $landing_id lf_landing post ID.
+	 * @param int $landing_id radius_landing post ID.
 	 * @return string Empty on success; short error message on failure.
 	 */
 	public static function reprocess_landing( $landing_id ) {
@@ -136,18 +136,18 @@ class Radius_Deploy_Service {
 			return __( 'Invalid landing.', 'radius' );
 		}
 		$post = get_post( $landing_id );
-		if ( ! $post || ! in_array( $post->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! $post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return __( 'Not a landing or service area post.', 'radius' );
 		}
 
-		$template_id = (int) get_post_meta( $landing_id, '_lf_template_id', true );
-		$place_id    = (int) get_post_meta( $landing_id, '_lf_place_id', true );
+		$template_id = (int) get_post_meta( $landing_id, '_radius_template_id', true );
+		$place_id    = (int) get_post_meta( $landing_id, '_radius_place_id', true );
 		if ( $template_id <= 0 || $place_id <= 0 ) {
 			return __( 'Landing is missing template or place meta.', 'radius' );
 		}
 
 		$template = get_post( $template_id );
-		if ( ! $template || $template->post_type !== 'lf_template' ) {
+		if ( ! $template || $template->post_type !== 'radius_template' ) {
 			return __( 'Template not found.', 'radius' );
 		}
 
@@ -163,7 +163,7 @@ class Radius_Deploy_Service {
 		$seed    = $template_id * 100000 + $place_id;
 		$title   = self::compute_landing_title( $template, $tokens, $seed );
 		$content = Radius_Token_Engine::render( $template->post_content, $tokens, $seed );
-		$slug_base = 'lf_service_area' === $post->post_type
+		$slug_base = 'radius_service_area' === $post->post_type
 			? self::compute_service_area_slug_base( $tokens )
 			: self::compute_landing_slug_base( $template, $tokens, $seed );
 
@@ -199,16 +199,16 @@ class Radius_Deploy_Service {
 	public static function compute_dynamic_public_output( $landing_id ) {
 		$landing_id = (int) $landing_id;
 		$post       = get_post( $landing_id );
-		if ( ! $post || ! in_array( $post->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! $post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return null;
 		}
-		$template_id = (int) get_post_meta( $landing_id, '_lf_template_id', true );
-		$place_id    = (int) get_post_meta( $landing_id, '_lf_place_id', true );
+		$template_id = (int) get_post_meta( $landing_id, '_radius_template_id', true );
+		$place_id    = (int) get_post_meta( $landing_id, '_radius_place_id', true );
 		if ( $template_id <= 0 || $place_id <= 0 ) {
 			return null;
 		}
 		$template = get_post( $template_id );
-		if ( ! $template || 'lf_template' !== $template->post_type ) {
+		if ( ! $template || 'radius_template' !== $template->post_type ) {
 			return null;
 		}
 		$tokens = Radius_Template_Tokens::build_map(
@@ -234,14 +234,14 @@ class Radius_Deploy_Service {
 	 * Resolved title + body for a template + place (e.g. front-end preview using first service anchor).
 	 *
 	 * @param int $template_id Template post ID.
-	 * @param int $place_id    lf_place term ID.
+	 * @param int $place_id    radius_place term ID.
 	 * @return array{title: string, content: string}|null
 	 */
 	public static function compute_template_preview_output( $template_id, $place_id ) {
 		$template_id = (int) $template_id;
 		$place_id    = (int) $place_id;
 		$template    = get_post( $template_id );
-		if ( ! $template || 'lf_template' !== $template->post_type ) {
+		if ( ! $template || 'radius_template' !== $template->post_type ) {
 			return null;
 		}
 		if ( $place_id <= 0 ) {
@@ -286,15 +286,15 @@ class Radius_Deploy_Service {
 	/**
 	 * @param int    $template_id Template ID.
 	 * @param int    $place_id    Term ID.
-	 * @param string $post_type   lf_landing or lf_service_area.
+	 * @param string $post_type   radius_landing or radius_service_area.
 	 * @return int Post ID or 0.
 	 */
-	public static function find_deployed( $template_id, $place_id, $post_type = 'lf_landing' ) {
+	public static function find_deployed( $template_id, $place_id, $post_type = 'radius_landing' ) {
 		$template_id = (int) $template_id;
 		$place_id    = (int) $place_id;
 		$post_type   = sanitize_key( (string) $post_type );
-		if ( ! in_array( $post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
-			$post_type = 'lf_landing';
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$post_type = 'radius_landing';
 		}
 
 		$q = new WP_Query(
@@ -306,11 +306,11 @@ class Radius_Deploy_Service {
 				'meta_query'     => array(
 					'relation' => 'AND',
 					array(
-						'key'   => '_lf_template_id',
+						'key'   => '_radius_template_id',
 						'value' => (string) $template_id,
 					),
 					array(
-						'key'   => '_lf_place_id',
+						'key'   => '_radius_place_id',
 						'value' => (string) $place_id,
 					),
 				),
@@ -329,7 +329,7 @@ class Radius_Deploy_Service {
 	 * @return int Post ID or 0.
 	 */
 	public static function find_landing( $template_id, $place_id ) {
-		return self::find_deployed( $template_id, $place_id, 'lf_landing' );
+		return self::find_deployed( $template_id, $place_id, 'radius_landing' );
 	}
 
 	/**
@@ -339,8 +339,8 @@ class Radius_Deploy_Service {
 	 * @return void
 	 */
 	private static function attach_meta( $post_id, $template_id, $place_id ) {
-		update_post_meta( $post_id, '_lf_template_id', $template_id );
-		update_post_meta( $post_id, '_lf_place_id', $place_id );
+		update_post_meta( $post_id, '_radius_template_id', $template_id );
+		update_post_meta( $post_id, '_radius_place_id', $place_id );
 	}
 
 	/**
@@ -352,7 +352,7 @@ class Radius_Deploy_Service {
 	 * @return string
 	 */
 	private static function compute_landing_title( $template, array $tokens, $seed, $spintax_random = false ) {
-		$pattern = get_post_meta( $template->ID, '_lf_landing_title_pattern', true );
+		$pattern = get_post_meta( $template->ID, '_radius_landing_title_pattern', true );
 		$pattern = is_string( $pattern ) ? trim( $pattern ) : '';
 		/**
 		 * Custom landing title pattern for deploy (empty = use template title as blueprint).
@@ -383,7 +383,7 @@ class Radius_Deploy_Service {
 			$s = 'place';
 		}
 		/**
-		 * Slug segment for lf_service_area posts (under the service area URL prefix).
+		 * Slug segment for radius_service_area posts (under the service area URL prefix).
 		 *
 		 * @param string               $slug   Sanitized base slug.
 		 * @param array<string,string> $tokens Token map.
@@ -401,7 +401,7 @@ class Radius_Deploy_Service {
 	 * @return string Sanitized slug base (not guaranteed unique).
 	 */
 	private static function compute_landing_slug_base( $template, array $tokens, $seed, $spintax_random = false ) {
-		$pattern = get_post_meta( $template->ID, '_lf_landing_slug_pattern', true );
+		$pattern = get_post_meta( $template->ID, '_radius_landing_slug_pattern', true );
 		$pattern = is_string( $pattern ) ? trim( $pattern ) : '';
 		/**
 		 * Custom landing slug pattern (empty = default below).
@@ -419,7 +419,7 @@ class Radius_Deploy_Service {
 			$s = sanitize_title( ( isset( $tokens['place_slug'] ) ? $tokens['place_slug'] : '' ) . '-' . $template->post_name );
 		}
 		if ( $s === '' ) {
-			$s = 'lf-' . (int) $template->ID . '-place';
+			$s = 'rd-' . (int) $template->ID . '-place';
 		}
 		return $s;
 	}
@@ -427,8 +427,8 @@ class Radius_Deploy_Service {
 	/**
 	 * Copy Elementor document + optional plugin meta from template; replace tokens; regenerate CSS.
 	 *
-	 * @param int                  $landing_id  lf_landing post ID.
-	 * @param int                  $template_id lf_template post ID.
+	 * @param int                  $landing_id  radius_landing post ID.
+	 * @param int                  $template_id radius_template post ID.
 	 * @param array<string,string> $tokens      Token map.
 	 * @param int                  $seed        Spintax seed.
 	 * @return string Empty on success, short error message on failure.
@@ -605,18 +605,18 @@ class Radius_Deploy_Service {
 	}
 
 	/**
-	 * Unique post_name within the target CPT; for root lf_landing URLs also avoid published post/page slug clashes.
+	 * Unique post_name within the target CPT; for root radius_landing URLs also avoid published post/page slug clashes.
 	 *
 	 * @param string   $base              Sanitized slug base.
 	 * @param int      $exclude_post_id 0 for new posts; when updating, allow keeping this post’s slug.
-	 * @param string   $target_post_type  lf_landing or lf_service_area.
+	 * @param string   $target_post_type  radius_landing or radius_service_area.
 	 * @return string
 	 */
-	private static function unique_slug( $base, $exclude_post_id = 0, $target_post_type = 'lf_landing' ) {
+	private static function unique_slug( $base, $exclude_post_id = 0, $target_post_type = 'radius_landing' ) {
 		$exclude_post_id = (int) $exclude_post_id;
 		$target_post_type = sanitize_key( (string) $target_post_type );
-		if ( ! in_array( $target_post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
-			$target_post_type = 'lf_landing';
+		if ( ! in_array( $target_post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$target_post_type = 'radius_landing';
 		}
 		$slug = $base;
 		$n    = 0;
@@ -637,7 +637,7 @@ class Radius_Deploy_Service {
 					$conflict = true;
 				}
 			}
-			if ( ! $conflict && 'lf_landing' === $target_post_type ) {
+			if ( ! $conflict && 'radius_landing' === $target_post_type ) {
 				$others = get_posts(
 					array(
 						'name'             => $slug,

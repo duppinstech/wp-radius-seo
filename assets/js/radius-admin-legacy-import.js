@@ -141,17 +141,17 @@
 	}
 
 	async function runChain() {
-		var btn = el('lf-legacy-import-start');
-		var wrap = el('lf-legacy-import-status');
-		var line = el('lf-legacy-import-status-line');
-		var log = el('lf-legacy-import-log');
-		var overall = el('lf-legacy-import-overall');
-		var overallLab = el('lf-legacy-import-overall-label');
-		var overallCap = el('lf-legacy-import-overall-caption');
-		var batch = el('lf-legacy-import-batch');
-		var batchLab = el('lf-legacy-import-batch-label');
-		var batchCap = el('lf-legacy-import-batch-caption');
-		var batchWrap = el('lf-legacy-import-batch-wrap');
+		var btn = el('radius-legacy-import-start');
+		var wrap = el('radius-legacy-import-status');
+		var line = el('radius-legacy-import-status-line');
+		var log = el('radius-legacy-import-log');
+		var overall = el('radius-legacy-import-overall');
+		var overallLab = el('radius-legacy-import-overall-label');
+		var overallCap = el('radius-legacy-import-overall-caption');
+		var batch = el('radius-legacy-import-batch');
+		var batchLab = el('radius-legacy-import-batch-label');
+		var batchCap = el('radius-legacy-import-batch-caption');
+		var batchWrap = el('radius-legacy-import-batch-wrap');
 
 		if (!btn || !cfg.ajaxurl || !cfg.nonce) {
 			return;
@@ -194,7 +194,7 @@
 			typeof cfg.interBatchDelayMs === 'number' && cfg.interBatchDelayMs >= 0
 				? cfg.interBatchDelayMs
 				: 1200;
-		var skipCb = el('lf-legacy-import-skip-existing');
+		var skipCb = el('radius-legacy-import-skip-existing');
 
 		try {
 			while (true) {
@@ -370,12 +370,16 @@
 		btn.textContent = i18n.start || 'Run legacy place import (all batches)';
 	}
 
+	window.radiusLegacyImportRunAll = runChain;
+
 	document.addEventListener('DOMContentLoaded', function () {
-		var btn = el('lf-legacy-import-start');
-		if (btn) {
+		var buttons = document.querySelectorAll(
+			'#radius-legacy-import-start, .radius-legacy-place-import-start'
+		);
+		buttons.forEach(function (btn) {
 			btn.addEventListener('click', function () {
 				runChain();
 			});
-		}
+		});
 	});
 })();

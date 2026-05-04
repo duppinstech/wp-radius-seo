@@ -233,14 +233,14 @@ class Radius_API_License {
 	 * @return void
 	 */
 	public static function sync_api_key_from_request() {
-		if ( ! isset( $_POST['localeforge_settings_nonce'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! isset( $_POST['radius_settings_nonce'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
-		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['localeforge_settings_nonce'] ) ), 'localeforge_settings' ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['radius_settings_nonce'] ) ), 'radius_settings' ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
 
-		if ( ! empty( $_POST['lf_api_key_remove'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! empty( $_POST['radius_api_key_remove'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			Radius_Settings::update(
 				array(
 					'api_key'           => '',
@@ -252,8 +252,8 @@ class Radius_API_License {
 		}
 
 		$current_plain = self::get_api_key();
-		$lf_api_key_in = isset( $_POST['lf_api_key'] ) ? wp_unslash( (string) $_POST['lf_api_key'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified above; normalized in sanitize_api_key().
-		$incoming      = self::sanitize_api_key( $lf_api_key_in );
+		$radius_api_key_in = isset( $_POST['radius_api_key'] ) ? wp_unslash( (string) $_POST['radius_api_key'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Nonce verified above; normalized in sanitize_api_key().
+		$incoming      = self::sanitize_api_key( $radius_api_key_in );
 
 		// Same field shows a mask; re-posting it unchanged must not overwrite the real key.
 		if ( $current_plain !== '' && $incoming !== '' && hash_equals( self::get_masked_preview( $current_plain ), $incoming ) ) {
@@ -376,7 +376,7 @@ class Radius_API_License {
 		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		$on_radius = ( $page !== '' && strpos( $page, 'radius' ) === 0 ) || ( $screen && in_array( $screen->post_type, array( 'lf_template', 'lf_landing', 'lf_service_area' ), true ) );
+		$on_radius = ( $page !== '' && strpos( $page, 'radius' ) === 0 ) || ( $screen && in_array( $screen->post_type, array( 'radius_template', 'radius_landing', 'radius_service_area' ), true ) );
 		if ( ! $on_radius ) {
 			return;
 		}
@@ -424,7 +424,7 @@ class Radius_API_License {
 		if ( ! $apply ) {
 			return;
 		}
-		if ( $screen && in_array( $hook_suffix, array( 'post.php', 'post-new.php', 'edit.php' ), true ) && ! in_array( $screen->post_type, array( 'lf_template', 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( $screen && in_array( $hook_suffix, array( 'post.php', 'post-new.php', 'edit.php' ), true ) && ! in_array( $screen->post_type, array( 'radius_template', 'radius_landing', 'radius_service_area' ), true ) ) {
 			return;
 		}
 
@@ -482,12 +482,12 @@ class Radius_API_License {
 		 * Disable front-end blocking for Radius templates/landings while the license is inactive.
 		 * Return false from a small mu-plugin or theme to show pages anyway (e.g. local dev).
 		 *
-		 * @param bool $block Whether to block singular lf_landing / lf_template.
+		 * @param bool $block Whether to block singular radius_landing / radius_template.
 		 */
 		if ( ! apply_filters( 'radius_license_block_public_templates', true ) ) {
 			return;
 		}
-		if ( ! is_singular( array( 'lf_landing', 'lf_service_area', 'lf_template' ) ) ) {
+		if ( ! is_singular( array( 'radius_landing', 'radius_service_area', 'radius_template' ) ) ) {
 			return;
 		}
 		// Logged-in editors can preview while fixing the API key (visitors stay blocked).
@@ -518,7 +518,7 @@ class Radius_API_License {
 		}
 
 		$use_saved = ! empty( $_POST['use_saved'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$raw       = isset( $_POST['lf_api_key'] ) ? wp_unslash( (string) $_POST['lf_api_key'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- AJAX nonce checked above; normalized in sanitize_api_key().
+		$raw       = isset( $_POST['radius_api_key'] ) ? wp_unslash( (string) $_POST['radius_api_key'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- AJAX nonce checked above; normalized in sanitize_api_key().
 		$key       = self::sanitize_api_key( $raw );
 
 		$cur = self::get_api_key();

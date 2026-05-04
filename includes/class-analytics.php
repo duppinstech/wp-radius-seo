@@ -10,14 +10,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Tracks published `lf_landing` posts using post meta on each landing.
+ * Tracks published `radius_landing` posts using post meta on each landing.
  */
 class Radius_Analytics {
 
-	const META_VISITS      = 'lf_landing_visits';
-	const META_VISIT_COUNT = 'lf_landing_visit_count';
-	const META_CLICKS      = 'lf_landing_clicks';
-	const META_CLICK_COUNT = 'lf_landing_click_count';
+	const META_VISITS      = 'radius_landing_visits';
+	const META_VISIT_COUNT = 'radius_landing_visit_count';
+	const META_CLICKS      = 'radius_landing_clicks';
+	const META_CLICK_COUNT = 'radius_landing_click_count';
 
 	/** @var string Legacy meta from older integrations; read-only fallback when LF meta is empty. */
 	const LEGACY_META_VISITS      = 'magicpage_visits';
@@ -57,11 +57,11 @@ class Radius_Analytics {
 	 */
 	private static function get_tracked_landing_ids() {
 		$types = array();
-		if ( post_type_exists( 'lf_landing' ) ) {
-			$types[] = 'lf_landing';
+		if ( post_type_exists( 'radius_landing' ) ) {
+			$types[] = 'radius_landing';
 		}
-		if ( post_type_exists( 'lf_service_area' ) ) {
-			$types[] = 'lf_service_area';
+		if ( post_type_exists( 'radius_service_area' ) ) {
+			$types[] = 'radius_service_area';
 		}
 		if ( empty( $types ) ) {
 			return array();
@@ -87,7 +87,7 @@ class Radius_Analytics {
 	public static function is_tracked_landing( $post_id ) {
 		$post_id = (int) $post_id;
 		return $post_id > 0
-			&& in_array( get_post_type( $post_id ), array( 'lf_landing', 'lf_service_area' ), true )
+			&& in_array( get_post_type( $post_id ), array( 'radius_landing', 'radius_service_area' ), true )
 			&& get_post_status( $post_id ) === 'publish';
 	}
 
@@ -134,7 +134,7 @@ class Radius_Analytics {
 	 * @return string Term ID or '_unassigned'.
 	 */
 	private static function location_bucket_key( $post_id ) {
-		$place_id = get_post_meta( $post_id, '_lf_place_id', true );
+		$place_id = get_post_meta( $post_id, '_radius_place_id', true );
 		if ( $place_id !== '' && false !== $place_id && null !== $place_id ) {
 			return (string) (int) $place_id;
 		}
@@ -156,7 +156,7 @@ class Radius_Analytics {
 		if ( $tid > 0 && taxonomy_exists( Radius_Place_Taxonomy::TAXONOMY ) ) {
 			$term = get_term( $tid, Radius_Place_Taxonomy::TAXONOMY );
 			if ( $term && ! is_wp_error( $term ) ) {
-				$region = get_term_meta( $term->term_id, 'lf_region', true );
+				$region = get_term_meta( $term->term_id, 'radius_region', true );
 				if ( '' === $region || false === $region ) {
 					$region = '—';
 				}
@@ -353,7 +353,7 @@ class Radius_Analytics {
 
 		wp_enqueue_script(
 			'radius-admin-analytics',
-			RADIUS_URL . 'assets/js/lf-admin-analytics.js',
+			RADIUS_URL . 'assets/js/radius-admin-analytics.js',
 			array( 'chartjs', 'jquery' ),
 			RADIUS_VERSION,
 			true
@@ -361,7 +361,7 @@ class Radius_Analytics {
 
 		wp_enqueue_style(
 			'radius-analytics-dashboard',
-			RADIUS_URL . 'assets/css/lf-analytics-dashboard.css',
+			RADIUS_URL . 'assets/css/radius-analytics-dashboard.css',
 			array(),
 			RADIUS_VERSION
 		);
@@ -390,7 +390,7 @@ class Radius_Analytics {
 	 * @return void
 	 */
 	public static function enqueue_frontend() {
-		if ( ! is_singular( array( 'lf_landing', 'lf_service_area' ) ) ) {
+		if ( ! is_singular( array( 'radius_landing', 'radius_service_area' ) ) ) {
 			return;
 		}
 		$post_id = get_queried_object_id();
@@ -400,7 +400,7 @@ class Radius_Analytics {
 
 		wp_enqueue_script(
 			'radius-frontend-analytics',
-			RADIUS_URL . 'assets/js/lf-frontend-analytics.js',
+			RADIUS_URL . 'assets/js/radius-frontend-analytics.js',
 			array( 'jquery' ),
 			RADIUS_VERSION,
 			true

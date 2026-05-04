@@ -120,7 +120,7 @@ class Radius_Template_Tokens {
 	 * Load post meta + term meta for one template and one place in bulk (fewer queries on first access).
 	 *
 	 * @param int $template_id Template post ID.
-	 * @param int $place_id    lf_place term ID.
+	 * @param int $place_id    radius_place term ID.
 	 * @return void
 	 */
 	public static function prime_caches( $template_id, $place_id ) {
@@ -138,7 +138,7 @@ class Radius_Template_Tokens {
 	 * Build full token map for a template + place.
 	 *
 	 * @param int                  $template_id Template post ID.
-	 * @param int                  $place_id    lf_place term ID.
+	 * @param int                  $place_id    radius_place term ID.
 	 * @param array<string,bool>   $options     { per_request_random?: bool } When true, inline {a|b} spintax picks randomly each call (dynamic page loads).
 	 * @return array<string,string>
 	 */
@@ -156,7 +156,7 @@ class Radius_Template_Tokens {
 		$tokens = Radius_Place_Taxonomy::get_place_tokens( $place_id );
 
 		$template = get_post( $template_id );
-		if ( $template && 'lf_template' === $template->post_type ) {
+		if ( $template && 'radius_template' === $template->post_type ) {
 			$tokens['template_title'] = (string) $template->post_title;
 			$tokens['template_slug']  = $template->post_name ? (string) $template->post_name : '';
 		} else {
@@ -166,8 +166,13 @@ class Radius_Template_Tokens {
 
 		$lf_opts = Radius_Settings::get();
 		$xfields = isset( $lf_opts['site_replacements'] ) && is_array( $lf_opts['site_replacements'] ) ? $lf_opts['site_replacements'] : array();
+		// Persisted empty global list + per-template xfields: get() merges UI defaults; restore legacy fallback.
+		$raw_opts = get_option( Radius_Settings::OPTION, array() );
+		if ( is_array( $raw_opts ) && array_key_exists( 'site_replacements', $raw_opts ) && is_array( $raw_opts['site_replacements'] ) && $raw_opts['site_replacements'] === array() ) {
+			$xfields = array();
+		}
 		if ( empty( $xfields ) ) {
-			$xfields = get_post_meta( $template_id, '_lf_xfields', true );
+			$xfields = get_post_meta( $template_id, '_radius_xfields', true );
 			if ( is_string( $xfields ) ) {
 				$xfields = json_decode( $xfields, true );
 			}
@@ -215,7 +220,7 @@ class Radius_Template_Tokens {
 			$tokens[ $key ] = Radius_Token_Engine::render( (string) $pick, $tokens, $seed, $per_random );
 		}
 
-		$blocks = get_post_meta( $template_id, '_lf_spintax_blocks', true );
+		$blocks = get_post_meta( $template_id, '_radius_spintax_blocks', true );
 		if ( is_string( $blocks ) ) {
 			$blocks = json_decode( $blocks, true );
 		}

@@ -1,6 +1,6 @@
 <?php
 /**
- * CSV import/export for lf_place terms — one row at a time, no bulk memory spike.
+ * CSV import/export for radius_place terms — one row at a time, no bulk memory spike.
  *
  * @package Radius
  */
@@ -193,12 +193,12 @@ class Radius_Csv_Place_Importer {
 						(string) (int) $t->term_id,
 						$t->name,
 						$t->slug,
-						(string) get_term_meta( $t->term_id, 'lf_country', true ),
-						(string) get_term_meta( $t->term_id, 'lf_region', true ),
-						(string) get_term_meta( $t->term_id, 'lf_state', true ),
-						(string) get_term_meta( $t->term_id, 'lf_postal', true ),
-						(string) get_term_meta( $t->term_id, 'lf_lat', true ),
-						(string) get_term_meta( $t->term_id, 'lf_lng', true ),
+						(string) get_term_meta( $t->term_id, 'radius_country', true ),
+						(string) get_term_meta( $t->term_id, 'radius_region', true ),
+						(string) get_term_meta( $t->term_id, 'radius_state', true ),
+						(string) get_term_meta( $t->term_id, 'radius_postal', true ),
+						(string) get_term_meta( $t->term_id, 'radius_lat', true ),
+						(string) get_term_meta( $t->term_id, 'radius_lng', true ),
 					)
 				);
 			}
@@ -211,9 +211,9 @@ class Radius_Csv_Place_Importer {
 	}
 
 	/**
-	 * CSV download for a specific list of lf_place term IDs (same columns as full export).
+	 * CSV download for a specific list of radius_place term IDs (same columns as full export).
 	 *
-	 * @param int[] $term_ids Term IDs (lf_place).
+	 * @param int[] $term_ids Term IDs (radius_place).
 	 * @return void
 	 */
 	public static function stream_export_term_ids( array $term_ids ) {
@@ -246,12 +246,12 @@ class Radius_Csv_Place_Importer {
 					(string) (int) $t->term_id,
 					$t->name,
 					$t->slug,
-					(string) get_term_meta( $t->term_id, 'lf_country', true ),
-					(string) get_term_meta( $t->term_id, 'lf_region', true ),
-					(string) get_term_meta( $t->term_id, 'lf_state', true ),
-					(string) get_term_meta( $t->term_id, 'lf_postal', true ),
-					(string) get_term_meta( $t->term_id, 'lf_lat', true ),
-					(string) get_term_meta( $t->term_id, 'lf_lng', true ),
+					(string) get_term_meta( $t->term_id, 'radius_country', true ),
+					(string) get_term_meta( $t->term_id, 'radius_region', true ),
+					(string) get_term_meta( $t->term_id, 'radius_state', true ),
+					(string) get_term_meta( $t->term_id, 'radius_postal', true ),
+					(string) get_term_meta( $t->term_id, 'radius_lat', true ),
+					(string) get_term_meta( $t->term_id, 'radius_lng', true ),
 				)
 			);
 		}
@@ -292,12 +292,12 @@ class Radius_Csv_Place_Importer {
 	 */
 	private static function save_meta_from_row( $term_id, array $row, array $map ) {
 		$pairs = array(
-			'country' => 'lf_country',
-			'region'  => 'lf_region',
-			'state'   => 'lf_state',
-			'zip'     => 'lf_postal',
-			'lat'     => 'lf_lat',
-			'lng'     => 'lf_lng',
+			'country' => 'radius_country',
+			'region'  => 'radius_region',
+			'state'   => 'radius_state',
+			'zip'     => 'radius_postal',
+			'lat'     => 'radius_lat',
+			'lng'     => 'radius_lng',
 		);
 		foreach ( $pairs as $csv_key => $meta_key ) {
 			if ( ! isset( $map[ $csv_key ] ) ) {

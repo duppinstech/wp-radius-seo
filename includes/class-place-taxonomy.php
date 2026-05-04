@@ -1,6 +1,6 @@
 <?php
 /**
- * Location taxonomy (lf_place) with term meta — queries use paged get_terms(), not unbounded loads.
+ * Location taxonomy (radius_place) with term meta — queries use paged get_terms(), not unbounded loads.
  *
  * @package Radius
  */
@@ -10,11 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Registers lf_place and term meta for geographic data.
+ * Registers radius_place and term meta for geographic data.
  */
 class Radius_Place_Taxonomy {
 
-	const TAXONOMY = 'lf_place';
+	const TAXONOMY = 'radius_place';
 
 	/**
 	 * @return void
@@ -30,7 +30,7 @@ class Radius_Place_Taxonomy {
 	public static function register_taxonomy() {
 		register_taxonomy(
 			self::TAXONOMY,
-			array( 'lf_landing', 'lf_service_area' ),
+			array( 'radius_landing', 'radius_service_area' ),
 			array(
 				'labels'            => array(
 					'name'          => __( 'Places', 'radius' ),
@@ -53,13 +53,13 @@ class Radius_Place_Taxonomy {
 	 */
 	public static function register_term_meta() {
 		$keys = array(
-			'lf_country'     => array( 'type' => 'string' ),
-			'lf_region'      => array( 'type' => 'string' ),
-			'lf_state'       => array( 'type' => 'string' ),
-			'lf_postal'      => array( 'type' => 'string' ),
-			'lf_lat'         => array( 'type' => 'string' ),
-			'lf_lng'         => array( 'type' => 'string' ),
-			'lf_external_id' => array( 'type' => 'string' ),
+			'radius_country'     => array( 'type' => 'string' ),
+			'radius_region'      => array( 'type' => 'string' ),
+			'radius_state'       => array( 'type' => 'string' ),
+			'radius_postal'      => array( 'type' => 'string' ),
+			'radius_lat'         => array( 'type' => 'string' ),
+			'radius_lng'         => array( 'type' => 'string' ),
+			'radius_external_id' => array( 'type' => 'string' ),
 		);
 		foreach ( $keys as $key => $args ) {
 			register_term_meta(
@@ -234,7 +234,7 @@ class Radius_Place_Taxonomy {
 	}
 
 	/**
-	 * Next chunk of lf_place term IDs for batched deletion (lowest IDs first).
+	 * Next chunk of radius_place term IDs for batched deletion (lowest IDs first).
 	 *
 	 * @param int $limit Max IDs to return.
 	 * @return int[]
@@ -258,7 +258,7 @@ class Radius_Place_Taxonomy {
 	}
 
 	/**
-	 * How many lf_place terms can be removed as duplicates of the same display name.
+	 * How many radius_place terms can be removed as duplicates of the same display name.
 	 *
 	 * For each name that appears on more than one term, one "keeper" is chosen: shortest slug
 	 * (CHAR_LENGTH), then lowest term_id. All other terms with that name count as removable
@@ -294,7 +294,7 @@ class Radius_Place_Taxonomy {
 	}
 
 	/**
-	 * Next chunk of duplicate lf_place term IDs to delete (not keepers).
+	 * Next chunk of duplicate radius_place term IDs to delete (not keepers).
 	 *
 	 * @param int $limit Max IDs.
 	 * @return int[]
@@ -346,12 +346,12 @@ class Radius_Place_Taxonomy {
 		return array(
 			'place_name' => $term->name,
 			'place_slug' => $term->slug,
-			'country'    => (string) get_term_meta( $term_id, 'lf_country', true ),
-			'region'     => (string) get_term_meta( $term_id, 'lf_region', true ),
-			'state'      => (string) get_term_meta( $term_id, 'lf_state', true ),
-			'zip'        => (string) get_term_meta( $term_id, 'lf_postal', true ),
-			'lat'        => (string) get_term_meta( $term_id, 'lf_lat', true ),
-			'lng'        => (string) get_term_meta( $term_id, 'lf_lng', true ),
+			'country'    => (string) get_term_meta( $term_id, 'radius_country', true ),
+			'region'     => (string) get_term_meta( $term_id, 'radius_region', true ),
+			'state'      => (string) get_term_meta( $term_id, 'radius_state', true ),
+			'zip'        => (string) get_term_meta( $term_id, 'radius_postal', true ),
+			'lat'        => (string) get_term_meta( $term_id, 'radius_lat', true ),
+			'lng'        => (string) get_term_meta( $term_id, 'radius_lng', true ),
 		);
 	}
 }

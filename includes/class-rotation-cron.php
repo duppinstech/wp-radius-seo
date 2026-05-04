@@ -111,7 +111,7 @@ class Radius_Rotation_Cron {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Cron batch; caching IDs would stale rotation.
 		$ids = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT ID FROM {$wpdb->posts} WHERE post_type IN ('lf_landing','lf_service_area') AND post_status IN ('publish','draft','pending','private') ORDER BY ID ASC LIMIT %d OFFSET %d",
+				"SELECT ID FROM {$wpdb->posts} WHERE post_type IN ('radius_landing','radius_service_area') AND post_status IN ('publish','draft','pending','private') ORDER BY ID ASC LIMIT %d OFFSET %d",
 				$batch,
 				$offset
 			)

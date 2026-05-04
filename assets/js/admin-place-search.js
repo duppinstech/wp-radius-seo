@@ -19,16 +19,16 @@
 	}
 
 	function closeAllSuggest() {
-		document.querySelectorAll('.lf-anchor-suggest').forEach(function (el) {
+		document.querySelectorAll('.radius-anchor-suggest').forEach(function (el) {
 			el.style.display = 'none';
 			el.innerHTML = '';
 		});
 	}
 
 	function bindRow(row) {
-		var search = row.querySelector('.lf-anchor-search');
-		var hidden = row.querySelector('.lf-pick-place-id') || row.querySelector('.lf-anchor-place-id');
-		var box = row.querySelector('.lf-anchor-suggest');
+		var search = row.querySelector('.radius-anchor-search');
+		var hidden = row.querySelector('.radius-pick-place-id') || row.querySelector('.radius-anchor-place-id');
+		var box = row.querySelector('.radius-anchor-suggest');
 		if (!search || !hidden || !box) {
 			return;
 		}
@@ -80,8 +80,8 @@
 
 		search.addEventListener('input', function () {
 			hidden.value = '';
-			var legLat = row.querySelector('.lf-anchor-legacy-lat');
-			var legLng = row.querySelector('.lf-anchor-legacy-lng');
+			var legLat = row.querySelector('.radius-anchor-legacy-lat');
+			var legLng = row.querySelector('.radius-anchor-legacy-lng');
 			if (legLat) {
 				legLat.value = '';
 			}
@@ -98,7 +98,7 @@
 		});
 
 		box.addEventListener('click', function (e) {
-			var btn = e.target.closest('.lf-suggest-item');
+			var btn = e.target.closest('.radius-suggest-item');
 			if (!btn) {
 				return;
 			}
@@ -106,15 +106,15 @@
 			var label = btn.getAttribute('data-label') || '';
 			hidden.value = id;
 			search.value = label;
-			var legLat = row.querySelector('.lf-anchor-legacy-lat');
-			var legLng = row.querySelector('.lf-anchor-legacy-lng');
+			var legLat = row.querySelector('.radius-anchor-legacy-lat');
+			var legLng = row.querySelector('.radius-anchor-legacy-lng');
 			if (legLat) {
 				legLat.value = '';
 			}
 			if (legLng) {
 				legLng.value = '';
 			}
-			var note = row.querySelector('.lf-anchor-legacy-note');
+			var note = row.querySelector('.radius-anchor-legacy-note');
 			if (note) {
 				note.remove();
 			}
@@ -137,17 +137,17 @@
 	}
 
 	document.addEventListener('click', function (e) {
-		if (!e.target.closest('.lf-anchor-pick')) {
+		if (!e.target.closest('.radius-anchor-pick')) {
 			closeAllSuggest();
 		}
 	});
 
 	document.addEventListener('DOMContentLoaded', function () {
-		document.querySelectorAll('.lf-anchor-row').forEach(bindRow);
-		var addBtn = document.getElementById('lf-anchor-add');
+		document.querySelectorAll('.radius-anchor-row').forEach(bindRow);
+		var addBtn = document.getElementById('radius-anchor-add');
 		if (addBtn) {
 			addBtn.addEventListener('click', function () {
-				var tbody = document.getElementById('lf-anchor-tbody');
+				var tbody = document.getElementById('radius-anchor-tbody');
 				if (!tbody) {
 					tbody = addBtn.closest('td').querySelector('tbody');
 				}
@@ -155,7 +155,7 @@
 					return;
 				}
 				var tr = document.createElement('tr');
-				tr.className = 'lf-anchor-row';
+				tr.className = 'radius-anchor-row';
 				var ph = cfg.i18n && cfg.i18n.placeholder ? escapeAttr(cfg.i18n.placeholder) : '';
 				var pending =
 					cfg.i18n && cfg.i18n.areaCodePending
@@ -163,21 +163,21 @@
 						: '— Save settings to assign —';
 				tr.innerHTML =
 					'<td>' +
-					'<input type="hidden" name="lf_anchor_place_id[]" value="" class="lf-anchor-place-id lf-pick-place-id" />' +
-					'<input type="hidden" name="lf_anchor_legacy_lat[]" value="" class="lf-anchor-legacy-lat" />' +
-					'<input type="hidden" name="lf_anchor_legacy_lng[]" value="" class="lf-anchor-legacy-lng" />' +
-					'<div class="lf-anchor-pick">' +
-					'<input type="search" class="regular-text lf-anchor-search" value="" placeholder="' +
+					'<input type="hidden" name="radius_anchor_place_id[]" value="" class="radius-anchor-place-id lf-pick-place-id" />' +
+					'<input type="hidden" name="radius_anchor_legacy_lat[]" value="" class="radius-anchor-legacy-lat" />' +
+					'<input type="hidden" name="radius_anchor_legacy_lng[]" value="" class="radius-anchor-legacy-lng" />' +
+					'<div class="radius-anchor-pick">' +
+					'<input type="search" class="regular-text radius-anchor-search" value="" placeholder="' +
 					ph +
 					'" autocomplete="off" />' +
-					'<div class="lf-anchor-suggest" style="display:none;" role="listbox"></div>' +
+					'<div class="radius-anchor-suggest" style="display:none;" role="listbox"></div>' +
 					'</div>' +
 					'</td>' +
-					'<td><input type="text" name="lf_anchor_radius[]" value="" class="small-text" /></td>' +
+					'<td><input type="text" name="radius_anchor_radius[]" value="" class="small-text" /></td>' +
 					'<td><span class="description">' +
 					pending +
 					'</span></td>' +
-					'<td><button type="button" class="button lf-anchor-remove-row">' +
+					'<td><button type="button" class="button radius-anchor-remove-row">' +
 					(cfg.i18n && cfg.i18n.remove ? escapeHtml(cfg.i18n.remove) : 'Remove') +
 					'</button></td>';
 				tbody.appendChild(tr);
@@ -185,9 +185,9 @@
 			});
 		}
 		document.addEventListener('click', function (e) {
-			if (e.target.classList.contains('lf-anchor-remove-row')) {
+			if (e.target.classList.contains('radius-anchor-remove-row')) {
 				var r = e.target.closest('tr');
-				if (r && r.parentNode.querySelectorAll('.lf-anchor-row').length > 1) {
+				if (r && r.parentNode.querySelectorAll('.radius-anchor-row').length > 1) {
 					r.remove();
 				}
 			}

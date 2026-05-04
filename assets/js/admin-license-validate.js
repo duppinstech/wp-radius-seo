@@ -3,7 +3,7 @@
  */
 (function () {
 	var btn = document.getElementById('radius-validate-api-key');
-	var input = document.getElementById('lf_api_key');
+	var input = document.getElementById('radius_api_key');
 	var statusEl = document.getElementById('radius-api-validate-status');
 	if (!btn || !window.radiusLicenseValidate || !statusEl) {
 		return;
@@ -29,10 +29,10 @@
 		var v = input ? String(input.value).trim() : '';
 		var mask = input && input.getAttribute('data-mask');
 		if (mask && v === mask && radiusLicenseValidate.hasSavedKey) {
-			fd.append('lf_api_key', '');
+			fd.append('radius_api_key', '');
 			fd.append('use_saved', '1');
 		} else {
-			fd.append('lf_api_key', v);
+			fd.append('radius_api_key', v);
 			if (v === '' && radiusLicenseValidate.hasSavedKey) {
 				fd.append('use_saved', '1');
 			}

@@ -22,6 +22,7 @@ class Radius_Admin {
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ), 5 );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+		add_action( 'admin_notices', array( __CLASS__, 'prefix_migration_admin_notice' ), 9 );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
 		Radius_Form_Handlers::init();
 		add_action( 'admin_init', array( 'Radius_Settings', 'register' ) );
@@ -56,6 +57,26 @@ class Radius_Admin {
 	}
 
 	/**
+	 * One-time notice after DB identifiers migrate from LocaleForge / lf_* to radius_*.
+	 *
+	 * @return void
+	 */
+	public static function prefix_migration_admin_notice() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$msg = get_transient( 'radius_prefix_migration_notice' );
+		if ( ! is_string( $msg ) || $msg === '' ) {
+			return;
+		}
+		delete_transient( 'radius_prefix_migration_notice' );
+		printf(
+			'<div class="notice notice-info is-dismissible"><p>%s</p></div>',
+			wp_kses_post( $msg )
+		);
+	}
+
+	/**
 	 * @return void
 	 */
 	public static function admin_notice() {
@@ -63,10 +84,10 @@ class Radius_Admin {
 		if ( $page === '' || strpos( $page, 'radius' ) !== 0 ) {
 			return;
 		}
-		if ( empty( $_GET['lf_notice'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( empty( $_GET['radius_notice'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
-		$msg = sanitize_text_field( wp_unslash( $_GET['lf_notice'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+		$msg = sanitize_text_field( wp_unslash( $_GET['radius_notice'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 		if ( $msg === '' ) {
 			return;
 		}
@@ -119,7 +140,7 @@ class Radius_Admin {
 			__( 'Templates', 'radius' ),
 			__( 'Templates', 'radius' ),
 			$cap,
-			'edit.php?post_type=lf_template'
+			'edit.php?post_type=radius_template'
 		);
 
 		add_submenu_page(
@@ -127,7 +148,7 @@ class Radius_Admin {
 			__( 'Landings', 'radius' ),
 			__( 'Landings', 'radius' ),
 			$cap,
-			'edit.php?post_type=lf_landing'
+			'edit.php?post_type=radius_landing'
 		);
 
 		add_submenu_page(
@@ -135,7 +156,7 @@ class Radius_Admin {
 			__( 'Service areas', 'radius' ),
 			__( 'Service areas', 'radius' ),
 			$cap,
-			'edit.php?post_type=lf_service_area'
+			'edit.php?post_type=radius_service_area'
 		);
 
 		add_submenu_page(
@@ -206,7 +227,7 @@ class Radius_Admin {
 			);
 			wp_enqueue_script(
 				'radius-site-replacements',
-				RADIUS_URL . 'assets/js/lf-settings-replacements.js',
+				RADIUS_URL . 'assets/js/radius-settings-replacements.js',
 				array( 'radius-place-search' ),
 				RADIUS_VERSION,
 				true
@@ -227,21 +248,7 @@ class Radius_Admin {
 					'label' => isset( $ar['label'] ) ? (string) $ar['label'] : '',
 				);
 			}
-			$site_rep_js = isset( $lf_s['site_replacements'] ) && is_array( $lf_s['site_replacements'] ) ? $lf_s['site_replacements'] : array();
-			if ( empty( $site_rep_js ) ) {
-				$site_rep_js = array(
-					array(
-						'key'            => 'company_name',
-						'values'         => array( '' ),
-						'area_overrides' => array(),
-					),
-					array(
-						'key'            => 'company_short',
-						'values'         => array( '' ),
-						'area_overrides' => array(),
-					),
-				);
-			}
+			$site_rep_js = isset( $lf_s['site_replacements'] ) && is_array( $lf_s['site_replacements'] ) ? $lf_s['site_replacements'] : Radius_Settings::default_site_replacements();
 			wp_localize_script(
 				'radius-site-replacements',
 				'radiusSiteReplacementsCfg',
@@ -306,7 +313,7 @@ class Radius_Admin {
 			self::enqueue_admin_style();
 			wp_enqueue_script(
 				'radius-deploy-cards',
-				RADIUS_URL . 'assets/js/lf-deploy-cards.js',
+				RADIUS_URL . 'assets/js/radius-deploy-cards.js',
 				array(),
 				RADIUS_VERSION,
 				true
@@ -336,17 +343,17 @@ class Radius_Admin {
 		}
 		if ( 'radius_page_radius-import' === $hook_suffix ) {
 			self::enqueue_admin_style();
-			$lf_settings = Radius_Settings::get();
-			$inter_ms   = isset( $lf_settings['legacy_import_inter_batch_ms'] ) ? (int) $lf_settings['legacy_import_inter_batch_ms'] : 1200;
+			$radius_settings = Radius_Settings::get();
+			$inter_ms   = isset( $radius_settings['legacy_import_inter_batch_ms'] ) ? (int) $radius_settings['legacy_import_inter_batch_ms'] : 1200;
 			$inter_ms   = (int) apply_filters( 'radius_legacy_import_inter_batch_delay_ms', $inter_ms );
 			wp_enqueue_script(
 				'radius-legacy-import',
-				RADIUS_URL . 'assets/js/lf-admin-legacy-import.js',
+				RADIUS_URL . 'assets/js/radius-admin-legacy-import.js',
 				array(),
 				RADIUS_VERSION,
 				true
 			);
-			$batch_size = max( 5, min( 100, (int) ( $lf_settings['legacy_import_size'] ?? 25 ) ) );
+			$batch_size = max( 5, min( 100, (int) ( $radius_settings['legacy_import_size'] ?? 25 ) ) );
 			wp_localize_script(
 				'radius-legacy-import',
 				'radiusLegacyImport',
@@ -376,13 +383,43 @@ class Radius_Admin {
 					),
 				)
 			);
+			wp_enqueue_script(
+				'radius-migration-wizard',
+				RADIUS_URL . 'assets/js/radius-admin-migration-wizard.js',
+				array( 'radius-legacy-import' ),
+				RADIUS_VERSION,
+				true
+			);
+			wp_localize_script(
+				'radius-migration-wizard',
+				'radiusMigrationWizard',
+				array(
+					'ajaxurl' => admin_url( 'admin-ajax.php' ),
+					'nonce'   => wp_create_nonce( 'radius_migration' ),
+					'i18n'    => array(
+						'errorPrefix'           => __( 'Error:', 'radius' ),
+						'requestFailed'         => __( 'Request failed.', 'radius' ),
+						'importingTemplates'    => __( 'Importing legacy templates…', 'radius' ),
+						'templatesResultFmt'    => __( 'Templates imported: {i}, skipped: {s}.', 'radius' ),
+						'cloningVariants'       => __( 'Creating variant drafts…', 'radius' ),
+						'cloneDone'             => __( 'Variant drafts ready.', 'radius' ),
+						'pickBase'              => __( 'Choose the towing blueprint template first.', 'radius' ),
+						'stepPlaces'            => __( 'Step 1 — Legacy locations…', 'radius' ),
+						'stepTemplates'         => __( 'Step 2 — Magic Page templates…', 'radius' ),
+						'stepVariants'          => __( 'Step 3 — Roadside / heavy / equipment drafts…', 'radius' ),
+						'stepNext'              => __( 'Next: use the Spintax tab for global spintax + prefix filters; verify templates in Elementor; deploy when ready.', 'radius' ),
+						'done'                  => __( 'Automated steps finished.', 'radius' ),
+						'legacyImportMissing'   => __( 'Legacy place import script not loaded. Reload the page.', 'radius' ),
+					),
+				)
+			);
 			return;
 		}
 		if ( 'radius_page_radius-locations' === $hook_suffix ) {
 			self::enqueue_admin_style();
 			wp_enqueue_script(
 				'radius-locations-library',
-				RADIUS_URL . 'assets/js/lf-admin-locations-library.js',
+				RADIUS_URL . 'assets/js/radius-admin-locations-library.js',
 				array(),
 				RADIUS_VERSION,
 				true
@@ -421,7 +458,7 @@ class Radius_Admin {
 			return;
 		}
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-		if ( $screen && ! empty( $screen->post_type ) && in_array( $screen->post_type, array( 'lf_template', 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( $screen && ! empty( $screen->post_type ) && in_array( $screen->post_type, array( 'radius_template', 'radius_landing', 'radius_service_area' ), true ) ) {
 			self::enqueue_admin_style();
 		}
 	}
@@ -537,7 +574,7 @@ class Radius_Admin {
 						<p><?php esc_html_e( 'Blueprints: X-fields, Spintax blocks, and the main editor for tokens and layout. One template per service line or page design.', 'radius' ); ?></p>
 					</div>
 					<div class="radius-card__actions">
-						<a class="button button-primary" href="<?php echo esc_url( admin_url( 'edit.php?post_type=lf_template' ) ); ?>"><?php esc_html_e( 'Manage templates', 'radius' ); ?></a>
+						<a class="button button-primary" href="<?php echo esc_url( admin_url( 'edit.php?post_type=radius_template' ) ); ?>"><?php esc_html_e( 'Manage templates', 'radius' ); ?></a>
 					</div>
 				</div>
 				<?php if ( current_user_can( 'manage_options' ) ) : ?>
@@ -557,7 +594,7 @@ class Radius_Admin {
 						<p><?php esc_html_e( 'Generated pages for each template × place. Edit individual URLs, or bulk-update by re-deploying.', 'radius' ); ?></p>
 					</div>
 					<div class="radius-card__actions">
-						<a class="button button-primary" href="<?php echo esc_url( admin_url( 'edit.php?post_type=lf_landing' ) ); ?>"><?php esc_html_e( 'Manage landings', 'radius' ); ?></a>
+						<a class="button button-primary" href="<?php echo esc_url( admin_url( 'edit.php?post_type=radius_landing' ) ); ?>"><?php esc_html_e( 'Manage landings', 'radius' ); ?></a>
 					</div>
 				</div>
 				<div class="radius-card">
@@ -614,7 +651,7 @@ class Radius_Admin {
 	/**
 	 * Build admin.php query args for the location library (sort, search, duplicates, paging).
 	 *
-	 * @param array<string,mixed> $ctx       Keys: per_page, pnum, full, search, lf_orderby, lf_order.
+	 * @param array<string,mixed> $ctx       Keys: per_page, pnum, full, search, radius_orderby, radius_order.
 	 * @param array<string,mixed> $overrides Merged into $ctx.
 	 * @return array<string,mixed>
 	 */
@@ -622,27 +659,27 @@ class Radius_Admin {
 		$m = array_merge( $ctx, $overrides );
 		$q = array( 'page' => 'radius-locations' );
 		if ( (int) $m['per_page'] !== 30 ) {
-			$q['lf_per_page'] = (int) $m['per_page'];
+			$q['radius_per_page'] = (int) $m['per_page'];
 		}
 		if ( ! empty( $m['full'] ) ) {
-			$q['lf_full'] = 1;
+			$q['radius_full'] = 1;
 		}
 		if ( isset( $m['search'] ) && (string) $m['search'] !== '' ) {
-			$q['lf_search'] = (string) $m['search'];
+			$q['radius_search'] = (string) $m['search'];
 		}
-		$ob = isset( $m['lf_orderby'] ) ? sanitize_key( (string) $m['lf_orderby'] ) : 'name';
+		$ob = isset( $m['radius_orderby'] ) ? sanitize_key( (string) $m['radius_orderby'] ) : 'name';
 		if ( ! in_array( $ob, array( 'name', 'slug', 'id' ), true ) ) {
 			$ob = 'name';
 		}
 		if ( $ob !== 'name' ) {
-			$q['lf_orderby'] = $ob;
+			$q['radius_orderby'] = $ob;
 		}
-		$lo = isset( $m['lf_order'] ) ? strtolower( (string) $m['lf_order'] ) : 'asc';
+		$lo = isset( $m['radius_order'] ) ? strtolower( (string) $m['radius_order'] ) : 'asc';
 		if ( ! in_array( $lo, array( 'asc', 'desc' ), true ) ) {
 			$lo = 'asc';
 		}
 		if ( $lo !== 'asc' ) {
-			$q['lf_order'] = $lo;
+			$q['radius_order'] = $lo;
 		}
 		if ( isset( $m['pnum'] ) && (int) $m['pnum'] > 1 ) {
 			$q['paged'] = (int) $m['pnum'];
@@ -670,11 +707,11 @@ class Radius_Admin {
 	 * @return void
 	 */
 	private static function locations_sortable_th( $column_key, $label, array $ctx ) {
-		$curr_ob = isset( $ctx['lf_orderby'] ) ? sanitize_key( (string) $ctx['lf_orderby'] ) : 'name';
+		$curr_ob = isset( $ctx['radius_orderby'] ) ? sanitize_key( (string) $ctx['radius_orderby'] ) : 'name';
 		if ( ! in_array( $curr_ob, array( 'name', 'slug', 'id' ), true ) ) {
 			$curr_ob = 'name';
 		}
-		$curr_lo = isset( $ctx['lf_order'] ) ? strtolower( (string) $ctx['lf_order'] ) : 'asc';
+		$curr_lo = isset( $ctx['radius_order'] ) ? strtolower( (string) $ctx['radius_order'] ) : 'asc';
 		if ( ! in_array( $curr_lo, array( 'asc', 'desc' ), true ) ) {
 			$curr_lo = 'asc';
 		}
@@ -683,15 +720,15 @@ class Radius_Admin {
 		} else {
 			$next = 'asc';
 		}
-		$url      = self::locations_library_url( $ctx, array( 'lf_orderby' => $column_key, 'lf_order' => $next, 'pnum' => 1 ) );
-		$th_class = 'manage-column column-lf_' . $column_key;
+		$url      = self::locations_library_url( $ctx, array( 'radius_orderby' => $column_key, 'radius_order' => $next, 'pnum' => 1 ) );
+		$th_class = 'manage-column column-radius_' . $column_key;
 		if ( $curr_ob === $column_key ) {
 			$th_class .= ' sorted ' . ( 'asc' === $curr_lo ? 'asc' : 'desc' );
 		} else {
 			$th_class .= ' sortable asc';
 		}
 		?>
-		<th scope="col" id="lf-col-<?php echo esc_attr( $column_key ); ?>" class="<?php echo esc_attr( $th_class ); ?>">
+		<th scope="col" id="radius-col-<?php echo esc_attr( $column_key ); ?>" class="<?php echo esc_attr( $th_class ); ?>">
 			<a href="<?php echo esc_url( $url ); ?>">
 				<span><?php echo esc_html( $label ); ?></span>
 				<span class="sorting-indicator" aria-hidden="true"></span>
@@ -709,25 +746,25 @@ class Radius_Admin {
 		}
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only list filters.
 		$allowed_pp = array( 10, 20, 30, 50, 100, 200 );
-		$per_page   = isset( $_GET['lf_per_page'] ) ? absint( $_GET['lf_per_page'] ) : 30;
+		$per_page   = isset( $_GET['radius_per_page'] ) ? absint( $_GET['radius_per_page'] ) : 30;
 		if ( ! in_array( $per_page, $allowed_pp, true ) ) {
 			$per_page = 30;
 		}
 		$page = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
-		$full = ! empty( $_GET['lf_full'] );
+		$full = ! empty( $_GET['radius_full'] );
 
-		$lf_search = isset( $_GET['lf_search'] ) ? sanitize_text_field( wp_unslash( $_GET['lf_search'] ) ) : '';
-		if ( strlen( $lf_search ) > 200 ) {
-			$lf_search = substr( $lf_search, 0, 200 );
+		$radius_search = isset( $_GET['radius_search'] ) ? sanitize_text_field( wp_unslash( $_GET['radius_search'] ) ) : '';
+		if ( strlen( $radius_search ) > 200 ) {
+			$radius_search = substr( $radius_search, 0, 200 );
 		}
 
-		$lf_orderby = isset( $_GET['lf_orderby'] ) ? sanitize_key( wp_unslash( $_GET['lf_orderby'] ) ) : 'name';
-		if ( ! in_array( $lf_orderby, array( 'name', 'slug', 'id' ), true ) ) {
-			$lf_orderby = 'name';
+		$radius_orderby = isset( $_GET['radius_orderby'] ) ? sanitize_key( wp_unslash( $_GET['radius_orderby'] ) ) : 'name';
+		if ( ! in_array( $radius_orderby, array( 'name', 'slug', 'id' ), true ) ) {
+			$radius_orderby = 'name';
 		}
-		$lf_order = isset( $_GET['lf_order'] ) ? strtolower( sanitize_text_field( wp_unslash( $_GET['lf_order'] ) ) ) : 'asc';
-		if ( ! in_array( $lf_order, array( 'asc', 'desc' ), true ) ) {
-			$lf_order = 'asc';
+		$radius_order = isset( $_GET['radius_order'] ) ? strtolower( sanitize_text_field( wp_unslash( $_GET['radius_order'] ) ) ) : 'asc';
+		if ( ! in_array( $radius_order, array( 'asc', 'desc' ), true ) ) {
+			$radius_order = 'asc';
 		}
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
@@ -735,9 +772,9 @@ class Radius_Admin {
 			$page,
 			$per_page,
 			array(
-				'orderby' => $lf_orderby,
-				'order'   => strtoupper( $lf_order ),
-				'search'  => $lf_search,
+				'orderby' => $radius_orderby,
+				'order'   => strtoupper( $radius_order ),
+				'search'  => $radius_search,
 			)
 		);
 		$terms = $bundle['terms'];
@@ -764,9 +801,9 @@ class Radius_Admin {
 			'per_page'   => $per_page,
 			'pnum'       => $page,
 			'full'       => $full,
-			'search'     => $lf_search,
-			'lf_orderby' => $lf_orderby,
-			'lf_order'   => $lf_order,
+			'search'     => $radius_search,
+			'radius_orderby' => $radius_orderby,
+			'radius_order'   => $radius_order,
 		);
 
 		$list_args = self::locations_library_url_args( $ctx );
@@ -774,14 +811,14 @@ class Radius_Admin {
 		$list_base = add_query_arg( 'paged', '%#%', add_query_arg( $list_args, admin_url( 'admin.php' ) ) );
 
 		$empty_msg = __( 'No places yet — import a CSV.', 'radius' );
-		if ( $lf_search !== '' ) {
+		if ( $radius_search !== '' ) {
 			$empty_msg = __( 'No places match your search.', 'radius' );
 		}
 		?>
 		<div class="wrap radius-admin">
 			<h1><?php esc_html_e( 'Location library', 'radius' ); ?></h1>
 			<p class="description"><?php esc_html_e( 'Import, export, and edit places. Large libraries are paged so the screen stays responsive.', 'radius' ); ?></p>
-			<p class="description"><?php esc_html_e( 'Storage: each place is a WordPress taxonomy term in lf_place — rows in wp_terms and wp_term_taxonomy, with coordinates and region in wp_termmeta (e.g. lf_lat, lf_lng, lf_region, lf_postal).', 'radius' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Storage: each place is a WordPress taxonomy term in radius_place — rows in wp_terms and wp_term_taxonomy, with coordinates and region in wp_termmeta (e.g. radius_lat, radius_lng, radius_region, radius_postal).', 'radius' ); ?></p>
 
 			<div class="radius-cards radius-cards--locations-summary">
 				<div class="radius-card">
@@ -789,7 +826,7 @@ class Radius_Admin {
 					<div class="radius-card__text">
 						<p class="radius-card__stat">
 							<strong><?php echo esc_html( number_format_i18n( $total ) ); ?></strong>
-							<?php if ( $lf_search !== '' || $lf_orderby !== 'name' || $lf_order !== 'asc' ) : ?>
+							<?php if ( $radius_search !== '' || $radius_orderby !== 'name' || $radius_order !== 'asc' ) : ?>
 								<?php esc_html_e( 'matching this list.', 'radius' ); ?>
 								<br />
 								<span class="description"><?php echo esc_html( sprintf( /* translators: %s: total place count in the database */ __( '%s total in the library (ignores list filters).', 'radius' ), number_format_i18n( $total_all ) ) ); ?></span>
@@ -834,10 +871,10 @@ class Radius_Admin {
 						<form method="post" action="<?php echo esc_url( $csv_url ); ?>" enctype="multipart/form-data" class="radius-form">
 							<input type="hidden" name="action" value="radius_import_csv" />
 							<?php wp_nonce_field( 'radius_csv', 'radius_csv_nonce' ); ?>
-							<p><input type="file" name="lf_csv" accept=".csv,text/csv" required /></p>
+							<p><input type="file" name="radius_csv" accept=".csv,text/csv" required /></p>
 							<p>
 								<label>
-									<input type="checkbox" name="lf_csv_update_existing" value="1" />
+									<input type="checkbox" name="radius_csv_update_existing" value="1" />
 									<?php esc_html_e( 'Update existing places when a row matches id or slug (overwrite meta)', 'radius' ); ?>
 								</label>
 							</p>
@@ -849,7 +886,7 @@ class Radius_Admin {
 					<div class="radius-card radius-card-muted">
 						<h2><?php esc_html_e( 'Danger zone', 'radius' ); ?></h2>
 						<div class="radius-card__text">
-							<p><?php esc_html_e( 'Remove every lf_place term in batches (avoids timeouts on large libraries). Landings may reference missing terms — review before doing this.', 'radius' ); ?></p>
+							<p><?php esc_html_e( 'Remove every radius_place term in batches (avoids timeouts on large libraries). Landings may reference missing terms — review before doing this.', 'radius' ); ?></p>
 						</div>
 						<div class="radius-card__actions">
 							<button type="button" class="button button-link-delete" id="radius-purge-places-start"><?php esc_html_e( 'Empty library (batched)', 'radius' ); ?></button>
@@ -864,33 +901,33 @@ class Radius_Admin {
 
 			<div class="tablenav top radius-locations-tablenav radius-locations-tablenav--below-heading">
 				<div class="alignleft actions bulkactions">
-					<label for="lf_places_bulk_action" class="screen-reader-text"><?php esc_html_e( 'Bulk actions', 'radius' ); ?></label>
-					<select name="lf_places_bulk_action" id="lf_places_bulk_action" form="radius-places-bulk-form">
+					<label for="radius_places_bulk_action" class="screen-reader-text"><?php esc_html_e( 'Bulk actions', 'radius' ); ?></label>
+					<select name="radius_places_bulk_action" id="radius_places_bulk_action" form="radius-places-bulk-form">
 						<option value=""><?php esc_html_e( 'Bulk actions', 'radius' ); ?></option>
 						<option value="export_csv"><?php esc_html_e( 'Export selected as CSV', 'radius' ); ?></option>
 						<?php if ( current_user_can( 'manage_options' ) ) : ?>
 							<option value="delete"><?php esc_html_e( 'Delete selected (cannot undo)', 'radius' ); ?></option>
 						<?php endif; ?>
 					</select>
-					<button type="submit" class="button action" id="lf-places-bulk-submit" form="radius-places-bulk-form"><?php esc_html_e( 'Apply', 'radius' ); ?></button>
+					<button type="submit" class="button action" id="radius-places-bulk-submit" form="radius-places-bulk-form"><?php esc_html_e( 'Apply', 'radius' ); ?></button>
 				</div>
 				<form method="get" class="alignleft actions radius-locations-filters" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
 					<input type="hidden" name="page" value="radius-locations" />
 					<input type="hidden" name="paged" value="1" />
 					<?php if ( $per_page !== 30 ) : ?>
-						<input type="hidden" name="lf_per_page" value="<?php echo esc_attr( (string) (int) $per_page ); ?>" />
+						<input type="hidden" name="radius_per_page" value="<?php echo esc_attr( (string) (int) $per_page ); ?>" />
 					<?php endif; ?>
 					<?php if ( $full ) : ?>
-						<input type="hidden" name="lf_full" value="1" />
+						<input type="hidden" name="radius_full" value="1" />
 					<?php endif; ?>
-					<?php if ( $lf_orderby !== 'name' ) : ?>
-						<input type="hidden" name="lf_orderby" value="<?php echo esc_attr( $lf_orderby ); ?>" />
+					<?php if ( $radius_orderby !== 'name' ) : ?>
+						<input type="hidden" name="radius_orderby" value="<?php echo esc_attr( $radius_orderby ); ?>" />
 					<?php endif; ?>
-					<?php if ( $lf_order !== 'asc' ) : ?>
-						<input type="hidden" name="lf_order" value="<?php echo esc_attr( $lf_order ); ?>" />
+					<?php if ( $radius_order !== 'asc' ) : ?>
+						<input type="hidden" name="radius_order" value="<?php echo esc_attr( $radius_order ); ?>" />
 					<?php endif; ?>
-					<label class="screen-reader-text" for="lf_search"><?php esc_html_e( 'Search places', 'radius' ); ?></label>
-					<input type="search" class="radius-lf-search-input" name="lf_search" id="lf_search" value="<?php echo esc_attr( $lf_search ); ?>" placeholder="<?php esc_attr_e( 'Search name or slug…', 'radius' ); ?>" />
+					<label class="screen-reader-text" for="radius_search"><?php esc_html_e( 'Search places', 'radius' ); ?></label>
+					<input type="search" class="radius-search-input" name="radius_search" id="radius_search" value="<?php echo esc_attr( $radius_search ); ?>" placeholder="<?php esc_attr_e( 'Search name or slug…', 'radius' ); ?>" />
 					<?php submit_button( __( 'Filter', 'radius' ), 'secondary', 'submit', false ); ?>
 				</form>
 			</div>
@@ -903,15 +940,15 @@ class Radius_Admin {
 				<table class="widefat striped wp-list-table">
 					<thead>
 						<tr>
-							<td class="manage-column column-lf_cb check-column"><input type="checkbox" id="lf-select-all-places" aria-label="<?php esc_attr_e( 'Select all on this page', 'radius' ); ?>" /></td>
+							<td class="manage-column column-radius_cb check-column"><input type="checkbox" id="radius-select-all-places" aria-label="<?php esc_attr_e( 'Select all on this page', 'radius' ); ?>" /></td>
 							<?php self::locations_sortable_th( 'id', __( 'ID', 'radius' ), $ctx ); ?>
 							<?php self::locations_sortable_th( 'name', __( 'Name', 'radius' ), $ctx ); ?>
 							<?php self::locations_sortable_th( 'slug', __( 'Slug', 'radius' ), $ctx ); ?>
-							<th scope="col" class="manage-column column-lf_lat"><?php esc_html_e( 'Lat', 'radius' ); ?></th>
-							<th scope="col" class="manage-column column-lf_lng"><?php esc_html_e( 'Lng', 'radius' ); ?></th>
-							<th scope="col" class="manage-column column-lf_region"><?php esc_html_e( 'Region', 'radius' ); ?></th>
-							<th scope="col" class="manage-column column-lf_zip"><?php esc_html_e( 'ZIP', 'radius' ); ?></th>
-							<th scope="col" class="manage-column column-lf_actions"><?php esc_html_e( 'Actions', 'radius' ); ?></th>
+							<th scope="col" class="manage-column column-radius_lat"><?php esc_html_e( 'Lat', 'radius' ); ?></th>
+							<th scope="col" class="manage-column column-radius_lng"><?php esc_html_e( 'Lng', 'radius' ); ?></th>
+							<th scope="col" class="manage-column column-radius_region"><?php esc_html_e( 'Region', 'radius' ); ?></th>
+							<th scope="col" class="manage-column column-radius_zip"><?php esc_html_e( 'ZIP', 'radius' ); ?></th>
+							<th scope="col" class="manage-column column-radius_actions"><?php esc_html_e( 'Actions', 'radius' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -920,21 +957,21 @@ class Radius_Admin {
 						<?php else : ?>
 							<?php foreach ( $terms as $t ) : ?>
 								<?php
-								$lat  = (string) get_term_meta( $t->term_id, 'lf_lat', true );
-								$lng  = (string) get_term_meta( $t->term_id, 'lf_lng', true );
-								$edit = get_edit_term_link( (int) $t->term_id, Radius_Place_Taxonomy::TAXONOMY, 'lf_landing' );
+								$lat  = (string) get_term_meta( $t->term_id, 'radius_lat', true );
+								$lng  = (string) get_term_meta( $t->term_id, 'radius_lng', true );
+								$edit = get_edit_term_link( (int) $t->term_id, Radius_Place_Taxonomy::TAXONOMY, 'radius_landing' );
 								?>
 								<tr>
 									<th scope="row" class="check-column">
-										<input type="checkbox" class="lf-place-cb" name="lf_place_ids[]" value="<?php echo esc_attr( (string) (int) $t->term_id ); ?>" />
+										<input type="checkbox" class="radius-place-cb" name="radius_place_ids[]" value="<?php echo esc_attr( (string) (int) $t->term_id ); ?>" />
 									</th>
 									<td><?php echo esc_html( (string) (int) $t->term_id ); ?></td>
 									<td><?php echo esc_html( $t->name ); ?></td>
 									<td><code><?php echo esc_html( $t->slug ); ?></code></td>
 									<td><?php echo esc_html( $lat !== '' ? $lat : '—' ); ?></td>
 									<td><?php echo esc_html( $lng !== '' ? $lng : '—' ); ?></td>
-									<td><?php echo esc_html( (string) get_term_meta( $t->term_id, 'lf_region', true ) ); ?></td>
-									<td><?php echo esc_html( (string) get_term_meta( $t->term_id, 'lf_postal', true ) ); ?></td>
+									<td><?php echo esc_html( (string) get_term_meta( $t->term_id, 'radius_region', true ) ); ?></td>
+									<td><?php echo esc_html( (string) get_term_meta( $t->term_id, 'radius_postal', true ) ); ?></td>
 									<td>
 										<?php if ( $edit && ! is_wp_error( $edit ) ) : ?>
 											<a href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'radius' ); ?></a>
@@ -974,26 +1011,26 @@ class Radius_Admin {
 				<?php endif; ?>
 				<form method="get" class="radius-locations-screen-options" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
 					<input type="hidden" name="page" value="radius-locations" />
-					<input type="hidden" name="paged" id="radius-lf-paged-preserve" value="<?php echo esc_attr( (string) (int) $page ); ?>" />
-					<?php if ( $lf_search !== '' ) : ?>
-						<input type="hidden" name="lf_search" value="<?php echo esc_attr( $lf_search ); ?>" />
+					<input type="hidden" name="paged" id="radius-paged-preserve" value="<?php echo esc_attr( (string) (int) $page ); ?>" />
+					<?php if ( $radius_search !== '' ) : ?>
+						<input type="hidden" name="radius_search" value="<?php echo esc_attr( $radius_search ); ?>" />
 					<?php endif; ?>
-					<?php if ( $lf_orderby !== 'name' ) : ?>
-						<input type="hidden" name="lf_orderby" value="<?php echo esc_attr( $lf_orderby ); ?>" />
+					<?php if ( $radius_orderby !== 'name' ) : ?>
+						<input type="hidden" name="radius_orderby" value="<?php echo esc_attr( $radius_orderby ); ?>" />
 					<?php endif; ?>
-					<?php if ( $lf_order !== 'asc' ) : ?>
-						<input type="hidden" name="lf_order" value="<?php echo esc_attr( $lf_order ); ?>" />
+					<?php if ( $radius_order !== 'asc' ) : ?>
+						<input type="hidden" name="radius_order" value="<?php echo esc_attr( $radius_order ); ?>" />
 					<?php endif; ?>
-					<label for="lf_per_page_bottom">
+					<label for="radius_per_page_bottom">
 						<?php esc_html_e( 'Places per page', 'radius' ); ?>
-						<select name="lf_per_page" id="lf_per_page_bottom" onchange="document.getElementById('radius-lf-paged-preserve').value='1'; this.form.submit();">
+						<select name="radius_per_page" id="radius_per_page_bottom" onchange="document.getElementById('radius-paged-preserve').value='1'; this.form.submit();">
 							<?php foreach ( $allowed_pp as $n ) : ?>
 								<option value="<?php echo esc_attr( (string) $n ); ?>" <?php selected( $per_page, $n ); ?>><?php echo esc_html( (string) $n ); ?></option>
 							<?php endforeach; ?>
 						</select>
 					</label>
 					<label style="margin-left:1em;">
-						<input type="checkbox" name="lf_full" value="1" <?php checked( $full ); ?> onchange="this.form.submit()" />
+						<input type="checkbox" name="radius_full" value="1" <?php checked( $full ); ?> onchange="this.form.submit()" />
 						<?php esc_html_e( 'Wide table', 'radius' ); ?>
 					</label>
 				</form>
@@ -1013,8 +1050,8 @@ class Radius_Admin {
 		$rows = $wpdb->get_results(
 			"SELECT pm.meta_value AS tid, COUNT(*) AS cnt FROM {$wpdb->postmeta} pm
 			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-			WHERE pm.meta_key = '_lf_template_id'
-			AND p.post_type = 'lf_landing'
+			WHERE pm.meta_key = '_radius_template_id'
+			AND p.post_type = 'radius_landing'
 			AND p.post_status NOT IN ('trash','auto-draft')
 			GROUP BY pm.meta_value",
 			ARRAY_A
@@ -1040,8 +1077,8 @@ class Radius_Admin {
 		$rows = $wpdb->get_results(
 			"SELECT pm.meta_value AS tid, COUNT(*) AS cnt FROM {$wpdb->postmeta} pm
 			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-			WHERE pm.meta_key = '_lf_template_id'
-			AND p.post_type = 'lf_service_area'
+			WHERE pm.meta_key = '_radius_template_id'
+			AND p.post_type = 'radius_service_area'
 			AND p.post_status NOT IN ('trash','auto-draft')
 			GROUP BY pm.meta_value",
 			ARRAY_A
@@ -1105,7 +1142,7 @@ class Radius_Admin {
 			return 0;
 		}
 		$n = 0;
-		$raw = get_post_meta( $template_id, '_lf_spintax_blocks', true );
+		$raw = get_post_meta( $template_id, '_radius_spintax_blocks', true );
 		if ( is_string( $raw ) ) {
 			$raw = json_decode( $raw, true );
 		}
@@ -1153,7 +1190,7 @@ class Radius_Admin {
 		}
 		$templates = get_posts(
 			array(
-				'post_type'      => 'lf_template',
+				'post_type'      => 'radius_template',
 				'posts_per_page' => 200,
 				'post_status'    => array( 'publish', 'draft' ),
 				'orderby'        => 'title',
@@ -1169,11 +1206,11 @@ class Radius_Admin {
 		$library    = admin_url( 'admin.php?page=radius-locations' );
 		$lf_cfg     = Radius_Settings::get();
 		$sa_tid     = isset( $lf_cfg['service_area_template_id'] ) ? (int) $lf_cfg['service_area_template_id'] : 0;
-		$sa_tpl_ok  = $sa_tid > 0 && get_post_type( $sa_tid ) === 'lf_template';
+		$sa_tpl_ok  = $sa_tid > 0 && get_post_type( $sa_tid ) === 'radius_template';
 		$sa_queue   = null;
 		$sa_run_tid = $sa_tpl_ok ? $sa_tid : 0;
 		foreach ( $templates as $tpl_q ) {
-			$q_try = Radius_Form_Handlers::get_deploy_queue_for_template( (int) $tpl_q->ID, 'lf_service_area' );
+			$q_try = Radius_Form_Handlers::get_deploy_queue_for_template( (int) $tpl_q->ID, 'radius_service_area' );
 			if ( $q_try && ! empty( $q_try['remaining'] ) && is_array( $q_try['remaining'] ) ) {
 				$sa_queue   = $q_try;
 				$sa_run_tid = (int) $q_try['template_id'];
@@ -1246,7 +1283,7 @@ class Radius_Admin {
 			<?php if ( empty( $templates ) ) : ?>
 				<div class="radius-card radius-card-muted">
 					<p><?php esc_html_e( 'No templates yet. Create a template under Templates, then return here to deploy.', 'radius' ); ?></p>
-					<a class="button button-primary" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=lf_template' ) ); ?>"><?php esc_html_e( 'Add template', 'radius' ); ?></a>
+					<a class="button button-primary" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=radius_template' ) ); ?>"><?php esc_html_e( 'Add template', 'radius' ); ?></a>
 				</div>
 			<?php else : ?>
 				<div class="radius-deploy-grid">
@@ -1341,11 +1378,11 @@ class Radius_Admin {
 										);
 										?>
 									</p>
-									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--continue" data-lf-chained-deploy="1">
+									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--continue" data-radius-chained-deploy="1">
 										<input type="hidden" name="action" value="radius_deploy" />
-										<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
-										<input type="hidden" name="lf_deploy_target" value="lf_landing" />
-										<input type="hidden" name="lf_deploy_continue" value="1" />
+										<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
+										<input type="hidden" name="radius_deploy_target" value="radius_landing" />
+										<input type="hidden" name="radius_deploy_continue" value="1" />
 										<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 										<?php
 										submit_button(
@@ -1363,8 +1400,8 @@ class Radius_Admin {
 									</form>
 									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--cancel">
 										<input type="hidden" name="action" value="radius_deploy_cancel" />
-										<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
-										<input type="hidden" name="lf_deploy_target" value="lf_landing" />
+										<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
+										<input type="hidden" name="radius_deploy_target" value="radius_landing" />
 										<?php wp_nonce_field( 'radius_deploy_cancel', 'radius_deploy_cancel_nonce' ); ?>
 										<?php
 										submit_button(
@@ -1377,10 +1414,10 @@ class Radius_Admin {
 										?>
 									</form>
 								<?php endif; ?>
-								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-lf-chained-deploy="1">
+								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-radius-chained-deploy="1">
 									<input type="hidden" name="action" value="radius_deploy" />
-									<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
-									<input type="hidden" name="lf_deploy_target" value="lf_landing" />
+									<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
+									<input type="hidden" name="radius_deploy_target" value="radius_landing" />
 									<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 									<?php
 									$btn_attrs = array();
@@ -1499,11 +1536,11 @@ class Radius_Admin {
 								);
 								?>
 							</p>
-							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--continue" data-lf-chained-deploy="1">
+							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--continue" data-radius-chained-deploy="1">
 								<input type="hidden" name="action" value="radius_deploy" />
-								<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $sa_run_tid ); ?>" />
-								<input type="hidden" name="lf_deploy_target" value="lf_service_area" />
-								<input type="hidden" name="lf_deploy_continue" value="1" />
+								<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $sa_run_tid ); ?>" />
+								<input type="hidden" name="radius_deploy_target" value="radius_service_area" />
+								<input type="hidden" name="radius_deploy_continue" value="1" />
 								<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 								<?php
 								submit_button(
@@ -1521,16 +1558,16 @@ class Radius_Admin {
 							</form>
 							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--cancel">
 								<input type="hidden" name="action" value="radius_deploy_cancel" />
-								<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $sa_run_tid ); ?>" />
-								<input type="hidden" name="lf_deploy_target" value="lf_service_area" />
+								<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $sa_run_tid ); ?>" />
+								<input type="hidden" name="radius_deploy_target" value="radius_service_area" />
 								<?php wp_nonce_field( 'radius_deploy_cancel', 'radius_deploy_cancel_nonce' ); ?>
 								<?php submit_button( __( 'Clear service area queue', 'radius' ), 'secondary', 'submit', false, array() ); ?>
 							</form>
 						<?php else : ?>
-							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-lf-chained-deploy="1">
+							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-radius-chained-deploy="1">
 								<input type="hidden" name="action" value="radius_deploy" />
-								<input type="hidden" name="lf_template_id" value="<?php echo esc_attr( (string) $sa_tid ); ?>" />
-								<input type="hidden" name="lf_deploy_target" value="lf_service_area" />
+								<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $sa_tid ); ?>" />
+								<input type="hidden" name="radius_deploy_target" value="radius_service_area" />
 								<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 								<?php
 								$sa_btn = array();
@@ -1552,7 +1589,7 @@ class Radius_Admin {
 							<p class="radius-deploy-card__edit">
 								<a href="<?php echo esc_url( $sa_edit ); ?>"><?php esc_html_e( 'Edit template', 'radius' ); ?></a>
 								&nbsp;·&nbsp;
-								<a href="<?php echo esc_url( admin_url( 'edit.php?post_type=lf_service_area' ) ); ?>"><?php esc_html_e( 'All service areas', 'radius' ); ?></a>
+								<a href="<?php echo esc_url( admin_url( 'edit.php?post_type=radius_service_area' ) ); ?>"><?php esc_html_e( 'All service areas', 'radius' ); ?></a>
 							</p>
 						<?php endif; ?>
 					</div>
@@ -1590,7 +1627,7 @@ class Radius_Admin {
 		}
 		$templates = get_posts(
 			array(
-				'post_type'      => 'lf_template',
+				'post_type'      => 'radius_template',
 				'posts_per_page' => 200,
 				'post_status'    => 'any',
 				'orderby'        => 'title',
@@ -1602,12 +1639,14 @@ class Radius_Admin {
 		$csv_url    = admin_url( 'admin-post.php' );
 
 		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'spintax'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $tab, array( 'spintax', 'templates', 'locations' ), true ) ) {
+		if ( ! in_array( $tab, array( 'spintax', 'templates', 'locations', 'migration' ), true ) ) {
 			$tab = 'spintax';
 		}
 
 		$mp_raw_n = Radius_Legacy_Import_Service::magic_page_spintax_raw_row_count();
 		$mp_rows  = Radius_Legacy_Import_Service::magic_page_spintax_rows();
+		$mp_env   = Radius_Legacy_Import_Service::detect_magic_page_environment();
+		$mp_active = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
 		?>
 		<div class="wrap radius-admin">
 			<h1><?php esc_html_e( 'Import / export', 'radius' ); ?></h1>
@@ -1617,6 +1656,7 @@ class Radius_Admin {
 				<a href="<?php echo esc_url( self::import_screen_url( 'spintax' ) ); ?>" class="nav-tab<?php echo $tab === 'spintax' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Spintax (global option)', 'radius' ); ?></a>
 				<a href="<?php echo esc_url( self::import_screen_url( 'templates' ) ); ?>" class="nav-tab<?php echo $tab === 'templates' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Templates & slots', 'radius' ); ?></a>
 				<a href="<?php echo esc_url( self::import_screen_url( 'locations' ) ); ?>" class="nav-tab<?php echo $tab === 'locations' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Locations', 'radius' ); ?></a>
+				<a href="<?php echo esc_url( self::import_screen_url( 'migration' ) ); ?>" class="nav-tab<?php echo $tab === 'migration' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Magic Page migration', 'radius' ); ?></a>
 			</h2>
 
 			<div class="radius-tab-panel">
@@ -1689,12 +1729,12 @@ class Radius_Admin {
 						<input type="hidden" name="action" value="radius_legacy_vendor_spintax" />
 						<?php wp_nonce_field( 'radius_legacy_vendor_spintax', 'radius_legacy_vendor_spintax_nonce' ); ?>
 						<p>
-							<label for="lf_legacy_spintax_scope"><?php esc_html_e( 'Apply to', 'radius' ); ?></label><br />
-							<select name="lf_legacy_spintax_scope" id="lf_legacy_spintax_scope">
+							<label for="radius_legacy_spintax_scope"><?php esc_html_e( 'Apply to', 'radius' ); ?></label><br />
+							<select name="radius_legacy_spintax_scope" id="radius_legacy_spintax_scope">
 								<option value="all"><?php esc_html_e( 'All Radius templates', 'radius' ); ?></option>
 								<option value="one"><?php esc_html_e( 'One template…', 'radius' ); ?></option>
 							</select>
-							<select name="lf_legacy_spintax_template" id="lf_legacy_spintax_template" aria-label="<?php esc_attr_e( 'Template', 'radius' ); ?>">
+							<select name="radius_legacy_spintax_template" id="radius_legacy_spintax_template" aria-label="<?php esc_attr_e( 'Template', 'radius' ); ?>">
 								<option value=""><?php esc_html_e( '— Choose template —', 'radius' ); ?></option>
 								<?php foreach ( $templates as $tpl ) : ?>
 									<option value="<?php echo esc_attr( (string) (int) $tpl->ID ); ?>"><?php echo esc_html( $tpl->post_title ); ?></option>
@@ -1702,25 +1742,25 @@ class Radius_Admin {
 							</select>
 						</p>
 						<p>
-							<label for="lf_legacy_spintax_key_prefixes"><?php esc_html_e( 'Import only block keys starting with…', 'radius' ); ?></label><br />
-							<textarea name="lf_legacy_spintax_key_prefixes" id="lf_legacy_spintax_key_prefixes" class="large-text code" rows="4" placeholder="<?php esc_attr_e( "roadside\nequipment\ntowing", 'radius' ); ?>"></textarea>
+							<label for="radius_legacy_spintax_key_prefixes"><?php esc_html_e( 'Import only block keys starting with…', 'radius' ); ?></label><br />
+							<textarea name="radius_legacy_spintax_key_prefixes" id="radius_legacy_spintax_key_prefixes" class="large-text code" rows="4" placeholder="<?php esc_attr_e( "roadside\nequipment\ntowing", 'radius' ); ?>"></textarea>
 							<span class="description"><?php esc_html_e( 'One prefix per line (compared to the sanitized block key, case-insensitive). Leave empty to import all keys.', 'radius' ); ?></span>
 						</p>
 						<p>
 							<label>
-								<input type="checkbox" name="lf_legacy_spintax_replace_shortcodes" value="1" />
+								<input type="checkbox" name="radius_legacy_spintax_replace_shortcodes" value="1" />
 								<?php esc_html_e( 'Replace `{spintax_label}` in template title and content with `{{key}}`, and convert legacy bracket shortcodes in title, body, and every spintax variation to `{{…}}` (e.g. `[xfield_phone]` → `{{phone}}`, `[location]` → `{{place_name}}`).', 'radius' ); ?>
 							</label>
 						</p>
 						<p>
 							<label>
-								<input type="checkbox" name="lf_legacy_spintax_overwrite_keys" value="1" />
+								<input type="checkbox" name="radius_legacy_spintax_overwrite_keys" value="1" />
 								<?php esc_html_e( 'Overwrite Radius spintax rows that use the same key (replace all variations with the source list).', 'radius' ); ?>
 							</label>
 						</p>
 						<p>
 							<label>
-								<input type="checkbox" name="lf_legacy_spintax_merge_variations" value="1" />
+								<input type="checkbox" name="radius_legacy_spintax_merge_variations" value="1" />
 								<?php esc_html_e( 'If a block key already exists, append the source options as extra variations (deduplicated) instead of skipping.', 'radius' ); ?>
 							</label>
 						</p>
@@ -1748,14 +1788,14 @@ class Radius_Admin {
 					<input type="hidden" name="action" value="radius_import_slots" />
 					<?php wp_nonce_field( 'radius_slots', 'radius_slots_nonce' ); ?>
 					<p>
-						<select name="lf_slot_template" required>
+						<select name="radius_slot_template" required>
 							<option value=""><?php esc_html_e( '— Template —', 'radius' ); ?></option>
 							<?php foreach ( $templates as $tpl ) : ?>
 								<option value="<?php echo esc_attr( (string) $tpl->ID ); ?>"><?php echo esc_html( $tpl->post_title ); ?></option>
 							<?php endforeach; ?>
 						</select>
 					</p>
-					<textarea name="lf_markdown" rows="12" class="large-text code" placeholder="<!-- lf:slot h2 -->
+					<textarea name="radius_markdown" rows="12" class="large-text code" placeholder="<!-- lf:slot h2 -->
 24/7 Towing in {{place_name}}
 Fast roadside help in {{region}}
 <!-- lf:end -->"></textarea>
@@ -1773,6 +1813,117 @@ Fast roadside help in {{region}}
 					</form>
 				<?php endif; ?>
 
+			<?php elseif ( 'migration' === $tab ) : ?>
+				<h2 class="screen-reader-text"><?php esc_html_e( 'Magic Page migration wizard', 'radius' ); ?></h2>
+				<?php if ( ! current_user_can( 'manage_options' ) ) : ?>
+					<p><?php esc_html_e( 'You need an administrator account to run migration tools.', 'radius' ); ?></p>
+				<?php else : ?>
+					<p class="description"><?php esc_html_e( 'Guided flow for sites that still have Magic Page data in this database: copy locations, import blueprint templates (including Elementor documents), create roadside/heavy/equipment template drafts from your towing blueprint, then finish spintax and deploy on the other tabs.', 'radius' ); ?></p>
+					<ul style="list-style:disc;padding-left:1.25em;">
+						<li>
+							<?php
+							echo esc_html(
+								$mp_active
+									? __( 'Magic Page plugin: active (detected).', 'radius' )
+									: __( 'Magic Page plugin: not detected as active — legacy CPT/options may still be present.', 'radius' )
+							);
+							?>
+						</li>
+						<li>
+							<?php
+							echo esc_html(
+								$mp_env
+									? __( 'Legacy Magic Page data: detected (CPT, taxonomy, and/or global spintax option).', 'radius' )
+									: __( 'Legacy Magic Page data: nothing obvious found — migration buttons may have nothing to do.', 'radius' )
+							);
+							?>
+						</li>
+					</ul>
+
+					<hr class="radius-tab-hr" />
+					<h3><?php esc_html_e( 'Step 1 — Locations', 'radius' ); ?></h3>
+					<p class="description"><?php esc_html_e( 'Copies legacy “location” taxonomy terms into the Radius place library (same tool as the Locations tab).', 'radius' ); ?></p>
+					<?php if ( $legacy_pl ) : ?>
+						<p>
+							<label>
+								<input type="checkbox" id="radius-legacy-import-skip-existing" value="1" <?php checked( ! empty( Radius_Settings::get()['legacy_import_skip_existing'] ) ); ?> />
+								<?php esc_html_e( 'Skip rows that already exist in the library (same slug). Fewer writes; good when resuming a large import.', 'radius' ); ?>
+							</label>
+						</p>
+						<p>
+							<button type="button" class="button button-secondary radius-legacy-place-import-start" id="radius-legacy-import-start">
+								<?php esc_html_e( 'Run legacy place import (all batches)', 'radius' ); ?>
+							</button>
+						</p>
+						<div id="radius-legacy-import-status" class="radius-legacy-import-status" hidden>
+							<div class="radius-legacy-import-progress-block" aria-live="polite">
+								<p class="radius-legacy-import-progress-label" id="radius-legacy-import-overall-label"></p>
+								<progress id="radius-legacy-import-overall" max="100" value="0" class="radius-legacy-import-progress"></progress>
+								<p class="radius-legacy-import-progress-caption" id="radius-legacy-import-overall-caption"></p>
+							</div>
+							<div class="radius-legacy-import-progress-block radius-legacy-import-progress-block--batch" id="radius-legacy-import-batch-wrap">
+								<p class="radius-legacy-import-progress-label" id="radius-legacy-import-batch-label"></p>
+								<progress id="radius-legacy-import-batch" max="100" value="0" class="radius-legacy-import-progress"></progress>
+								<p class="radius-legacy-import-progress-caption" id="radius-legacy-import-batch-caption"></p>
+							</div>
+							<p><strong id="radius-legacy-import-status-line"></strong></p>
+							<pre id="radius-legacy-import-log" class="radius-legacy-import-log"></pre>
+						</div>
+					<?php else : ?>
+						<p class="description"><?php esc_html_e( 'No legacy location taxonomy on this site.', 'radius' ); ?></p>
+					<?php endif; ?>
+
+					<hr class="radius-tab-hr" />
+					<h3><?php esc_html_e( 'Step 2 — Templates (Elementor)', 'radius' ); ?></h3>
+					<p class="description"><?php esc_html_e( 'Imports Magic Page blueprint posts as Radius template drafts and copies Elementor document data so “Edit with Elementor” opens the real layout (not a plain block shell).', 'radius' ); ?></p>
+					<?php if ( $legacy_tpl ) : ?>
+						<p>
+							<button type="button" class="button button-secondary" id="radius-migration-import-templates-only">
+								<?php esc_html_e( 'Import legacy templates now', 'radius' ); ?>
+							</button>
+						</p>
+					<?php else : ?>
+						<p class="description"><?php esc_html_e( 'No legacy template post type registered — nothing to import.', 'radius' ); ?></p>
+					<?php endif; ?>
+
+					<hr class="radius-tab-hr" />
+					<h3><?php esc_html_e( 'Step 3 — Service-line template drafts', 'radius' ); ?></h3>
+					<p class="description"><?php esc_html_e( 'Pick the imported towing blueprint, then create three drafts: tags like towing_* become roadside_*, heavy_*, and equipment_* inside Elementor JSON and spintax meta (reuse your existing bracket → {{}} conversion on the Spintax tab when importing global spintax).', 'radius' ); ?></p>
+					<p>
+						<label for="radius-migration-base-template"><strong><?php esc_html_e( 'Towing blueprint (radius_template)', 'radius' ); ?></strong></label><br />
+						<select id="radius-migration-base-template" class="regular-text">
+							<option value=""><?php esc_html_e( '— Choose template —', 'radius' ); ?></option>
+							<?php foreach ( $templates as $tpl ) : ?>
+								<option value="<?php echo esc_attr( (string) (int) $tpl->ID ); ?>"><?php echo esc_html( $tpl->post_title ); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</p>
+					<p>
+						<button type="button" class="button button-secondary" id="radius-migration-clone-only" <?php disabled( empty( $templates ) ); ?>>
+							<?php esc_html_e( 'Create roadside, heavy towing & heavy equipment drafts', 'radius' ); ?>
+						</button>
+					</p>
+
+					<hr class="radius-tab-hr" />
+					<h3><?php esc_html_e( 'Automation', 'radius' ); ?></h3>
+					<p class="description"><?php esc_html_e( 'Runs step 1 (locations), step 2 (template import), and step 3 (variants) in order. Choose the towing blueprint above first. Then use Spintax (global option) with prefix filters per template, assign the service-area template under Settings → Areas if needed, and deploy.', 'radius' ); ?></p>
+					<p>
+						<button type="button" class="button button-primary" id="radius-migration-run-full">
+							<?php esc_html_e( 'Start migration (automated steps)', 'radius' ); ?>
+						</button>
+					</p>
+					<pre id="radius-migration-automation-log" class="radius-legacy-import-log" style="max-height:220px;overflow:auto;"></pre>
+
+					<hr class="radius-tab-hr" />
+					<h3><?php esc_html_e( 'Next steps (manual)', 'radius' ); ?></h3>
+					<ul style="list-style:disc;padding-left:1.25em;">
+						<li><a href="<?php echo esc_url( self::import_screen_url( 'spintax' ) ); ?>"><?php esc_html_e( 'Spintax tab — import global Magic Page spintax into each template; use prefix filters (roadside, heavy, equipment, towing) as needed.', 'radius' ); ?></a></li>
+						<li><a href="<?php echo esc_url( admin_url( 'edit.php?post_type=radius_template' ) ); ?>"><?php esc_html_e( 'Templates list — open each draft in Elementor and verify dynamic tags.', 'radius' ); ?></a></li>
+						<li><a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy' ) ); ?>"><?php esc_html_e( 'Deploy landings when ready.', 'radius' ); ?></a></li>
+						<li><?php esc_html_e( 'Settings → Integrations — optional cleanup of Magic Page options from wp_options after you deactivate Magic Page.', 'radius' ); ?></li>
+					</ul>
+				<?php endif; ?>
+
 			<?php else : ?>
 				<h2 class="screen-reader-text"><?php esc_html_e( 'Locations', 'radius' ); ?></h2>
 				<h3><?php esc_html_e( 'CSV import / export', 'radius' ); ?></h3>
@@ -1786,9 +1937,9 @@ Fast roadside help in {{region}}
 					<form method="post" action="<?php echo esc_url( $csv_url ); ?>" enctype="multipart/form-data" class="radius-form-inline" style="display:inline-block;vertical-align:top;">
 						<input type="hidden" name="action" value="radius_import_csv" />
 						<?php wp_nonce_field( 'radius_csv', 'radius_csv_nonce' ); ?>
-						<input type="file" name="lf_csv" accept=".csv,text/csv" required />
+						<input type="file" name="radius_csv" accept=".csv,text/csv" required />
 						<label style="margin-left:8px;">
-							<input type="checkbox" name="lf_csv_update_existing" value="1" />
+							<input type="checkbox" name="radius_csv_update_existing" value="1" />
 							<?php esc_html_e( 'Update existing', 'radius' ); ?>
 						</label>
 						<?php submit_button( __( 'Upload CSV', 'radius' ), 'primary', 'submit', false, array( 'style' => 'margin-left:8px;' ) ); ?>
@@ -1800,33 +1951,33 @@ Fast roadside help in {{region}}
 					<p class="description"><?php esc_html_e( 'When this WordPress database still has the legacy location taxonomy (e.g. Magic Page “location” terms), you can copy them into the Radius library in small AJAX batches. Batch size, pause between batches, and “skip existing slugs” are under Settings → General. Pulling from a remote Magic Page server without a WP export is not supported here — use a DB clone on this site, or export places from Magic Page and upload via CSV on the Locations tab.', 'radius' ); ?></p>
 					<p>
 						<label>
-							<input type="checkbox" id="lf-legacy-import-skip-existing" value="1" <?php checked( ! empty( Radius_Settings::get()['legacy_import_skip_existing'] ) ); ?> />
+							<input type="checkbox" id="radius-legacy-import-skip-existing" value="1" <?php checked( ! empty( Radius_Settings::get()['legacy_import_skip_existing'] ) ); ?> />
 							<?php esc_html_e( 'Skip rows that already exist in the library (same slug). Fewer writes; good when resuming a large import.', 'radius' ); ?>
 						</label>
 					</p>
 					<p>
-						<button type="button" class="button button-secondary" id="lf-legacy-import-start">
+						<button type="button" class="button button-secondary" id="radius-legacy-import-start">
 							<?php esc_html_e( 'Run legacy place import (all batches)', 'radius' ); ?>
 						</button>
 					</p>
-					<div id="lf-legacy-import-status" class="radius-legacy-import-status" hidden>
+					<div id="radius-legacy-import-status" class="radius-legacy-import-status" hidden>
 						<div class="radius-legacy-import-progress-block" aria-live="polite">
-							<p class="radius-legacy-import-progress-label" id="lf-legacy-import-overall-label"></p>
-							<progress id="lf-legacy-import-overall" max="100" value="0" class="radius-legacy-import-progress"></progress>
-							<p class="radius-legacy-import-progress-caption" id="lf-legacy-import-overall-caption"></p>
+							<p class="radius-legacy-import-progress-label" id="radius-legacy-import-overall-label"></p>
+							<progress id="radius-legacy-import-overall" max="100" value="0" class="radius-legacy-import-progress"></progress>
+							<p class="radius-legacy-import-progress-caption" id="radius-legacy-import-overall-caption"></p>
 						</div>
-						<div class="radius-legacy-import-progress-block radius-legacy-import-progress-block--batch" id="lf-legacy-import-batch-wrap">
-							<p class="radius-legacy-import-progress-label" id="lf-legacy-import-batch-label"></p>
-							<progress id="lf-legacy-import-batch" max="100" value="0" class="radius-legacy-import-progress"></progress>
-							<p class="radius-legacy-import-progress-caption" id="lf-legacy-import-batch-caption"></p>
+						<div class="radius-legacy-import-progress-block radius-legacy-import-progress-block--batch" id="radius-legacy-import-batch-wrap">
+							<p class="radius-legacy-import-progress-label" id="radius-legacy-import-batch-label"></p>
+							<progress id="radius-legacy-import-batch" max="100" value="0" class="radius-legacy-import-progress"></progress>
+							<p class="radius-legacy-import-progress-caption" id="radius-legacy-import-batch-caption"></p>
 						</div>
-						<p><strong id="lf-legacy-import-status-line"></strong></p>
-						<pre id="lf-legacy-import-log" class="radius-legacy-import-log"></pre>
+						<p><strong id="radius-legacy-import-status-line"></strong></p>
+						<pre id="radius-legacy-import-log" class="radius-legacy-import-log"></pre>
 					</div>
 					<noscript>
 						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 							<input type="hidden" name="action" value="radius_legacy_places" />
-							<input type="hidden" name="lf_legacy_offset" value="0" />
+							<input type="hidden" name="radius_legacy_offset" value="0" />
 							<?php wp_nonce_field( 'radius_legacy_pl', 'radius_legacy_pl_nonce' ); ?>
 							<?php submit_button( __( 'Import one batch (JavaScript disabled)', 'radius' ), 'secondary', 'submit', false ); ?>
 						</form>
@@ -1879,7 +2030,7 @@ Fast roadside help in {{region}}
 		$sa_tpl_id = isset( $s['service_area_template_id'] ) ? (int) $s['service_area_template_id'] : 0;
 		$sa_tpl_list = get_posts(
 			array(
-				'post_type'      => 'lf_template',
+				'post_type'      => 'radius_template',
 				'posts_per_page' => 200,
 				'post_status'    => array( 'publish', 'draft' ),
 				'orderby'        => 'title',
@@ -1902,8 +2053,8 @@ Fast roadside help in {{region}}
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-settings-form">
 				<input type="hidden" name="action" value="radius_save_settings" />
-				<input type="hidden" name="lf_settings_tab" value="<?php echo esc_attr( $tab ); ?>" />
-				<?php wp_nonce_field( 'localeforge_settings', 'localeforge_settings_nonce' ); ?>
+				<input type="hidden" name="radius_settings_tab" value="<?php echo esc_attr( $tab ); ?>" />
+				<?php wp_nonce_field( 'radius_settings', 'radius_settings_nonce' ); ?>
 
 				<div id="radius-panel-license" class="radius-settings-panel" style="<?php echo $tab === 'license' ? '' : 'display:none;'; ?>">
 					<table class="form-table">
@@ -1912,33 +2063,33 @@ Fast roadside help in {{region}}
 							<td>
 								<p class="description"><?php esc_html_e( 'Radius needs an API key. Save a key here to enable templates, landings, deploy, and imports. The key is encrypted in the database.', 'radius' ); ?></p>
 								<?php if ( $api_key_saved ) : ?>
-									<input type="hidden" name="lf_api_key_remove" id="lf_api_key_remove_field" value="" />
+									<input type="hidden" name="radius_api_key_remove" id="radius_api_key_remove_field" value="" />
 								<?php endif; ?>
 								<div class="radius-api-key-row">
-									<label for="lf_api_key" class="screen-reader-text"><?php esc_html_e( 'API key', 'radius' ); ?></label>
+									<label for="radius_api_key" class="screen-reader-text"><?php esc_html_e( 'API key', 'radius' ); ?></label>
 									<?php if ( $api_key_saved ) : ?>
 										<input
-											name="lf_api_key"
-											id="lf_api_key"
+											name="radius_api_key"
+											id="radius_api_key"
 											type="text"
 											class="regular-text code radius-api-key-input"
 											value="<?php echo esc_attr( $masked_preview ); ?>"
 											data-mask="<?php echo esc_attr( $masked_preview ); ?>"
 											autocomplete="off"
 											spellcheck="false"
-											aria-describedby="lf-api-key-hint"
+											aria-describedby="radius-api-key-hint"
 										/>
 									<?php else : ?>
 										<input
-											name="lf_api_key"
-											id="lf_api_key"
+											name="radius_api_key"
+											id="radius_api_key"
 											type="password"
 											class="regular-text code radius-api-key-input"
 											value=""
 											autocomplete="new-password"
 											spellcheck="false"
 											placeholder="<?php esc_attr_e( 'Paste or type your API key', 'radius' ); ?>"
-											aria-describedby="lf-api-key-hint"
+											aria-describedby="radius-api-key-hint"
 										/>
 									<?php endif; ?>
 									<span class="radius-api-key-row__actions">
@@ -1953,7 +2104,7 @@ Fast roadside help in {{region}}
 										><?php echo $license_ui_ok ? esc_html__( 'Validated', 'radius' ) : ''; ?></span>
 									</span>
 								</div>
-								<p id="lf-api-key-hint" class="description">
+								<p id="radius-api-key-hint" class="description">
 									<?php
 									echo $api_key_saved
 										? esc_html__( 'The preview shows the first two characters; the rest is masked. Edit in place or paste a new key—if you do not change the value, Save keeps your current key. Use Remove, then Save, to clear the license.', 'radius' )
@@ -2115,7 +2266,7 @@ Fast roadside help in {{region}}
 											<th><?php esc_html_e( 'Actions', 'radius' ); ?></th>
 										</tr>
 									</thead>
-									<tbody id="lf-anchor-tbody">
+									<tbody id="radius-anchor-tbody">
 										<?php foreach ( $anchors as $row ) : ?>
 											<?php
 											$pid       = ! empty( $row['place_id'] ) ? absint( $row['place_id'] ) : 0;
@@ -2142,33 +2293,33 @@ Fast roadside help in {{region}}
 											$leg_lng   = $is_legacy ? (string) $row['lng'] : '';
 											$loc_code  = isset( $row['location_code'] ) ? sanitize_key( (string) $row['location_code'] ) : '';
 											?>
-											<tr class="lf-anchor-row">
+											<tr class="radius-anchor-row">
 												<td>
-													<input type="hidden" name="lf_anchor_place_id[]" value="<?php echo esc_attr( (string) $pid ); ?>" class="lf-anchor-place-id lf-pick-place-id" />
-													<input type="hidden" name="lf_anchor_legacy_lat[]" value="<?php echo esc_attr( $leg_lat ); ?>" class="lf-anchor-legacy-lat" />
-													<input type="hidden" name="lf_anchor_legacy_lng[]" value="<?php echo esc_attr( $leg_lng ); ?>" class="lf-anchor-legacy-lng" />
+													<input type="hidden" name="radius_anchor_place_id[]" value="<?php echo esc_attr( (string) $pid ); ?>" class="radius-anchor-place-id lf-pick-place-id" />
+													<input type="hidden" name="radius_anchor_legacy_lat[]" value="<?php echo esc_attr( $leg_lat ); ?>" class="radius-anchor-legacy-lat" />
+													<input type="hidden" name="radius_anchor_legacy_lng[]" value="<?php echo esc_attr( $leg_lng ); ?>" class="radius-anchor-legacy-lng" />
 													<?php if ( $is_legacy ) : ?>
-														<p class="description lf-anchor-legacy-note"><?php esc_html_e( 'Saved as coordinates. Search below to switch this row to a library place.', 'radius' ); ?></p>
+														<p class="description radius-anchor-legacy-note"><?php esc_html_e( 'Saved as coordinates. Search below to switch this row to a library place.', 'radius' ); ?></p>
 													<?php endif; ?>
-													<div class="lf-anchor-pick">
-														<input type="search" class="regular-text lf-anchor-search" value="<?php echo esc_attr( $display ); ?>" autocomplete="off" placeholder="<?php esc_attr_e( 'Type to search places…', 'radius' ); ?>" />
-														<div class="lf-anchor-suggest" style="display:none;" role="listbox"></div>
+													<div class="radius-anchor-pick">
+														<input type="search" class="regular-text radius-anchor-search" value="<?php echo esc_attr( $display ); ?>" autocomplete="off" placeholder="<?php esc_attr_e( 'Type to search places…', 'radius' ); ?>" />
+														<div class="radius-anchor-suggest" style="display:none;" role="listbox"></div>
 													</div>
 												</td>
-												<td><input type="text" name="lf_anchor_radius[]" value="<?php echo esc_attr( $rad ); ?>" class="small-text" /></td>
+												<td><input type="text" name="radius_anchor_radius[]" value="<?php echo esc_attr( $rad ); ?>" class="small-text" /></td>
 												<td>
 													<?php if ( $loc_code !== '' ) : ?>
-														<code class="lf-anchor-area-code-display"><?php echo esc_html( $loc_code ); ?></code>
+														<code class="radius-anchor-area-code-display"><?php echo esc_html( $loc_code ); ?></code>
 													<?php else : ?>
 														<span class="description"><?php esc_html_e( '— Save settings to assign —', 'radius' ); ?></span>
 													<?php endif; ?>
 												</td>
-												<td><button type="button" class="button lf-anchor-remove-row"><?php esc_html_e( 'Remove', 'radius' ); ?></button></td>
+												<td><button type="button" class="button radius-anchor-remove-row"><?php esc_html_e( 'Remove', 'radius' ); ?></button></td>
 											</tr>
 										<?php endforeach; ?>
 									</tbody>
 								</table>
-								<p><button type="button" class="button" id="lf-anchor-add"><?php esc_html_e( 'Add service area row', 'radius' ); ?></button></p>
+								<p><button type="button" class="button" id="radius-anchor-add"><?php esc_html_e( 'Add service area row', 'radius' ); ?></button></p>
 							</td>
 						</tr>
 					</table>
@@ -2179,8 +2330,8 @@ Fast roadside help in {{region}}
 						<tr>
 							<th><?php esc_html_e( 'Site replacers', 'radius' ); ?></th>
 							<td>
-								<p class="description"><?php esc_html_e( 'Global tokens such as {{phone_number}} or {{company_name}} — same values across all templates. Add default values and, under Edit values, per–service-area overrides keyed by the area code from the Service areas tab (closest matching area wins when radii overlap). Save Service areas first so area codes appear in the list.', 'radius' ); ?></p>
-								<table class="widefat striped radius-repeater" id="lf-site-replacements">
+								<p class="description"><?php esc_html_e( 'Global tokens such as {{phone-number}} or {{company-name}} — same values across all templates. Add default values and, under Edit values, per–service-area overrides keyed by the area code from the Service areas tab (closest matching area wins when radii overlap). Save Service areas first so area codes appear in the list.', 'radius' ); ?></p>
+								<table class="widefat striped radius-repeater" id="radius-site-replacements">
 									<thead>
 										<tr>
 											<th class="radius-tpl-col-key"><?php esc_html_e( 'Key', 'radius' ); ?></th>
@@ -2190,17 +2341,17 @@ Fast roadside help in {{region}}
 									</thead>
 									<tbody></tbody>
 								</table>
-								<p><button type="button" class="button" id="lf-site-replacements-add"><?php esc_html_e( 'Add replacer', 'radius' ); ?></button></p>
-								<input type="hidden" name="lf_site_replacements_json" id="lf_site_replacements_json" value="" />
-								<div id="lf-site-repl-modal" class="lf-spintax-modal lf-metabox-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="lf-site-repl-modal-title">
-									<div class="lf-spintax-modal__backdrop" tabindex="-1"></div>
-									<div class="lf-spintax-modal__panel lf-metabox-modal__panel">
-										<button type="button" class="button-link lf-metabox-modal-dismiss lf-site-repl-modal-dismiss" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>">&times;</button>
-										<h3 id="lf-site-repl-modal-title" style="margin-top:0;padding-right:36px;"></h3>
-										<div id="lf-site-repl-modal-body"></div>
+								<p><button type="button" class="button" id="radius-site-replacements-add"><?php esc_html_e( 'Add replacer', 'radius' ); ?></button></p>
+								<input type="hidden" name="radius_site_replacements_json" id="radius_site_replacements_json" value="" />
+								<div id="radius-site-repl-modal" class="radius-spintax-modal radius-metabox-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="radius-site-repl-modal-title">
+									<div class="radius-spintax-modal__backdrop" tabindex="-1"></div>
+									<div class="radius-spintax-modal__panel radius-metabox-modal__panel">
+										<button type="button" class="button-link radius-metabox-modal-dismiss radius-site-repl-modal-dismiss" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>">&times;</button>
+										<h3 id="radius-site-repl-modal-title" style="margin-top:0;padding-right:36px;"></h3>
+										<div id="radius-site-repl-modal-body"></div>
 										<p class="submit" style="margin-bottom:0;padding-bottom:0;">
-											<button type="button" class="button button-primary" id="lf-site-repl-modal-save"><?php esc_html_e( 'Save values', 'radius' ); ?></button>
-											<button type="button" class="button" id="lf-site-repl-modal-cancel"><?php esc_html_e( 'Cancel', 'radius' ); ?></button>
+											<button type="button" class="button button-primary" id="radius-site-repl-modal-save"><?php esc_html_e( 'Save values', 'radius' ); ?></button>
+											<button type="button" class="button" id="radius-site-repl-modal-cancel"><?php esc_html_e( 'Cancel', 'radius' ); ?></button>
 										</p>
 									</div>
 								</div>
@@ -2334,6 +2485,23 @@ Fast roadside help in {{region}}
 									<textarea name="deploy_copy_meta_keys" id="deploy_copy_meta_keys" class="large-text code" rows="6" placeholder="_yoast_wpseo_title&#10;_yoast_wpseo_metadesc"><?php echo esc_textarea( $meta_keys ); ?></textarea>
 								</p>
 								<p class="description"><?php esc_html_e( 'Optional. Prefix checkboxes usually cover Yoast; add lines here for other plugins or one-off keys.', 'radius' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
+							<td>
+								<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page). This reduces options table bloat.', 'radius' ); ?></p>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+									<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+									<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+									<p>
+										<label>
+											<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
+											<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
+										</label>
+									</p>
+									<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
+								</form>
 							</td>
 						</tr>
 					</table>

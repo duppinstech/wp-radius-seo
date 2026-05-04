@@ -90,8 +90,8 @@ class Radius_Geo_Service {
 			}
 			if ( ! empty( $a['place_id'] ) ) {
 				$pid = (int) $a['place_id'];
-				$lat = get_term_meta( $pid, 'lf_lat', true );
-				$lng = get_term_meta( $pid, 'lf_lng', true );
+				$lat = get_term_meta( $pid, 'radius_lat', true );
+				$lng = get_term_meta( $pid, 'radius_lng', true );
 				if ( $lat === '' || $lng === '' || $lat === false || $lng === false ) {
 					continue;
 				}
@@ -159,8 +159,8 @@ class Radius_Geo_Service {
 
 			foreach ( $terms as $term ) {
 				$tid = (int) $term->term_id;
-				$lat = get_term_meta( $tid, 'lf_lat', true );
-				$lng = get_term_meta( $tid, 'lf_lng', true );
+				$lat = get_term_meta( $tid, 'radius_lat', true );
+				$lng = get_term_meta( $tid, 'radius_lng', true );
 				if ( $lat === '' || $lng === '' || $lat === false || $lng === false ) {
 					++$skipped_no_coords;
 					continue;
@@ -183,7 +183,7 @@ class Radius_Geo_Service {
 	 * For a library place, find the nearest service-area anchor whose circle contains the place.
 	 * Returns the anchor’s stable `location_code` for {{location_code}} (no per-hub token map).
 	 *
-	 * @param int $place_id lf_place term ID.
+	 * @param int $place_id radius_place term ID.
 	 * @return array{location_code:string,token_overrides:array<string,string>}
 	 */
 	public static function hub_context_for_place( $place_id ) {
@@ -195,8 +195,8 @@ class Radius_Geo_Service {
 		if ( $place_id <= 0 ) {
 			return $empty;
 		}
-		$lat = get_term_meta( $place_id, 'lf_lat', true );
-		$lng = get_term_meta( $place_id, 'lf_lng', true );
+		$lat = get_term_meta( $place_id, 'radius_lat', true );
+		$lng = get_term_meta( $place_id, 'radius_lng', true );
 		if ( $lat === '' || $lng === '' || ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
 			return $empty;
 		}
@@ -224,8 +224,8 @@ class Radius_Geo_Service {
 			$along = null;
 			if ( ! empty( $a['place_id'] ) ) {
 				$pid = (int) $a['place_id'];
-				$ala = get_term_meta( $pid, 'lf_lat', true );
-				$alo = get_term_meta( $pid, 'lf_lng', true );
+				$ala = get_term_meta( $pid, 'radius_lat', true );
+				$alo = get_term_meta( $pid, 'radius_lng', true );
 				if ( $ala === '' || $alo === '' || ! is_numeric( $ala ) || ! is_numeric( $alo ) ) {
 					continue;
 				}
@@ -261,7 +261,7 @@ class Radius_Geo_Service {
 	/**
 	 * Service-area anchors that contain a place, optionally filtered by location_code, sorted by distance (closest first).
 	 *
-	 * @param int        $place_id     lf_place term ID.
+	 * @param int        $place_id     radius_place term ID.
 	 * @param string[]   $codes_filter If non-empty, only these sanitized location codes are considered.
 	 * @return array<int,array{code:string,distance_miles:float}>
 	 */
@@ -271,8 +271,8 @@ class Radius_Geo_Service {
 		if ( $place_id <= 0 ) {
 			return $hits;
 		}
-		$plat = get_term_meta( $place_id, 'lf_lat', true );
-		$plng = get_term_meta( $place_id, 'lf_lng', true );
+		$plat = get_term_meta( $place_id, 'radius_lat', true );
+		$plng = get_term_meta( $place_id, 'radius_lng', true );
 		if ( $plat === '' || $plng === '' || ! is_numeric( $plat ) || ! is_numeric( $plng ) ) {
 			return $hits;
 		}
@@ -314,8 +314,8 @@ class Radius_Geo_Service {
 			$along = null;
 			if ( ! empty( $r['place_id'] ) ) {
 				$cpid = (int) $r['place_id'];
-				$ala  = get_term_meta( $cpid, 'lf_lat', true );
-				$alo  = get_term_meta( $cpid, 'lf_lng', true );
+				$ala  = get_term_meta( $cpid, 'radius_lat', true );
+				$alo  = get_term_meta( $cpid, 'radius_lng', true );
 				if ( $ala === '' || $alo === '' || ! is_numeric( $ala ) || ! is_numeric( $alo ) ) {
 					continue;
 				}

@@ -160,7 +160,7 @@
 	margin: 0;
 }
 
-.radius-locations-tablenav .radius-locations-filters .radius-lf-search-input {
+.radius-locations-tablenav .radius-locations-filters .radius-search-input {
 	min-width: 14em;
 }
 
@@ -202,7 +202,7 @@
 	gap: 8px;
 }
 
-.wp-list-table .column-lf_cb {
+.wp-list-table .column-radius_cb {
 	width: 2.2em;
 	vertical-align: middle;
 	text-align: center;
@@ -307,7 +307,7 @@
 }
 
 /* Template editor — spintax variations modal */
-.lf-spintax-modal {
+.radius-spintax-modal {
 	position: fixed;
 	inset: 0;
 	z-index: 100100;
@@ -316,13 +316,13 @@
 	justify-content: center;
 }
 
-.lf-spintax-modal__backdrop {
+.radius-spintax-modal__backdrop {
 	position: absolute;
 	inset: 0;
 	background: rgba(0, 0, 0, 0.45);
 }
 
-.lf-spintax-modal__panel {
+.radius-spintax-modal__panel {
 	position: relative;
 	z-index: 1;
 	background: #fff;
@@ -335,39 +335,39 @@
 	border-radius: 4px;
 }
 
-#lf-blocks .column-key,
-#lf-xfields .column-key,
-#lf-blocks th.radius-tpl-col-key,
-#lf-xfields th.radius-tpl-col-key,
-#lf-blocks td.radius-tpl-col-key,
-#lf-xfields td.radius-tpl-col-key {
+#radius-blocks .column-key,
+#radius-xfields .column-key,
+#radius-blocks th.radius-tpl-col-key,
+#radius-xfields th.radius-tpl-col-key,
+#radius-blocks td.radius-tpl-col-key,
+#radius-xfields td.radius-tpl-col-key {
 	width: 22%;
 }
 
-#lf-blocks .column-actions,
-#lf-xfields .column-actions,
-#lf-blocks th.radius-tpl-col-actions,
-#lf-xfields th.radius-tpl-col-actions,
-#lf-blocks td.radius-tpl-col-actions,
-#lf-xfields td.radius-tpl-col-actions {
+#radius-blocks .column-actions,
+#radius-xfields .column-actions,
+#radius-blocks th.radius-tpl-col-actions,
+#radius-xfields th.radius-tpl-col-actions,
+#radius-blocks td.radius-tpl-col-actions,
+#radius-xfields td.radius-tpl-col-actions {
 	width: 28%;
 	text-align: right;
 	white-space: nowrap;
 }
 
-#lf-blocks .lf-spintax-summary,
-#lf-xfields .lf-xfield-summary {
+#radius-blocks .radius-spintax-summary,
+#radius-xfields .radius-xfield-summary {
 	color: #646970;
 	font-size: 13px;
 	word-break: break-word;
 }
 
-.lf-metabox-modal__panel {
+.radius-metabox-modal__panel {
 	position: relative;
 	padding-top: 20px;
 }
 
-.lf-metabox-modal-dismiss {
+.radius-metabox-modal-dismiss {
 	position: absolute;
 	top: 8px;
 	right: 8px;
@@ -381,8 +381,8 @@
 	color: #50575e;
 }
 
-.lf-metabox-modal-dismiss:hover,
-.lf-metabox-modal-dismiss:focus {
+.radius-metabox-modal-dismiss:hover,
+.radius-metabox-modal-dismiss:focus {
 	color: #1d2327;
 }
 
@@ -498,12 +498,12 @@
 }
 
 /* Service-area place picker (Settings) */
-.radius-anchor-table .lf-anchor-pick {
+.radius-anchor-table .radius-anchor-pick {
 	position: relative;
 	max-width: 420px;
 }
 
-.radius-anchor-table .lf-anchor-suggest {
+.radius-anchor-table .radius-anchor-suggest {
 	position: absolute;
 	left: 0;
 	right: 0;
@@ -517,7 +517,7 @@
 	overflow-y: auto;
 }
 
-.radius-anchor-table .lf-suggest-item {
+.radius-anchor-table .radius-suggest-item {
 	display: block;
 	width: 100%;
 	padding: 8px 10px;
@@ -530,17 +530,17 @@
 	font-size: 13px;
 }
 
-.radius-anchor-table .lf-suggest-item:hover {
+.radius-anchor-table .radius-suggest-item:hover {
 	background: #f6f7f7;
 }
 
-.radius-anchor-table .lf-suggest-empty {
+.radius-anchor-table .radius-suggest-empty {
 	padding: 8px 10px;
 	color: #646970;
 	font-size: 13px;
 }
 
-.radius-anchor-table .lf-no-coords {
+.radius-anchor-table .radius-no-coords {
 	color: #b32d2e;
 	font-size: 12px;
 }

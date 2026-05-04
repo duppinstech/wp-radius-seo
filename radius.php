@@ -3,7 +3,7 @@
  * Plugin Name:       Radius SEO
  * Plugin URI:        https://github.com/oduppinsjr/wp-radius-seo
  * Description:       Blueprint-first local landing page generator — multi-template deploy, efficient place library, tokens & spintax, CSV import, optional Elementor.
- * Version:           1.4.1
+ * Version:           1.6.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://github.com/oduppinsjr/wp-radius-seo
@@ -21,9 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'RADIUS_FILE', __FILE__ );
-define( 'RADIUS_VERSION', '1.4.1' );
+define( 'RADIUS_VERSION', '1.6.0' );
 define( 'RADIUS_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RADIUS_URL', plugin_dir_url( __FILE__ ) );
+
+require_once RADIUS_PATH . 'includes/class-data-registry.php';
+require_once RADIUS_PATH . 'includes/class-prefix-migration.php';
+Radius_Prefix_Migration::maybe_migrate();
 
 require_once RADIUS_PATH . 'includes/class-place-taxonomy.php';
 require_once RADIUS_PATH . 'includes/class-place-term-admin.php';

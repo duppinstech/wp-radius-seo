@@ -23,10 +23,12 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_deploy_batch', array( __CLASS__, 'deploy_batch' ) );
 		add_action( 'wp_ajax_radius_purge_places_batch', array( __CLASS__, 'purge_places_batch' ) );
 		add_action( 'wp_ajax_radius_dedupe_places_batch', array( __CLASS__, 'dedupe_places_batch' ) );
+		add_action( 'wp_ajax_radius_migration_import_templates', array( __CLASS__, 'migration_import_templates' ) );
+		add_action( 'wp_ajax_radius_migration_clone_variants', array( __CLASS__, 'migration_clone_variants' ) );
 	}
 
 	/**
-	 * Search lf_place terms by name (for combobox).
+	 * Search radius_place terms by name (for combobox).
 	 *
 	 * @return void
 	 */
@@ -64,8 +66,8 @@ class Radius_Ajax {
 		$out = array();
 		foreach ( $terms as $t ) {
 			$tid = (int) $t->term_id;
-			$lat = (string) get_term_meta( $tid, 'lf_lat', true );
-			$lng = (string) get_term_meta( $tid, 'lf_lng', true );
+			$lat = (string) get_term_meta( $tid, 'radius_lat', true );
+			$lng = (string) get_term_meta( $tid, 'radius_lng', true );
 			$out[] = array(
 				'id'   => $tid,
 				'name' => $t->name,
@@ -79,7 +81,7 @@ class Radius_Ajax {
 	}
 
 	/**
-	 * One batch of legacy → lf_place import (chained from JS until complete).
+	 * One batch of legacy → radius_place import (chained from JS until complete).
 	 *
 	 * @return void
 	 */
@@ -152,11 +154,11 @@ class Radius_Ajax {
 			@ignore_user_abort( true );
 		}
 
-		$template_id = isset( $_POST['lf_template_id'] ) ? absint( wp_unslash( $_POST['lf_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$continuing  = ! empty( $_POST['lf_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$target      = isset( $_POST['lf_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['lf_deploy_target'] ) ) : 'lf_landing'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( 'lf_service_area' !== $target ) {
-			$target = 'lf_landing';
+		$template_id = isset( $_POST['radius_template_id'] ) ? absint( wp_unslash( $_POST['radius_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$continuing  = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$target      = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( 'radius_service_area' !== $target ) {
+			$target = 'radius_landing';
 		}
 
 		$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
@@ -198,7 +200,7 @@ class Radius_Ajax {
 	}
 
 	/**
-	 * Delete a small chunk of lf_place terms (lowest IDs first) for “empty library”.
+	 * Delete a small chunk of radius_place terms (lowest IDs first) for “empty library”.
 	 *
 	 * @return void
 	 */
@@ -296,5 +298,75 @@ class Radius_Ajax {
 				'done'      => $done,
 			)
 		);
+	}
+
+	/**
+	 * Copy Magic Page blueprint posts into radius_template (includes Elementor document meta).
+	 *
+	 * @return void
+	 */
+	public static function migration_import_templates() {
+		check_ajax_referer( 'radius_migration', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- May copy many Elementor meta blobs.
+			@set_time_limit( 300 );
+		}
+
+		$res = Radius_Legacy_Import_Service::import_templates();
+		wp_send_json_success( $res );
+	}
+
+	/**
+	 * Clone the selected towing blueprint into roadside / heavy / equipment drafts with tag prefix swaps.
+	 *
+	 * @return void
+	 */
+	public static function migration_clone_variants() {
+		check_ajax_referer( 'radius_migration', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$base_id = isset( $_POST['base_id'] ) ? absint( wp_unslash( $_POST['base_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $base_id <= 0 || ! get_post( $base_id ) || 'radius_template' !== get_post_type( $base_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Choose a valid Radius template as the towing blueprint.', 'radius' ) ) );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 180 );
+		}
+
+		$titles = Radius_Legacy_Import_Service::migration_variant_default_titles();
+		$out    = array(
+			'created' => array(),
+			'errors'  => array(),
+		);
+
+		foreach ( array( 'roadside', 'heavy', 'equipment' ) as $variant ) {
+			$title = isset( $titles[ $variant ] ) ? (string) $titles[ $variant ] : $variant;
+			$r     = Radius_Legacy_Import_Service::duplicate_radius_template_for_migration_variant( $base_id, $title, $variant );
+			if ( is_wp_error( $r ) ) {
+				$out['errors'][] = $r->get_error_message();
+				continue;
+			}
+			$out['created'][ $variant ] = (int) $r;
+		}
+
+		wp_send_json_success( $out );
 	}
 }

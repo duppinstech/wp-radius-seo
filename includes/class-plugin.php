@@ -56,7 +56,7 @@ class Radius_Plugin {
 		Radius_Elementor_Compat::init();
 		add_action( 'admin_init', array( $this, 'maybe_flush_rewrite_rules' ), 5 );
 		add_action( 'init', array( $this, 'maybe_upgrade_schema' ), 0 );
-		// Priority after Magic Page and similar plugins (default init 10) so lf_service_area
+		// Priority after Magic Page and similar plugins (default init 10) so radius_service_area
 		// rewrite rules are not overwritten when both use the same URL prefix (e.g. service-area).
 		add_action( 'init', array( $this, 'register_post_types' ), 20 );
 		add_action( 'init', array( $this, 'register_post_meta' ), 21 );
@@ -67,8 +67,8 @@ class Radius_Plugin {
 		add_filter( 'the_title', array( $this, 'maybe_filter_landing_the_title' ), 20, 2 );
 		add_filter( 'document_title_parts', array( $this, 'maybe_filter_template_document_title_parts' ), 19 );
 		add_filter( 'document_title_parts', array( $this, 'maybe_filter_document_title_parts' ), 20 );
-		add_filter( 'post_type_link', array( $this, 'filter_lf_landing_permalink' ), 10, 2 );
-		add_filter( 'pre_handle_404', array( $this, 'resolve_lf_landing_root_on_404' ), 5, 2 );
+		add_filter( 'post_type_link', array( $this, 'filter_radius_landing_permalink' ), 10, 2 );
+		add_filter( 'pre_handle_404', array( $this, 'resolve_radius_landing_root_on_404' ), 5, 2 );
 		add_filter( 'elementor_cpt_support', array( $this, 'elementor_cpt_support' ) );
 		if ( is_admin() ) {
 			Radius_Admin::init();
@@ -83,9 +83,9 @@ class Radius_Plugin {
 		if ( empty( Radius_Settings::get()['enable_elementor'] ) ) {
 			return $post_types;
 		}
-		$post_types[] = 'lf_landing';
-		$post_types[] = 'lf_service_area';
-		$post_types[] = 'lf_template';
+		$post_types[] = 'radius_landing';
+		$post_types[] = 'radius_service_area';
+		$post_types[] = 'radius_template';
 		return array_unique( $post_types );
 	}
 
@@ -98,9 +98,9 @@ class Radius_Plugin {
 		if ( empty( Radius_Settings::get()['enable_elementor'] ) ) {
 			return;
 		}
-		add_post_type_support( 'lf_landing', 'elementor' );
-		add_post_type_support( 'lf_service_area', 'elementor' );
-		add_post_type_support( 'lf_template', 'elementor' );
+		add_post_type_support( 'radius_landing', 'elementor' );
+		add_post_type_support( 'radius_service_area', 'elementor' );
+		add_post_type_support( 'radius_template', 'elementor' );
 	}
 
 	/**
@@ -108,8 +108,8 @@ class Radius_Plugin {
 	 */
 	public function register_post_meta() {
 		register_post_meta(
-			'lf_landing',
-			'_lf_template_id',
+			'radius_landing',
+			'_radius_template_id',
 			array(
 				'type'              => 'integer',
 				'single'            => true,
@@ -120,8 +120,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_landing',
-			'_lf_place_id',
+			'radius_landing',
+			'_radius_place_id',
 			array(
 				'type'              => 'integer',
 				'single'            => true,
@@ -132,8 +132,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_service_area',
-			'_lf_template_id',
+			'radius_service_area',
+			'_radius_template_id',
 			array(
 				'type'              => 'integer',
 				'single'            => true,
@@ -144,8 +144,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_service_area',
-			'_lf_place_id',
+			'radius_service_area',
+			'_radius_place_id',
 			array(
 				'type'              => 'integer',
 				'single'            => true,
@@ -156,8 +156,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_slot_variations',
+			'radius_template',
+			'_radius_slot_variations',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -168,8 +168,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_xfields',
+			'radius_template',
+			'_radius_xfields',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -180,8 +180,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_spintax_blocks',
+			'radius_template',
+			'_radius_spintax_blocks',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -192,8 +192,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_landing_slug_pattern',
+			'radius_template',
+			'_radius_landing_slug_pattern',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -204,8 +204,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_landing_title_pattern',
+			'radius_template',
+			'_radius_landing_title_pattern',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -216,8 +216,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_dynamic_content_mode',
+			'radius_template',
+			'_radius_dynamic_content_mode',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -228,8 +228,8 @@ class Radius_Plugin {
 			)
 		);
 		register_post_meta(
-			'lf_template',
-			'_lf_rotation_mode',
+			'radius_template',
+			'_radius_rotation_mode',
 			array(
 				'type'              => 'string',
 				'single'            => true,
@@ -247,11 +247,11 @@ class Radius_Plugin {
 	 * @return void
 	 */
 	public function maybe_flush_rewrite_rules() {
-		if ( ! get_option( 'localeforge_needs_rewrite_flush' ) ) {
+		if ( ! get_option( 'radius_needs_rewrite_flush' ) ) {
 			return;
 		}
 		flush_rewrite_rules( false );
-		delete_option( 'localeforge_needs_rewrite_flush' );
+		delete_option( 'radius_needs_rewrite_flush' );
 	}
 
 	/**
@@ -260,15 +260,15 @@ class Radius_Plugin {
 	 * @return void
 	 */
 	public function maybe_upgrade_schema() {
-		$v = (int) get_option( 'localeforge_schema_version', 1 );
+		$v = (int) get_option( 'radius_schema_version', 1 );
 		if ( $v < 2 ) {
-			update_option( 'localeforge_schema_version', 2 );
-			update_option( 'localeforge_needs_rewrite_flush', true );
+			update_option( 'radius_schema_version', 2 );
+			update_option( 'radius_needs_rewrite_flush', true );
 		}
 		// v3: register CPTs after other init-10 plugins so duplicate slug rewrites favor Radius.
 		if ( $v < 3 ) {
-			update_option( 'localeforge_schema_version', 3 );
-			update_option( 'localeforge_needs_rewrite_flush', true );
+			update_option( 'radius_schema_version', 3 );
+			update_option( 'radius_needs_rewrite_flush', true );
 		}
 	}
 
@@ -294,7 +294,7 @@ class Radius_Plugin {
 	 */
 	public function register_post_types() {
 		register_post_type(
-			'lf_template',
+			'radius_template',
 			array(
 				'labels'             => array(
 					'name'               => __( 'Templates', 'radius' ),
@@ -317,13 +317,13 @@ class Radius_Plugin {
 			)
 		);
 
-		if ( ! get_option( 'localeforge_lf_template_public_queryable' ) ) {
-			update_option( 'localeforge_lf_template_public_queryable', 1 );
-			update_option( 'localeforge_needs_rewrite_flush', true );
+		if ( ! get_option( 'radius_template_public_queryable_bootstrapped' ) ) {
+			update_option( 'radius_template_public_queryable_bootstrapped', 1 );
+			update_option( 'radius_needs_rewrite_flush', true );
 		}
 
 		register_post_type(
-			'lf_landing',
+			'radius_landing',
 			array(
 				'labels'             => array(
 					'name'               => __( 'Landings', 'radius' ),
@@ -348,7 +348,7 @@ class Radius_Plugin {
 		);
 
 		register_post_type(
-			'lf_service_area',
+			'radius_service_area',
 			array(
 				'labels'             => array(
 					'name'               => __( 'Service areas', 'radius' ),
@@ -382,8 +382,8 @@ class Radius_Plugin {
 	 * @param WP_Post $post      Post.
 	 * @return string
 	 */
-	public function filter_lf_landing_permalink( $permalink, $post ) {
-		if ( ! $post instanceof WP_Post || 'lf_landing' !== $post->post_type ) {
+	public function filter_radius_landing_permalink( $permalink, $post ) {
+		if ( ! $post instanceof WP_Post || 'radius_landing' !== $post->post_type ) {
 			return $permalink;
 		}
 		if ( 'publish' !== $post->post_status && 'pending' !== $post->post_status && 'future' !== $post->post_status && 'private' !== $post->post_status ) {
@@ -397,13 +397,13 @@ class Radius_Plugin {
 	}
 
 	/**
-	 * Resolve single-segment URLs to lf_landing when WordPress would otherwise 404 (lf_landing has no rewrite rules).
+	 * Resolve single-segment URLs to radius_landing when WordPress would otherwise 404 (radius_landing has no rewrite rules).
 	 *
 	 * @param bool     $preempt   Whether to short-circuit default 404 handling.
 	 * @param WP_Query $wp_query  Main query.
 	 * @return bool
 	 */
-	public function resolve_lf_landing_root_on_404( $preempt, $wp_query ) {
+	public function resolve_radius_landing_root_on_404( $preempt, $wp_query ) {
 		if ( $preempt || ! ( $wp_query instanceof WP_Query ) || ! $wp_query->is_main_query() ) {
 			return $preempt;
 		}
@@ -438,7 +438,7 @@ class Radius_Plugin {
 		$posts = get_posts(
 			array(
 				'name'             => $name,
-				'post_type'        => 'lf_landing',
+				'post_type'        => 'radius_landing',
 				'post_status'      => 'publish',
 				'posts_per_page'   => 1,
 				'suppress_filters' => true,
@@ -462,14 +462,14 @@ class Radius_Plugin {
 		$wp_query->is_attachment          = false;
 		$wp_query->is_archive             = false;
 		$wp_query->is_post_type_archive   = false;
-		$wp_query->query_vars['post_type'] = 'lf_landing';
+		$wp_query->query_vars['post_type'] = 'radius_landing';
 		$wp_query->query_vars['name']      = $name;
 		unset( $wp_query->query_vars['error'], $wp_query->query_vars['pagename'] );
 		return true;
 	}
 
 	/**
-	 * Scoped content filter: lf_landing only; skip when Elementor builder content is primary.
+	 * Scoped content filter: radius_landing only; skip when Elementor builder content is primary.
 	 *
 	 * @param string $content Post content.
 	 * @return string
@@ -479,7 +479,7 @@ class Radius_Plugin {
 		if ( ! empty( $_GET['elementor-preview'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return $content;
 		}
-		if ( ! is_singular( array( 'lf_landing', 'lf_service_area' ) ) ) {
+		if ( ! is_singular( array( 'radius_landing', 'radius_service_area' ) ) ) {
 			return $content;
 		}
 		if ( ! in_the_loop() || ! is_main_query() ) {
@@ -487,7 +487,7 @@ class Radius_Plugin {
 		}
 
 		$post = get_post();
-		if ( ! $post || ! in_array( $post->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! $post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return $content;
 		}
 
@@ -512,7 +512,7 @@ class Radius_Plugin {
 	}
 
 	/**
-	 * Singular lf_template: replace placeholders with tokens from the first service anchor (editors only).
+	 * Singular radius_template: replace placeholders with tokens from the first service anchor (editors only).
 	 *
 	 * @param string $content Post content.
 	 * @return string
@@ -521,14 +521,14 @@ class Radius_Plugin {
 		if ( ! empty( $_GET['elementor-preview'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return $content;
 		}
-		if ( ! is_singular( 'lf_template' ) ) {
+		if ( ! is_singular( 'radius_template' ) ) {
 			return $content;
 		}
 		if ( ! in_the_loop() || ! is_main_query() ) {
 			return $content;
 		}
 		$post = get_post();
-		if ( ! $post || 'lf_template' !== $post->post_type ) {
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
 			return $content;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
@@ -567,7 +567,7 @@ class Radius_Plugin {
 	 * @return string
 	 */
 	public function maybe_filter_template_the_title( $title, $post_id = null ) {
-		if ( is_admin() || ! is_singular( 'lf_template' ) ) {
+		if ( is_admin() || ! is_singular( 'radius_template' ) ) {
 			return $title;
 		}
 		if ( ! in_the_loop() || ! is_main_query() ) {
@@ -578,7 +578,7 @@ class Radius_Plugin {
 			return $title;
 		}
 		$post = get_post( $post_id );
-		if ( ! $post || 'lf_template' !== $post->post_type ) {
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
 			return $title;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
@@ -603,7 +603,7 @@ class Radius_Plugin {
 	 * @return string
 	 */
 	public function maybe_filter_landing_the_title( $title, $post_id = null ) {
-		if ( is_admin() || ! is_singular( array( 'lf_landing', 'lf_service_area' ) ) ) {
+		if ( is_admin() || ! is_singular( array( 'radius_landing', 'radius_service_area' ) ) ) {
 			return $title;
 		}
 		if ( ! in_the_loop() || ! is_main_query() ) {
@@ -614,7 +614,7 @@ class Radius_Plugin {
 			return $title;
 		}
 		$post = get_post( $post_id );
-		if ( ! $post || ! in_array( $post->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! $post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return $title;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
@@ -635,11 +635,11 @@ class Radius_Plugin {
 	 * @return array<string,string>
 	 */
 	public function maybe_filter_document_title_parts( $parts ) {
-		if ( ! is_array( $parts ) || is_admin() || ! is_singular( array( 'lf_landing', 'lf_service_area' ) ) ) {
+		if ( ! is_array( $parts ) || is_admin() || ! is_singular( array( 'radius_landing', 'radius_service_area' ) ) ) {
 			return $parts;
 		}
 		$post = get_queried_object();
-		if ( ! $post instanceof WP_Post || ! in_array( $post->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! $post instanceof WP_Post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return $parts;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
@@ -660,11 +660,11 @@ class Radius_Plugin {
 	 * @return array<string,string>
 	 */
 	public function maybe_filter_template_document_title_parts( $parts ) {
-		if ( ! is_array( $parts ) || is_admin() || ! is_singular( 'lf_template' ) ) {
+		if ( ! is_array( $parts ) || is_admin() || ! is_singular( 'radius_template' ) ) {
 			return $parts;
 		}
 		$post = get_queried_object();
-		if ( ! $post instanceof WP_Post || 'lf_template' !== $post->post_type ) {
+		if ( ! $post instanceof WP_Post || 'radius_template' !== $post->post_type ) {
 			return $parts;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {

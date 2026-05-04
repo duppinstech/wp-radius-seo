@@ -21,8 +21,8 @@ class Radius_SEO_Integrations {
 	 */
 	private static function yoast_sitemap_public_type_map() {
 		return array(
-			'landing'      => 'lf_landing',
-			'service-area' => 'lf_service_area',
+			'landing'      => 'radius_landing',
+			'service-area' => 'radius_service_area',
 		);
 	}
 
@@ -35,7 +35,7 @@ class Radius_SEO_Integrations {
 	}
 
 	/**
-	 * Friendlier Yoast sub-sitemap URLs (landing-sitemap.xml vs lf_landing-sitemap.xml).
+	 * Friendlier Yoast sub-sitemap URLs (landing-sitemap.xml vs radius_landing-sitemap.xml).
 	 *
 	 * @return void
 	 */
@@ -56,8 +56,8 @@ class Radius_SEO_Integrations {
 			return $links;
 		}
 		$repl = array(
-			'lf_landing-sitemap'       => 'landing-sitemap',
-			'lf_service_area-sitemap' => 'service-area-sitemap',
+			'radius_landing-sitemap'       => 'landing-sitemap',
+			'radius_service_area-sitemap' => 'service-area-sitemap',
 		);
 		foreach ( $links as $i => $row ) {
 			if ( empty( $row['loc'] ) || ! is_string( $row['loc'] ) ) {
@@ -71,7 +71,7 @@ class Radius_SEO_Integrations {
 	/**
 	 * Map public sitemap type from the URL to the registered CPT slug Yoast providers expect.
 	 *
-	 * @param string $type Query var `sitemap` (e.g. landing, lf_landing, post).
+	 * @param string $type Query var `sitemap` (e.g. landing, radius_landing, post).
 	 * @return string
 	 */
 	public static function yoast_map_public_sitemap_type_to_post_type( $type ) {
@@ -95,15 +95,15 @@ class Radius_SEO_Integrations {
 
 		/*
 		 * Yoast only registers the SEO metabox for “accessible” post types, which by default
-		 * are public + viewable. lf_template is intentionally non-public, so we add it here.
-		 * lf_landing is already public and is usually included without this.
+		 * are public + viewable. radius_template is intentionally non-public, so we add it here.
+		 * radius_landing is already public and is usually included without this.
 		 */
 		add_filter( 'wpseo_accessible_post_types', array( __CLASS__, 'yoast_accessible_post_types' ) );
 
 		// Do not expose blueprint templates in XML sitemaps once they become “accessible” to Yoast.
 		add_filter( 'wpseo_sitemap_exclude_post_type', array( __CLASS__, 'yoast_exclude_template_from_sitemap' ), 10, 2 );
 
-		add_filter( 'wpseo_enable_editor_features_lf_template', array( __CLASS__, 'yoast_enable_template_editor_features' ), 10, 1 );
+		add_filter( 'wpseo_enable_editor_features_radius_template', array( __CLASS__, 'yoast_enable_template_editor_features' ), 10, 1 );
 	}
 
 	/**
@@ -114,8 +114,8 @@ class Radius_SEO_Integrations {
 		if ( ! is_array( $post_types ) ) {
 			$post_types = array();
 		}
-		if ( post_type_exists( 'lf_template' ) ) {
-			$post_types[] = 'lf_template';
+		if ( post_type_exists( 'radius_template' ) ) {
+			$post_types[] = 'radius_template';
 		}
 		return array_unique( array_map( 'strval', $post_types ) );
 	}
@@ -126,7 +126,7 @@ class Radius_SEO_Integrations {
 	 * @return bool
 	 */
 	public static function yoast_exclude_template_from_sitemap( $exclude, $post_type ) {
-		if ( 'lf_template' === $post_type ) {
+		if ( 'radius_template' === $post_type ) {
 			return true;
 		}
 		return $exclude;

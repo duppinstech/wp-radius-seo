@@ -31,6 +31,37 @@ class Radius_Form_Handlers {
 		add_action( 'admin_post_radius_export_templates_slots_json', array( __CLASS__, 'handle_export_templates_slots_json' ) );
 		add_action( 'admin_post_radius_places_bulk', array( __CLASS__, 'handle_places_bulk' ) );
 		add_action( 'admin_post_radius_save_settings', array( __CLASS__, 'handle_settings' ) );
+		add_action( 'admin_post_radius_magic_page_cleanup_options', array( __CLASS__, 'handle_magic_page_cleanup_options' ) );
+	}
+
+	/**
+	 * Delete Magic Page leftovers from wp_options (Integrations → maintenance).
+	 *
+	 * @return void
+	 */
+	public static function handle_magic_page_cleanup_options() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
+		}
+		self::bail_if_locked();
+		check_admin_referer( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' );
+
+		if ( empty( $_POST['radius_magic_page_cleanup_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			self::redirect(
+				'radius-settings',
+				__( 'Confirm the checkbox before clearing Magic Page options.', 'radius' ),
+				array( 'tab' => 'integrations' )
+			);
+			return;
+		}
+
+		$res = Radius_Legacy_Import_Service::delete_magic_page_legacy_options();
+		$msg = sprintf(
+			/* translators: %d: number of deleted option rows */
+			__( 'Removed %d Magic Page–related option row(s) from the database.', 'radius' ),
+			(int) $res['deleted']
+		);
+		self::redirect( 'radius-settings', $msg, array( 'tab' => 'integrations' ) );
 	}
 
 	/**
@@ -75,7 +106,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	private static function redirect( $page, $msg, array $extra_query = array() ) {
-		$url = add_query_arg( 'lf_notice', self::sanitize_admin_notice_for_query( $msg ), admin_url( 'admin.php?page=' . $page ) );
+		$url = add_query_arg( 'radius_notice', self::sanitize_admin_notice_for_query( $msg ), admin_url( 'admin.php?page=' . $page ) );
 		foreach ( $extra_query as $k => $v ) {
 			if ( $v === null || $v === '' ) {
 				continue;
@@ -138,16 +169,16 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_csv', 'radius_csv_nonce' );
 
-		if ( empty( $_FILES['lf_csv']['tmp_name'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		if ( empty( $_FILES['radius_csv']['tmp_name'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 			self::redirect( 'radius-locations', __( 'No file uploaded.', 'radius' ) );
 		}
 
-		$file     = $_FILES['lf_csv']['tmp_name']; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-		$filename = isset( $_FILES['lf_csv']['name'] ) ? sanitize_file_name( wp_unslash( $_FILES['lf_csv']['name'] ) ) : 'upload.csv'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$file     = $_FILES['radius_csv']['tmp_name']; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$filename = isset( $_FILES['radius_csv']['name'] ) ? sanitize_file_name( wp_unslash( $_FILES['radius_csv']['name'] ) ) : 'upload.csv'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 		if ( ! preg_match( '/\.(csv|txt)$/i', $filename ) ) {
 			self::redirect( 'radius-locations', __( 'Please upload a .csv or .txt file.', 'radius' ) );
 		}
-		$update_existing = ! empty( $_POST['lf_csv_update_existing'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$update_existing = ! empty( $_POST['radius_csv_update_existing'] ); // phpcs:ignore WordPress.Security.NonceVerification
 		$res             = Radius_Csv_Place_Importer::import_file(
 			$file,
 			array(
@@ -173,11 +204,11 @@ class Radius_Form_Handlers {
 	 *
 	 * @param int    $user_id          User ID.
 	 * @param int    $template_id      Template post ID.
-	 * @param string $target_post_type lf_landing or lf_service_area.
+	 * @param string $target_post_type radius_landing or radius_service_area.
 	 * @return string
 	 */
-	private static function deploy_queue_transient_key( $user_id, $template_id, $target_post_type = 'lf_landing' ) {
-		$suffix = ( 'lf_service_area' === sanitize_key( (string) $target_post_type ) ) ? '_sa' : '';
+	private static function deploy_queue_transient_key( $user_id, $template_id, $target_post_type = 'radius_landing' ) {
+		$suffix = ( 'radius_service_area' === sanitize_key( (string) $target_post_type ) ) ? '_sa' : '';
 		return 'radius_dq_u' . (int) $user_id . '_t' . (int) $template_id . $suffix;
 	}
 
@@ -185,10 +216,10 @@ class Radius_Form_Handlers {
 	 * Pending deploy queue for the current user and template (if any).
 	 *
 	 * @param int    $template_id      Template post ID.
-	 * @param string $target_post_type lf_landing or lf_service_area.
+	 * @param string $target_post_type radius_landing or radius_service_area.
 	 * @return array{template_id:int,remaining:int[],stats:array}|null
 	 */
-	public static function get_deploy_queue_for_template( $template_id, $target_post_type = 'lf_landing' ) {
+	public static function get_deploy_queue_for_template( $template_id, $target_post_type = 'radius_landing' ) {
 		$uid = get_current_user_id();
 		if ( $uid <= 0 ) {
 			return null;
@@ -210,10 +241,10 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_deploy_cancel', 'radius_deploy_cancel_nonce' );
 
-		$template_id = isset( $_POST['lf_template_id'] ) ? absint( $_POST['lf_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$target      = isset( $_POST['lf_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['lf_deploy_target'] ) ) : 'lf_landing'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( 'lf_service_area' !== $target ) {
-			$target = 'lf_landing';
+		$template_id = isset( $_POST['radius_template_id'] ) ? absint( $_POST['radius_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$target      = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( 'radius_service_area' !== $target ) {
+			$target = 'radius_landing';
 		}
 		if ( $template_id > 0 ) {
 			delete_transient( self::deploy_queue_transient_key( get_current_user_id(), $template_id, $target ) );
@@ -226,12 +257,12 @@ class Radius_Form_Handlers {
 	 *
 	 * @param int    $template_id      Template post ID.
 	 * @param bool   $continuing       True = resume from transient queue; false = start fresh (replaces queue).
-	 * @param string $target_post_type lf_landing or lf_service_area.
+	 * @param string $target_post_type radius_landing or radius_service_area.
 	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array}
 	 */
-	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'lf_landing' ) {
+	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing' ) {
 		$template_id = (int) $template_id;
-		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'lf_template' ) {
+		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'radius_template' ) {
 			return array(
 				'success' => false,
 				'message' => __( 'Select a valid template.', 'radius' ),
@@ -244,11 +275,11 @@ class Radius_Form_Handlers {
 			);
 		}
 		$target_post_type = sanitize_key( (string) $target_post_type );
-		if ( ! in_array( $target_post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
-			$target_post_type = 'lf_landing';
+		if ( ! in_array( $target_post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$target_post_type = 'radius_landing';
 		}
 
-		if ( 'lf_service_area' === $target_post_type && ! $continuing ) {
+		if ( 'radius_service_area' === $target_post_type && ! $continuing ) {
 			$cfg_sa_tpl = (int) ( Radius_Settings::get()['service_area_template_id'] ?? 0 );
 			if ( $cfg_sa_tpl <= 0 || $template_id !== $cfg_sa_tpl ) {
 				return array(
@@ -398,11 +429,11 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_deploy', 'radius_deploy_nonce' );
 
-		$template_id  = isset( $_POST['lf_template_id'] ) ? absint( $_POST['lf_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$continuing   = ! empty( $_POST['lf_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$target       = isset( $_POST['lf_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['lf_deploy_target'] ) ) : 'lf_landing'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( 'lf_service_area' !== $target ) {
-			$target = 'lf_landing';
+		$template_id  = isset( $_POST['radius_template_id'] ) ? absint( $_POST['radius_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$continuing   = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$target       = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( 'radius_service_area' !== $target ) {
+			$target = 'radius_landing';
 		}
 		$result       = self::execute_deploy_chunk( $template_id, $continuing, $target );
 
@@ -451,10 +482,10 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_slots', 'radius_slots_nonce' );
 
-		$tid = isset( $_POST['lf_slot_template'] ) ? absint( $_POST['lf_slot_template'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$md  = isset( $_POST['lf_markdown'] ) ? sanitize_textarea_field( wp_unslash( (string) $_POST['lf_markdown'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$tid = isset( $_POST['radius_slot_template'] ) ? absint( $_POST['radius_slot_template'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$md  = isset( $_POST['radius_markdown'] ) ? sanitize_textarea_field( wp_unslash( (string) $_POST['radius_markdown'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 
-		if ( $tid <= 0 || get_post_type( $tid ) !== 'lf_template' ) {
+		if ( $tid <= 0 || get_post_type( $tid ) !== 'radius_template' ) {
 			self::redirect( 'radius-import', __( 'Invalid template.', 'radius' ), array( 'tab' => 'templates' ) );
 		}
 		if ( ! current_user_can( 'edit_post', $tid ) ) {
@@ -469,7 +500,7 @@ class Radius_Form_Handlers {
 
 		$slot_enc = wp_json_encode( $built );
 		if ( false !== $slot_enc ) {
-			update_post_meta( $tid, '_lf_slot_variations', wp_slash( $slot_enc ) );
+			update_post_meta( $tid, '_radius_slot_variations', wp_slash( $slot_enc ) );
 		}
 
 		/* translators: %d slot count */
@@ -510,7 +541,7 @@ class Radius_Form_Handlers {
 		check_admin_referer( 'radius_legacy_pl', 'radius_legacy_pl_nonce' );
 
 		$lim    = Radius_Legacy_Import_Service::cap_legacy_batch_size( (int) Radius_Settings::get()['legacy_import_size'] );
-		$offset = isset( $_POST['lf_legacy_offset'] ) ? absint( $_POST['lf_legacy_offset'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$offset = isset( $_POST['radius_legacy_offset'] ) ? absint( $_POST['radius_legacy_offset'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
 		$res    = Radius_Legacy_Import_Service::import_places( $lim, $offset, null, array() );
 
 		$msg = sprintf(
@@ -531,7 +562,7 @@ class Radius_Form_Handlers {
 	}
 
 	/**
-	 * Copy global spintax definitions (legacy vendor wp_options) into lf_template spintax blocks.
+	 * Copy global spintax definitions (legacy vendor wp_options) into radius_template spintax blocks.
 	 *
 	 * @return void
 	 */
@@ -542,20 +573,20 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_legacy_vendor_spintax', 'radius_legacy_vendor_spintax_nonce' );
 
-		$scope = isset( $_POST['lf_legacy_spintax_scope'] ) ? sanitize_key( wp_unslash( $_POST['lf_legacy_spintax_scope'] ) ) : 'all'; // phpcs:ignore WordPress.Security.NonceVerification
+		$scope = isset( $_POST['radius_legacy_spintax_scope'] ) ? sanitize_key( wp_unslash( $_POST['radius_legacy_spintax_scope'] ) ) : 'all'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( 'one' !== $scope ) {
 			$scope = 'all';
 		}
-		$tid = isset( $_POST['lf_legacy_spintax_template'] ) ? absint( $_POST['lf_legacy_spintax_template'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$tid = isset( $_POST['radius_legacy_spintax_template'] ) ? absint( $_POST['radius_legacy_spintax_template'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( 'one' === $scope && $tid <= 0 ) {
 			self::redirect( 'radius-import', __( 'Choose a template when applying to one template only.', 'radius' ), array( 'tab' => 'spintax' ) );
 		}
 
-		$replace = ! empty( $_POST['lf_legacy_spintax_replace_shortcodes'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$over    = ! empty( $_POST['lf_legacy_spintax_overwrite_keys'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$merge   = ! empty( $_POST['lf_legacy_spintax_merge_variations'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$replace = ! empty( $_POST['radius_legacy_spintax_replace_shortcodes'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$over    = ! empty( $_POST['radius_legacy_spintax_overwrite_keys'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$merge   = ! empty( $_POST['radius_legacy_spintax_merge_variations'] ); // phpcs:ignore WordPress.Security.NonceVerification
 
-		$prefix_raw = isset( $_POST['lf_legacy_spintax_key_prefixes'] ) ? sanitize_textarea_field( wp_unslash( (string) $_POST['lf_legacy_spintax_key_prefixes'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$prefix_raw = isset( $_POST['radius_legacy_spintax_key_prefixes'] ) ? sanitize_textarea_field( wp_unslash( (string) $_POST['radius_legacy_spintax_key_prefixes'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 		$prefixes   = array();
 		foreach ( preg_split( '/\r\n|\r|\n/', $prefix_raw ) as $ln ) {
 			$ln = strtolower( trim( (string) $ln ) );
@@ -620,7 +651,7 @@ class Radius_Form_Handlers {
 	}
 
 	/**
-	 * Export all lf_template posts with spintax, X-fields, and slot variation meta as JSON.
+	 * Export all radius_template posts with spintax, X-fields, and slot variation meta as JSON.
 	 *
 	 * @return void
 	 */
@@ -633,7 +664,7 @@ class Radius_Form_Handlers {
 
 		$ids = get_posts(
 			array(
-				'post_type'      => 'lf_template',
+				'post_type'      => 'radius_template',
 				'post_status'    => 'any',
 				'posts_per_page' => 500,
 				'fields'         => 'ids',
@@ -648,7 +679,7 @@ class Radius_Form_Handlers {
 				continue;
 			}
 			$post = get_post( $tid );
-			if ( ! $post || 'lf_template' !== $post->post_type ) {
+			if ( ! $post || 'radius_template' !== $post->post_type ) {
 				continue;
 			}
 			$templates[] = array(
@@ -656,9 +687,9 @@ class Radius_Form_Handlers {
 				'title'             => $post->post_title,
 				'slug'              => $post->post_name,
 				'status'            => $post->post_status,
-				'spintax_blocks'    => self::decode_json_meta_field( get_post_meta( $tid, '_lf_spintax_blocks', true ) ),
-				'xfields_legacy'    => self::decode_json_meta_field( get_post_meta( $tid, '_lf_xfields', true ) ),
-				'slot_variations'   => self::decode_json_meta_field( get_post_meta( $tid, '_lf_slot_variations', true ) ),
+				'spintax_blocks'    => self::decode_json_meta_field( get_post_meta( $tid, '_radius_spintax_blocks', true ) ),
+				'xfields_legacy'    => self::decode_json_meta_field( get_post_meta( $tid, '_radius_xfields', true ) ),
+				'slot_variations'   => self::decode_json_meta_field( get_post_meta( $tid, '_radius_slot_variations', true ) ),
 			);
 		}
 
@@ -685,7 +716,7 @@ class Radius_Form_Handlers {
 	}
 
 	/**
-	 * Bulk export or delete selected lf_place terms from the location library table.
+	 * Bulk export or delete selected radius_place terms from the location library table.
 	 *
 	 * @return void
 	 */
@@ -696,8 +727,8 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_places_bulk', 'radius_places_bulk_nonce' );
 
-		$action = isset( $_POST['lf_places_bulk_action'] ) ? sanitize_key( wp_unslash( $_POST['lf_places_bulk_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		$ids    = isset( $_POST['lf_place_ids'] ) ? array_map( 'absint', (array) wp_unslash( $_POST['lf_place_ids'] ) ) : array(); // phpcs:ignore WordPress.Security.NonceVerification
+		$action = isset( $_POST['radius_places_bulk_action'] ) ? sanitize_key( wp_unslash( $_POST['radius_places_bulk_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$ids    = isset( $_POST['radius_place_ids'] ) ? array_map( 'absint', (array) wp_unslash( $_POST['radius_place_ids'] ) ) : array(); // phpcs:ignore WordPress.Security.NonceVerification
 		$ids    = array_values( array_filter( $ids ) );
 
 		if ( empty( $ids ) ) {
@@ -741,7 +772,7 @@ class Radius_Form_Handlers {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
-		check_admin_referer( 'localeforge_settings', 'localeforge_settings_nonce' );
+		check_admin_referer( 'radius_settings', 'radius_settings_nonce' );
 
 		$was_unlocked = Radius_API_License::is_unlocked();
 		Radius_API_License::sync_api_key_from_request();
@@ -766,11 +797,11 @@ class Radius_Form_Handlers {
 
 		$old_slug = Radius_Settings::get_service_area_url_slug();
 
-		$pids = isset( $_POST['lf_anchor_place_id'] ) ? array_map( 'absint', (array) wp_unslash( $_POST['lf_anchor_place_id'] ) ) : array(); // phpcs:ignore WordPress.Security.NonceVerification
+		$pids = isset( $_POST['radius_anchor_place_id'] ) ? array_map( 'absint', (array) wp_unslash( $_POST['radius_anchor_place_id'] ) ) : array(); // phpcs:ignore WordPress.Security.NonceVerification
 		$rads = array();
-		if ( isset( $_POST['lf_anchor_radius'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( isset( $_POST['radius_anchor_radius'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each entry sanitized in array_map.
-			$raw_rads = (array) wp_unslash( $_POST['lf_anchor_radius'] );
+			$raw_rads = (array) wp_unslash( $_POST['radius_anchor_radius'] );
 			$rads     = array_map(
 				static function ( $v ) {
 					return sanitize_text_field( wp_unslash( (string) $v ) );
@@ -779,9 +810,9 @@ class Radius_Form_Handlers {
 			);
 		}
 		$legacy_lats = array();
-		if ( isset( $_POST['lf_anchor_legacy_lat'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( isset( $_POST['radius_anchor_legacy_lat'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each entry sanitized in array_map.
-			$raw_legacy_lats = (array) wp_unslash( $_POST['lf_anchor_legacy_lat'] );
+			$raw_legacy_lats = (array) wp_unslash( $_POST['radius_anchor_legacy_lat'] );
 			$legacy_lats     = array_map(
 				static function ( $v ) {
 					return sanitize_text_field( wp_unslash( (string) $v ) );
@@ -790,9 +821,9 @@ class Radius_Form_Handlers {
 			);
 		}
 		$legacy_lngs = array();
-		if ( isset( $_POST['lf_anchor_legacy_lng'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( isset( $_POST['radius_anchor_legacy_lng'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each entry sanitized in array_map.
-			$raw_legacy_lngs = (array) wp_unslash( $_POST['lf_anchor_legacy_lng'] );
+			$raw_legacy_lngs = (array) wp_unslash( $_POST['radius_anchor_legacy_lng'] );
 			$legacy_lngs     = array_map(
 				static function ( $v ) {
 					return sanitize_text_field( wp_unslash( (string) $v ) );
@@ -825,8 +856,8 @@ class Radius_Form_Handlers {
 		}
 
 		$site_rep = array();
-		if ( isset( $_POST['lf_site_replacements_json'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			$decoded = json_decode( wp_unslash( (string) $_POST['lf_site_replacements_json'] ), true ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		if ( isset( $_POST['radius_site_replacements_json'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$decoded = json_decode( wp_unslash( (string) $_POST['radius_site_replacements_json'] ), true ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			if ( is_array( $decoded ) && isset( $decoded['rows'] ) && is_array( $decoded['rows'] ) ) {
 				$site_rep = $decoded['rows'];
 			}
@@ -837,7 +868,7 @@ class Radius_Form_Handlers {
 			: ( isset( $_POST['landing_url_slug'] ) ? Radius_Settings::sanitize_landing_url_slug( sanitize_text_field( wp_unslash( (string) $_POST['landing_url_slug'] ) ) ) : $old_slug ); // phpcs:ignore WordPress.Security.NonceVerification
 
 		$sa_tpl = isset( $_POST['service_area_template_id'] ) ? absint( $_POST['service_area_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( $sa_tpl > 0 && get_post_type( $sa_tpl ) !== 'lf_template' ) {
+		if ( $sa_tpl > 0 && get_post_type( $sa_tpl ) !== 'radius_template' ) {
 			$sa_tpl = 0;
 		}
 
@@ -868,13 +899,13 @@ class Radius_Form_Handlers {
 		);
 
 		if ( $old_slug !== $new_slug ) {
-			update_option( 'localeforge_needs_rewrite_flush', 1 );
+			update_option( 'radius_needs_rewrite_flush', 1 );
 		}
 
 		Radius_Elementor_Compat::sync_cpt_option();
 		Radius_Rotation_Cron::reschedule();
 
-		$return_tab = isset( $_POST['lf_settings_tab'] ) ? sanitize_key( wp_unslash( $_POST['lf_settings_tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification
+		$return_tab = isset( $_POST['radius_settings_tab'] ) ? sanitize_key( wp_unslash( $_POST['radius_settings_tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( ! in_array( $return_tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'integrations' ), true ) ) {
 			$return_tab = 'general';
 		}

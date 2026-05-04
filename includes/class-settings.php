@@ -14,7 +14,57 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Radius_Settings {
 
-	const OPTION = 'localeforge_settings';
+	const OPTION = 'radius_settings';
+
+	/**
+	 * Default Site replacers rows for new installs (also used when stored list is empty).
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function default_site_replacements() {
+		return array(
+			array(
+				'key'            => 'company-name',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'company-short',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'roadside-keyword',
+				'values'         => array( 'Roadside Assistance' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'towing-keyword',
+				'values'         => array( 'Towing Company' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'heavy-keyword',
+				'values'         => array( 'Heavy Towing' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'equipment-keyword',
+				'values'         => array( 'Heavy Equipment Towing' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'phone-number',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+			array(
+				'key'            => 'phone-tel',
+				'values'         => array( '' ),
+				'area_overrides' => array(),
+			),
+		);
+	}
 
 	/**
 	 * @return array<string,mixed>
@@ -27,12 +77,12 @@ class Radius_Settings {
 			'legacy_import_inter_batch_ms'    => 1200,
 			'enable_elementor'                => 1,
 			'service_anchors'                 => array(),
-			'site_replacements'               => array(),
+			'site_replacements'               => self::default_site_replacements(),
 			/** @deprecated Use service_area_url_slug; kept for option merge. */
 			'landing_url_slug'                => 'service-area',
 			/** URL segment for service area hub pages only: example.com/{this}/place-slug/ */
 			'service_area_url_slug'           => 'service-area',
-			/** lf_template ID used when deploying “Service area pages” (separate from per-template landings). */
+			/** radius_template ID used when deploying “Service area pages” (separate from per-template landings). */
 			'service_area_template_id'        => 0,
 			'deploy_copy_meta_keys'           => '',
 			'integrate_yoast'                 => 1,
@@ -64,11 +114,14 @@ class Radius_Settings {
 		if ( ! isset( $v['service_area_template_id'] ) ) {
 			$v['service_area_template_id'] = 0;
 		}
+		if ( ! isset( $v['site_replacements'] ) || ! is_array( $v['site_replacements'] ) || $v['site_replacements'] === array() ) {
+			$v['site_replacements'] = self::default_site_replacements();
+		}
 		return $v;
 	}
 
 	/**
-	 * URL prefix segment for lf_service_area pages only (not landings).
+	 * URL prefix segment for radius_service_area pages only (not landings).
 	 *
 	 * @return string
 	 */
@@ -145,7 +198,7 @@ class Radius_Settings {
 		}
 		if ( isset( $input['service_area_template_id'] ) ) {
 			$tid = absint( $input['service_area_template_id'] );
-			if ( $tid > 0 && get_post_type( $tid ) !== 'lf_template' ) {
+			if ( $tid > 0 && get_post_type( $tid ) !== 'radius_template' ) {
 				$tid = 0;
 			}
 			$out['service_area_template_id'] = $tid;
@@ -492,7 +545,7 @@ class Radius_Settings {
 	}
 
 	/**
-	 * First service-area row that references a library place (lf_place term), for template front-end preview.
+	 * First service-area row that references a library place (radius_place term), for template front-end preview.
 	 *
 	 * @return int Term ID or 0.
 	 */

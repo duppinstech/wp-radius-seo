@@ -106,7 +106,7 @@
 		}
 
 		function restoreDeployProgressSnapshot( card ) {
-			var snap = card.getAttribute( 'data-lf-progress-frac-snapshot' );
+			var snap = card.getAttribute( 'data-rd-progress-frac-snapshot' );
 			if ( snap !== null && snap !== '' ) {
 				var numStrong = card.querySelector( '.radius-deploy-card__row-deployed .radius-deploy-card__deploy-num strong' );
 				if ( numStrong ) {
@@ -114,13 +114,13 @@
 				}
 			}
 			var fill = card.querySelector( '.radius-deploy-progress__fill' );
-			var w0 = card.getAttribute( 'data-lf-progress-fill-width' );
+			var w0 = card.getAttribute( 'data-rd-progress-fill-width' );
 			if ( fill && w0 !== null ) {
 				fill.style.width = w0;
 			}
 			var bar = card.querySelector( '.radius-deploy-progress[role="progressbar"]' );
 			if ( bar ) {
-				var hid = card.getAttribute( 'data-lf-bar-aria-hidden' );
+				var hid = card.getAttribute( 'data-rd-bar-aria-hidden' );
 				if ( hid === '1' ) {
 					bar.setAttribute( 'aria-hidden', 'true' );
 					bar.removeAttribute( 'aria-valuemin' );
@@ -128,9 +128,9 @@
 					bar.removeAttribute( 'aria-valuenow' );
 				} else {
 					bar.removeAttribute( 'aria-hidden' );
-					var max0 = card.getAttribute( 'data-lf-progress-aria-max' );
-					var now0 = card.getAttribute( 'data-lf-progress-aria-now' );
-					var min0 = card.getAttribute( 'data-lf-progress-aria-min' );
+					var max0 = card.getAttribute( 'data-rd-progress-aria-max' );
+					var now0 = card.getAttribute( 'data-rd-progress-aria-now' );
+					var min0 = card.getAttribute( 'data-rd-progress-aria-min' );
 					if ( min0 !== null && min0 !== '' ) {
 						bar.setAttribute( 'aria-valuemin', min0 );
 					} else {
@@ -153,18 +153,18 @@
 		function snapshotDeployProgress( card ) {
 			var numStrong = card.querySelector( '.radius-deploy-card__row-deployed .radius-deploy-card__deploy-num strong' );
 			if ( numStrong ) {
-				card.setAttribute( 'data-lf-progress-frac-snapshot', numStrong.textContent );
+				card.setAttribute( 'data-rd-progress-frac-snapshot', numStrong.textContent );
 			}
 			var fill = card.querySelector( '.radius-deploy-progress__fill' );
 			if ( fill ) {
-				card.setAttribute( 'data-lf-progress-fill-width', fill.style.width || '' );
+				card.setAttribute( 'data-rd-progress-fill-width', fill.style.width || '' );
 			}
 			var bar = card.querySelector( '.radius-deploy-progress[role="progressbar"]' );
 			if ( bar ) {
-				card.setAttribute( 'data-lf-bar-aria-hidden', bar.hasAttribute( 'aria-hidden' ) ? '1' : '0' );
-				card.setAttribute( 'data-lf-progress-aria-min', bar.getAttribute( 'aria-valuemin' ) || '' );
-				card.setAttribute( 'data-lf-progress-aria-max', bar.getAttribute( 'aria-valuemax' ) || '' );
-				card.setAttribute( 'data-lf-progress-aria-now', bar.getAttribute( 'aria-valuenow' ) || '' );
+				card.setAttribute( 'data-rd-bar-aria-hidden', bar.hasAttribute( 'aria-hidden' ) ? '1' : '0' );
+				card.setAttribute( 'data-rd-progress-aria-min', bar.getAttribute( 'aria-valuemin' ) || '' );
+				card.setAttribute( 'data-rd-progress-aria-max', bar.getAttribute( 'aria-valuemax' ) || '' );
+				card.setAttribute( 'data-rd-progress-aria-now', bar.getAttribute( 'aria-valuenow' ) || '' );
 			}
 		}
 
@@ -172,11 +172,11 @@
 			var fd = new FormData();
 			fd.append( 'action', 'radius_deploy_batch' );
 			fd.append( 'nonce', cfg.nonce );
-			fd.append( 'lf_template_id', String( templateId ) );
-			var targetInput = formEl.querySelector( 'input[name="lf_deploy_target"]' );
-			fd.append( 'lf_deploy_target', targetInput && targetInput.value ? targetInput.value : 'lf_landing' );
+			fd.append( 'radius_template_id', String( templateId ) );
+			var targetInput = formEl.querySelector( 'input[name="radius_deploy_target"]' );
+			fd.append( 'radius_deploy_target', targetInput && targetInput.value ? targetInput.value : 'radius_landing' );
 			if ( continuing ) {
-				fd.append( 'lf_deploy_continue', '1' );
+				fd.append( 'radius_deploy_continue', '1' );
 			}
 
 			fetch( cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' } )
@@ -218,7 +218,7 @@
 					if ( p.done ) {
 						var base = cfg.deployPageUrl;
 						var join = base.indexOf( '?' ) >= 0 ? '&' : '?';
-						window.location.href = base + join + 'lf_notice=' + encodeURIComponent( p.done_message || '' );
+						window.location.href = base + join + 'radius_notice=' + encodeURIComponent( p.done_message || '' );
 						return;
 					}
 					var delay = parseInt( cfg.interBatchDelayMs, 10 ) || 0;
@@ -238,7 +238,7 @@
 				} );
 		}
 
-		document.querySelectorAll( 'form[data-lf-chained-deploy="1"]' ).forEach( function ( form ) {
+		document.querySelectorAll( 'form[data-radius-chained-deploy="1"]' ).forEach( function ( form ) {
 			form.addEventListener( 'submit', function ( e ) {
 				var trigger = form.querySelector( 'input[type="submit"], button[type="submit"]' );
 				if ( trigger && trigger.disabled ) {
@@ -246,7 +246,7 @@
 				}
 				e.preventDefault();
 
-				var tidInput = form.querySelector( 'input[name="lf_template_id"], select[name="lf_template_id"]' );
+				var tidInput = form.querySelector( 'input[name="radius_template_id"], select[name="radius_template_id"]' );
 				var templateId = tidInput ? tidInput.value : '';
 				if ( ! templateId ) {
 					return;
@@ -263,7 +263,7 @@
 					statusEl.textContent = cfg.i18n.deploying;
 				}
 
-				var continuing = !! form.querySelector( 'input[name="lf_deploy_continue"]' );
+				var continuing = !! form.querySelector( 'input[name="radius_deploy_continue"]' );
 				snapshotDeployProgress( card );
 				card.classList.add( 'is-submitting' );
 				setRunning( card, true );
@@ -280,7 +280,7 @@
 		initChainedDeploy();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {
-			if ( form.getAttribute( 'data-lf-chained-deploy' ) === '1' ) {
+			if ( form.getAttribute( 'data-radius-chained-deploy' ) === '1' ) {
 				return;
 			}
 			if ( form.classList.contains( 'radius-deploy-card__form--cancel' ) ) {

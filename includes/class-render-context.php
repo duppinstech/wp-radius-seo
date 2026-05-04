@@ -14,8 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Radius_Render_Context {
 
-	const META_DYNAMIC = '_lf_dynamic_content_mode';
-	const META_ROTATION = '_lf_rotation_mode';
+	const META_DYNAMIC = '_radius_dynamic_content_mode';
+	const META_ROTATION = '_radius_rotation_mode';
 
 	/**
 	 * Inherit site default (empty string).
@@ -39,11 +39,11 @@ class Radius_Render_Context {
 	 * @return bool
 	 */
 	public static function landing_uses_dynamic_content( WP_Post $landing ) {
-		if ( ! in_array( $landing->post_type, array( 'lf_landing', 'lf_service_area' ), true ) ) {
+		if ( ! in_array( $landing->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return false;
 		}
 		$global = ! empty( Radius_Settings::get()['dynamic_content_per_request'] );
-		$tid    = (int) get_post_meta( $landing->ID, '_lf_template_id', true );
+		$tid    = (int) get_post_meta( $landing->ID, '_radius_template_id', true );
 		if ( $tid <= 0 ) {
 			return $global;
 		}
@@ -60,7 +60,7 @@ class Radius_Render_Context {
 	/**
 	 * Whether scheduled rotation should update landings built from this template.
 	 *
-	 * @param int $template_id lf_template post ID.
+	 * @param int $template_id radius_template post ID.
 	 * @return bool
 	 */
 	public static function template_rotation_enabled( $template_id ) {

@@ -245,7 +245,7 @@ JS;
 	}
 
 	/**
-	 * Merge lf_landing / lf_template into Elementor's supported post types list.
+	 * Merge radius_landing / radius_template into Elementor's supported post types list.
 	 *
 	 * @return void
 	 */
@@ -258,7 +258,7 @@ JS;
 			$opt = array( 'page', 'post' );
 		}
 		$changed = false;
-		foreach ( array( 'lf_landing', 'lf_service_area', 'lf_template' ) as $pt ) {
+		foreach ( array( 'radius_landing', 'radius_service_area', 'radius_template' ) as $pt ) {
 			if ( ! in_array( $pt, $opt, true ) ) {
 				$opt[] = $pt;
 				$changed = true;

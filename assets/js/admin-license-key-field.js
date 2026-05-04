@@ -3,8 +3,8 @@
  */
 (function () {
 	var rm = document.getElementById('radius-remove-api-key');
-	var hf = document.getElementById('lf_api_key_remove_field');
-	var input = document.getElementById('lf_api_key');
+	var hf = document.getElementById('radius_api_key_remove_field');
+	var input = document.getElementById('radius_api_key');
 	if (!rm || !hf) {
 		return;
 	}
