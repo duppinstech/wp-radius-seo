@@ -1,0 +1,53 @@
+---
+description: Radius SEO (wp-radius-seo) plugin architecture, identifiers, and agent shortcuts
+alwaysApply: true
+---
+
+# Radius SEO — project memory
+
+WordPress plugin **Radius SEO** (`radius.php`). Text domain `radius`. Constants `RADIUS_VERSION`, `RADIUS_PATH`, `RADIUS_URL`. Bump version in **two** places when releasing: header + `RADIUS_VERSION`, and set `readme.txt` **Stable tag** + changelog entry.
+
+**Versioning (semver-style for this project):** patch **1.6.x** for small fixes / incremental UI or behavior tweaks; minor **1.7.0** for larger feature sets or meaningful behavior changes; major **2.0.0** only for breaking changes. Do not jump from 1.6.0 → 1.7.0 for a tiny change.
+
+**After every version bump (required for auto-updates):** push `main`, then **create a GitHub Release** whose tag matches the plugin version (e.g. `v1.6.1`) and attach a ZIP whose root is one folder containing `radius.php`. From repo root: `git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD` then upload as release asset named `wp-radius-seo.zip` (or use `gh release create vX.Y.Z ./wp-radius-seo.zip --title "Radius SEO X.Y.Z" --notes "..."`). Sites using `Radius_GitHub_Updater` only see updates when **releases/latest** has a newer tag **and** a `.zip` asset. The updater clears its GitHub JSON cache when WordPress deletes the `update_plugins` transient (e.g. **Check again** on Updates); default API cache TTL is 1 hour (`radius_github_updater_cache_ttl`).
+
+## Bootstrap order
+
+1. `Radius_Data_Registry` + `Radius_Prefix_Migration::maybe_migrate()` run **before** other includes (`radius.php`).
+2. Main requires chain loads taxonomy → settings → token/geo/deploy → admin UX → `Radius_Plugin`.
+3. `radius_boot()` on `plugins_loaded` priority **5**: SEO integrations, license API, `Radius_Plugin::instance()`.
+
+## Canonical IDs (use these in new code)
+
+Source of truth: `includes/class-data-registry.php` (`Radius_Data_Registry`).
+
+- **Option:** `radius_settings` (`Radius_Settings::OPTION`).
+- **CPTs:** `radius_template`, `radius_landing`, `radius_service_area`.
+- **Taxonomy:** `radius_place` (places are terms).
+- **Meta (examples):** `_radius_template_id`, `_radius_place_id`, `_radius_spintax_blocks`, `_radius_xfields`, `_radius_dynamic_content_mode`, `_radius_rotation_mode`.
+- **Term meta:** `radius_lat`, `radius_lng`, `radius_country`, etc.
+- **Legacy:** `Radius_Prefix_Migration` maps old `lf_*` / `localeforge_settings` / CPT `lf_*` → `radius_*`. Do not reintroduce `lf_` in new storage.
+
+## Runtime layout
+
+- **`Radius_Plugin`**: singleton; registers CPTs at `init` **20** (after Magic Page–style plugins that register `service-area` at 10). Hooks `the_content` / `the_title` / permalinks for landings and template preview.
+- **`Radius_Deploy_Service::deploy()`**: template + place IDs → creates/updates `radius_landing` or `radius_service_area`; uses `Radius_Template_Tokens::build_map()` then `Radius_Token_Engine::render()`.
+- **`Radius_Template_Tokens::build_map()`**: place tokens + template meta + **site replacers** (`site_replacements` in settings) + spintax blocks. If the **stored** option has `site_replacements` as explicit `[]`, clears inflated defaults and falls back to per-template `_radius_xfields`.
+- **`Radius_Token_Engine`**: replaces `{{token}}` and `[token]`; expands `{a|b|c}` spintax. Token keys pass through `sanitize_key()` (lowercase; hyphens allowed).
+
+## Settings highlights
+
+- **`Radius_Settings::get()`** merges defaults; if `site_replacements` is missing or empty array, fills **`default_site_replacements()`** (hyphen keys: `company-name`, `roadside-keyword`, `phone-number`, …).
+- **Service area URL:** `service_area_url_slug` (hub pages only); legacy merge from `landing_url_slug` if empty.
+
+## Assets and admin
+
+- Admin/build scripts use **`radius-*.js`** / **`radius-*.css`** (not `lf-*`). Enqueues live in `class-admin.php` and related classes.
+- Large saves / deploy: `Radius_Form_Handlers`, `Radius_Ajax`.
+- License: `Radius_API_License`.
+
+## Agent checklist when touching behavior
+
+- Changing CPT/rewrite: consider `radius_needs_rewrite_flush` and Magic Page URL conflicts (`init` priority already documented in `class-plugin.php`).
+- Elementor: gated by `enable_elementor`; `Radius_Elementor_Compat` + deploy copies Elementor JSON when enabled.
+- Never store new data under `lf_` or `localeforge_*`; extend `Radius_Data_Registry` if adding canonical keys.

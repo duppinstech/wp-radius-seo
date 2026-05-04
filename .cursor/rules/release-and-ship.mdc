@@ -1,0 +1,17 @@
+---
+description: After plugin code changes, push to GitHub and cut a new versioned release
+alwaysApply: true
+---
+
+# Ship changes to GitHub and releases
+
+When this project’s code is changed in a way that would ship to users (any non-trivial fix or feature, including small follow-ups), the agent should **not** stop at a local commit only.
+
+1. **Commit** on `main` with a clear message.
+2. **Push** to `origin` (`git push origin main`).
+3. **Bump** `radius.php` / `RADIUS_VERSION` and `readme.txt` (Stable tag + Changelog) for the new patch (or minor) version.
+4. **Tag** an annotated release tag matching the version (e.g. `v1.6.5`).
+5. **Create a GitHub Release** for that tag and attach the installable ZIP:
+   - Build with `git archive --format=zip --prefix=wp-radius-seo/ <tag>` so the ZIP has a single top-level folder `wp-radius-seo/` (required by the plugin’s GitHub updater).
+
+Use `gh release create` when the GitHub CLI is available and authenticated.

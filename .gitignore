@@ -1,7 +1,10 @@
 # OS / editor
 .DS_Store
 Thumbs.db
-.cursor/
+# Cursor — track project rules; ignore other local Cursor data
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 *.swp
 *.swo
 *~

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.4
+Stable tag: 1.6.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -35,6 +35,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
 * `radius_maintenance_applied` — action after maintenance apply finishes (rewrites, updater cache bust, optional object cache).
 == Changelog ==
+
+= 1.6.5 =
+* Migration wizard: per-step run checkboxes, Completed/Incomplete badges, and a locked “Deploy & verify” row (Deploy, Location library, Service areas) until all four steps are satisfied; redo by re-checking a step; wizard assets load only when Magic Page is active; dismiss banner clears when all core steps are complete.
+* Import → Magic Page migration: fixed PHP parse error on the migration checklist loop; checklist uses the same Completed/Incomplete badges as the modal.
 
 = 1.6.4 =
 * Migration: Magic Page wizard records completed steps and activity; resumes without redoing work already done or detected on the site (places, templates, replacers, service anchors); Import tab shows a progress checklist and log.
