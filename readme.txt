@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.18
+Stable tag: 1.6.20
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,7 +46,19 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_spintax_import_elementor_meta_keys` — post meta keys that receive `{spintax_*}` / legacy token replacement during global spintax import (default `_elementor_data`, `_elementor_page_settings`, `_radius_xfields`).
 * `radius_migration_legacy_location_zip_meta_keys` — legacy location term meta keys tried when resolving zip for service-area anchor mapping (default `zip`, `Zip`, `ZIP`, `postal_code`, `postal`, `Postcode`).
 * `radius_migration_clone_elementor_meta_keys_exclude` — list of `_elementor*` post meta key names to skip in the bulk meta copy before Elementor’s document copy runs when cloning migration variants (default: every `_elementor` key found on the source template).
+* `radius_migration_wizard_show_without_magic_page` — return true to load the migration wizard when Magic Page is already deactivated (default false unless migration state/steps/legacy data indicate an in-progress migration).
+* `radius_magic_page_landing_post_types` — post types scanned for Magic Page mass landings (default `page`).
+* `radius_magic_page_landing_location_meta_keys` — meta key candidates for the “location” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_location_id`).
+* `radius_magic_page_landing_group_meta_keys` — meta key candidates for the “group” side of the footprint (must be non-empty; defaults lead with Magic Page’s `_group_id`).
+* `radius_magic_page_landing_abort_if_candidates_match_all_pages` — abort bulk delete when candidate count equals total posts in scanned types (default true).
 == Changelog ==
+
+= 1.6.20 =
+* Magic Page landing cleanup footprint: default meta keys prioritize **`_location_id`** and **`_group_id`** (plugin-deployed pages). Anchor extraction from templates also tries `_location_id` first.
+
+= 1.6.19 =
+* **Migration wizard:** New step — remove Magic Page mass landing pages by footprint (posts that have **both** a non-empty location meta and a non-empty group meta, default `page` post type). Deletes run only if the candidate count is **not** equal to the total page count in scanned types (fail-safe). Preview AJAX: `magic_pages_preview`; delete: `magic_pages_cleanup`.
+* **Wizard without Magic Page active:** If you dismissed the wizard or started migration, the modal can still load after deactivating Magic Page so you can finish cleanup manually. Filters: `radius_migration_wizard_show_without_magic_page`, Magic Page landing footprint: `radius_magic_page_landing_post_types`, `radius_magic_page_landing_location_meta_keys`, `radius_magic_page_landing_group_meta_keys`, `radius_magic_page_landing_abort_if_candidates_match_all_pages`.
 
 = 1.6.18 =
 * **Magic Page migration wizard:** Before cloning variants, normalize imported towing template `{spintax_towing…}` → `{{towing…}}` across Elementor + Radius meta; set default towing title to “24/7 Towing Company in {{place_name}}, {{region}}.” (filter `radius_migration_towing_template_title`).

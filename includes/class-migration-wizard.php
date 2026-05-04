@@ -30,7 +30,7 @@ final class Radius_Migration_Wizard {
 	 * Valid migration step keys (order).
 	 */
 	private static function step_keys() {
-		return array( 'places', 'templates', 'replacers', 'anchors' );
+		return array( 'places', 'templates', 'replacers', 'anchors', 'magic_pages' );
 	}
 
 	/**
@@ -55,7 +55,7 @@ final class Radius_Migration_Wizard {
 	/**
 	 * Mark a step as completed and optionally log.
 	 *
-	 * @param string               $step One of places|templates|replacers|anchors.
+	 * @param string               $step One of places|templates|replacers|anchors|magic_pages.
 	 * @param string|null          $note Optional log line (English message).
 	 * @param array<string,mixed> $ctx Optional context for log.
 	 * @return void
@@ -85,7 +85,7 @@ final class Radius_Migration_Wizard {
 	/**
 	 * Clear the recorded completion flag for one step so the migration wizard can run it again.
 	 *
-	 * @param string $step One of places|templates|replacers|anchors.
+	 * @param string $step One of places|templates|replacers|anchors|magic_pages.
 	 * @return void
 	 */
 	public static function clear_recorded_step( $step ) {
@@ -238,6 +238,8 @@ final class Radius_Migration_Wizard {
 		$inf_templates = self::infer_templates_ready();
 		$inf_rep       = self::infer_replacers_filled();
 		$inf_anc       = self::infer_anchors_configured();
+		$inf_mp_clear  = self::infer_magic_page_landings_cleared();
+		$mp_active     = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
 
 		return array(
 			'places'    => array(
@@ -260,11 +262,25 @@ final class Radius_Migration_Wizard {
 				'recorded'  => ! empty( $rec['anchors'] ),
 				'inferred'  => $inf_anc,
 			),
+			'magic_pages' => array(
+				'done'      => ! empty( $rec['magic_pages'] ) || ( $inf_mp_clear && ! $mp_active ),
+				'recorded'  => ! empty( $rec['magic_pages'] ),
+				'inferred'  => $inf_mp_clear && ! $mp_active,
+			),
 		);
 	}
 
 	/**
-	 * Whether all four core migration steps are satisfied (recorded or inferred).
+	 * True when no posts match the Magic Page landing footprint (location + group meta).
+	 *
+	 * @return bool
+	 */
+	public static function infer_magic_page_landings_cleared() {
+		return count( Radius_Legacy_Import_Service::find_magic_page_generated_landing_post_ids() ) === 0;
+	}
+
+	/**
+	 * Whether all core migration steps are satisfied (recorded or inferred).
 	 *
 	 * @return bool
 	 */
@@ -287,19 +303,36 @@ final class Radius_Migration_Wizard {
 		if ( ! Radius_API_License::is_unlocked() ) {
 			return false;
 		}
-		if ( ! Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
-			return false;
-		}
 		if ( self::get_state() === 'completed' ) {
 			return false;
 		}
 		if ( ! self::has_no_deployed_landings() ) {
 			return false;
 		}
-		// Always load the modal when Magic Page is active and migration is not finished. Legacy
-		// data detection only informs imports — if CPT/tax/options differ or the DB is empty,
-		// users still need the wizard (filters / manual steps on Import → Magic Page migration).
-		return true;
+		return self::magic_page_wizard_context_active();
+	}
+
+	/**
+	 * Magic Page active, or migration still in progress after Magic Page was deactivated (manual cleanup).
+	 *
+	 * @return bool
+	 */
+	private static function magic_page_wizard_context_active() {
+		if ( Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
+			return true;
+		}
+		$rec = self::get_recorded_steps();
+		if ( ! empty( $rec ) ) {
+			return true;
+		}
+		$st = self::get_state();
+		if ( in_array( $st, array( 'open', 'dismissed' ), true ) ) {
+			return true;
+		}
+		if ( Radius_Legacy_Import_Service::detect_magic_page_environment() ) {
+			return true;
+		}
+		return (bool) apply_filters( 'radius_migration_wizard_show_without_magic_page', false );
 	}
 
 	/**
@@ -343,9 +376,6 @@ final class Radius_Migration_Wizard {
 		if ( ! Radius_API_License::is_unlocked() ) {
 			return false;
 		}
-		if ( ! Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
-			return false;
-		}
 		if ( self::get_state() === 'completed' ) {
 			return false;
 		}
@@ -355,9 +385,7 @@ final class Radius_Migration_Wizard {
 		if ( self::all_core_steps_done() ) {
 			return false;
 		}
-		// Offer the tour whenever Magic Page is active and core steps remain; do not require
-		// detect_magic_page_environment() so new installs and non-default CPT slugs still get prompts.
-		return true;
+		return self::magic_page_wizard_context_active();
 	}
 
 	/**
@@ -482,6 +510,36 @@ final class Radius_Migration_Wizard {
 						array( 'source' => 'wizard' )
 					);
 				}
+				wp_send_json_success( $res );
+				return;
+			case 'magic_pages_preview':
+				wp_send_json_success( Radius_Legacy_Import_Service::preview_magic_page_landing_cleanup() );
+				return;
+			case 'magic_pages_cleanup':
+				if ( function_exists( 'set_time_limit' ) ) {
+					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+					@set_time_limit( 600 );
+				}
+				$res = Radius_Legacy_Import_Service::delete_magic_page_generated_landing_pages();
+				if ( ! empty( $res['blocked'] ) ) {
+					wp_send_json_error(
+						array(
+							'message' => ! empty( $res['blocked_message'] )
+								? (string) $res['blocked_message']
+								: __( 'Magic Page landing cleanup blocked.', 'radius' ),
+							'payload' => $res,
+						),
+						400
+					);
+				}
+				self::record_step_done(
+					'magic_pages',
+					__( 'Magic Page mass landing pages removed (location + group meta footprint).', 'radius' ),
+					array(
+						'source'        => 'wizard',
+						'deleted_count' => isset( $res['deleted_count'] ) ? (int) $res['deleted_count'] : 0,
+					)
+				);
 				wp_send_json_success( $res );
 				return;
 			default:

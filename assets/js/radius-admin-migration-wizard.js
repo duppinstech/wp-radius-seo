@@ -10,12 +10,13 @@
 			: {};
 	var i18n = cfg.i18n || {};
 
-	var STEP_KEYS = ['places', 'templates', 'replacers', 'anchors'];
+	var STEP_KEYS = ['places', 'templates', 'replacers', 'anchors', 'magic_pages'];
 	var STEP_IDS = {
 		places: 'mw-step-places',
 		templates: 'mw-step-templates',
 		replacers: 'mw-step-replacers',
 		anchors: 'mw-step-anchors',
+		magic_pages: 'mw-step-magic-pages',
 	};
 
 	var rootEl = null;
@@ -267,6 +268,14 @@
 		);
 		stepsOl.appendChild(
 			createStepRow('mw-step-anchors', i18n.stepAnchors, 'spin', 'anchors')
+		);
+		stepsOl.appendChild(
+			createStepRow(
+				'mw-step-magic-pages',
+				i18n.stepMagicPages,
+				'spin',
+				'magic_pages'
+			)
 		);
 
 		var deploySec = createDeploySection(payload);
@@ -544,6 +553,38 @@
 					parts.push('</ul>');
 				}
 			}
+			if (skips.magic_pages) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryMagicPages || '') +
+						':</strong> ' +
+						esc(i18n.summarySkippedMagicPages || '') +
+						'</p>'
+				);
+			} else if (
+				data &&
+				data.magic_pages &&
+				(typeof data.magic_pages.candidate_count === 'number' ||
+					typeof data.magic_pages.deleted_count === 'number')
+			) {
+				var mp = data.magic_pages;
+				var mpLine =
+					(typeof mp.deleted_count === 'number'
+						? mp.deleted_count
+						: mp.candidate_count || 0) +
+					' ' +
+					(i18n.summaryMagicPagesRemoved || 'removed');
+				if (mp.blocked_message) {
+					mpLine = esc(String(mp.blocked_message));
+				}
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryMagicPages || '') +
+						':</strong> ' +
+						esc(mpLine) +
+						'</p>'
+				);
+			}
 			if (tpl && tpl.errors && tpl.errors.length) {
 				parts.push(
 					'<p class="radius-mw-warn">' +
@@ -649,6 +690,7 @@
 			templates: false,
 			replacers: false,
 			anchors: false,
+			magic_pages: false,
 		};
 
 		var start = document.getElementById('radius-mw-start');
@@ -728,11 +770,13 @@
 		var tpl = {};
 		var jRepData = {};
 		var jAncData = {};
+		var jMpData = {};
 		var skips = {
 			places: false,
 			templates: false,
 			replacers: false,
 			anchors: false,
+			magic_pages: false,
 		};
 
 		try {
@@ -856,10 +900,39 @@
 				refreshStepRows(steps, preserveAfterRan(userWants, ran));
 			}
 
+			if (userWants.magic_pages) {
+				setStepState('mw-step-magic-pages', 'wait');
+				var jMp = await postWizard('magic_pages_cleanup');
+				if (!jMp.success) {
+					throw new Error(
+						(jMp.data && jMp.data.message) ||
+							i18n.requestFailed ||
+							'Request failed'
+					);
+				}
+				jMpData = jMp.data || {};
+				setStepState('mw-step-magic-pages', 'done');
+			} else {
+				if (steps.magic_pages && steps.magic_pages.done) {
+					setStepState('mw-step-magic-pages', 'done');
+				} else {
+					setStepState('mw-step-magic-pages', 'idle');
+				}
+				skips.magic_pages = true;
+			}
+			ran.magic_pages = true;
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data && stFresh.data.steps) {
+				steps = stFresh.data.steps;
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
+			}
+
 			showSummary({
 				templates: tpl,
 				replacers: jRepData,
 				anchors: jAncData,
+				magic_pages: jMpData,
 				skips: skips,
 			});
 		} catch (err) {

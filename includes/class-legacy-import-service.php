@@ -686,6 +686,254 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Post types scanned for Magic Page–style mass landing pages (filterable).
+	 *
+	 * @return string[]
+	 */
+	public static function magic_page_landing_post_types() {
+		$types = apply_filters( 'radius_magic_page_landing_post_types', array( 'page' ) );
+		if ( ! is_array( $types ) ) {
+			$types = array( 'page' );
+		}
+		$out = array();
+		foreach ( $types as $t ) {
+			$t = sanitize_key( (string) $t );
+			if ( $t !== '' && post_type_exists( $t ) ) {
+				$out[] = $t;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Meta keys that indicate a Magic Page “location” binding (non-empty value required).
+	 *
+	 * Magic Page sets `_location_id` on deployed pages (filter extends list for older/alternate builds).
+	 *
+	 * @return string[]
+	 */
+	public static function magic_page_landing_location_meta_keys() {
+		$keys = apply_filters(
+			'radius_magic_page_landing_location_meta_keys',
+			array(
+				'_location_id',
+				'location_id',
+				'location',
+				'_location',
+				'magic_page_location',
+				'_magic_page_location',
+				'service_location',
+			)
+		);
+		if ( ! is_array( $keys ) ) {
+			$keys = array();
+		}
+		$out = array();
+		foreach ( $keys as $k ) {
+			$k = sanitize_key( (string) $k );
+			if ( $k !== '' ) {
+				$out[] = $k;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Meta keys that indicate a Magic Page “group” binding (non-empty value required).
+	 *
+	 * Magic Page sets `_group_id` on deployed pages (filter extends list for older/alternate builds).
+	 *
+	 * @return string[]
+	 */
+	public static function magic_page_landing_group_meta_keys() {
+		$keys = apply_filters(
+			'radius_magic_page_landing_group_meta_keys',
+			array(
+				'_group_id',
+				'group_id',
+				'group',
+				'_group',
+				'magic_page_group',
+				'_magic_page_group',
+				'page_group',
+				'_page_group',
+				'mp_group',
+				'_mp_group',
+			)
+		);
+		if ( ! is_array( $keys ) ) {
+			$keys = array();
+		}
+		$out = array();
+		foreach ( $keys as $k ) {
+			$k = sanitize_key( (string) $k );
+			if ( $k !== '' ) {
+				$out[] = $k;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Count non-trash posts in the post types scanned for Magic Page landing cleanup (fail-safe denominator).
+	 *
+	 * @return int
+	 */
+	public static function count_posts_in_magic_page_landing_post_types() {
+		$types = self::magic_page_landing_post_types();
+		$sum   = 0;
+		foreach ( $types as $pt ) {
+			$c = wp_count_posts( $pt );
+			if ( ! is_object( $c ) ) {
+				continue;
+			}
+			foreach ( array( 'publish', 'draft', 'pending', 'private', 'future' ) as $st ) {
+				$sum += isset( $c->$st ) ? (int) $c->$st : 0;
+			}
+		}
+		return $sum;
+	}
+
+	/**
+	 * Find posts that have both a non-empty location meta and a non-empty group meta (Magic Page landing footprint).
+	 *
+	 * @return int[] Post IDs ascending.
+	 */
+	public static function find_magic_page_generated_landing_post_ids() {
+		global $wpdb;
+
+		$post_types = self::magic_page_landing_post_types();
+		$loc_keys   = self::magic_page_landing_location_meta_keys();
+		$grp_keys   = self::magic_page_landing_group_meta_keys();
+		if ( empty( $post_types ) || empty( $loc_keys ) || empty( $grp_keys ) ) {
+			return array();
+		}
+
+		$lc = count( $loc_keys );
+		$gc = count( $grp_keys );
+		$tc = count( $post_types );
+
+		$loc_in = implode( ',', array_fill( 0, $lc, '%s' ) );
+		$grp_in = implode( ',', array_fill( 0, $gc, '%s' ) );
+		$pt_in  = implode( ',', array_fill( 0, $tc, '%s' ) );
+
+		$sql = "SELECT DISTINCT p.ID
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} ml ON ml.post_id = p.ID AND ml.meta_key IN ($loc_in) AND ml.meta_value != '' AND ml.meta_value IS NOT NULL
+			INNER JOIN {$wpdb->postmeta} mg ON mg.post_id = p.ID AND mg.meta_key IN ($grp_in) AND mg.meta_value != '' AND mg.meta_value IS NOT NULL
+			WHERE p.post_type IN ($pt_in)
+			AND p.post_status NOT IN ('trash','auto-draft')
+			ORDER BY p.ID ASC";
+
+		$args   = array_merge( $loc_keys, $grp_keys, $post_types );
+		$prepared = $wpdb->prepare( $sql, $args );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- assembled IN (...) lists from sanitized keys.
+		$rows = $wpdb->get_col( $prepared );
+		if ( empty( $rows ) || ! is_array( $rows ) ) {
+			return array();
+		}
+		$ids = array_map( 'absint', $rows );
+		return array_values( array_unique( array_filter( $ids ) ) );
+	}
+
+	/**
+	 * Whether bulk-delete should abort because the footprint matches 100% of scanned posts (likely mis-identification).
+	 *
+	 * @param int[] $candidate_ids Candidate post IDs.
+	 * @param int   $total_posts   Total posts in scanned types (see count_posts_in_magic_page_landing_post_types()).
+	 * @return string|null Error code or null if OK.
+	 */
+	public static function magic_page_landing_delete_blocked_reason( array $candidate_ids, $total_posts ) {
+		$candidate_ids = array_values( array_filter( array_map( 'absint', $candidate_ids ) ) );
+		$total_posts   = (int) $total_posts;
+		$n             = count( $candidate_ids );
+		if ( ! apply_filters( 'radius_magic_page_landing_abort_if_candidates_match_all_pages', true, $candidate_ids, $total_posts ) ) {
+			return null;
+		}
+		if ( $total_posts < 1 ) {
+			return null;
+		}
+		if ( $n === $total_posts ) {
+			return 'matches_all_pages';
+		}
+		return null;
+	}
+
+	/**
+	 * Inspect Magic Page landing cleanup without deleting (counts, sample IDs, fail-safe state).
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function preview_magic_page_landing_cleanup() {
+		$ids         = self::find_magic_page_generated_landing_post_ids();
+		$total       = self::count_posts_in_magic_page_landing_post_types();
+		$blocked_key = self::magic_page_landing_delete_blocked_reason( $ids, $total );
+		$blocked     = null !== $blocked_key;
+
+		return array(
+			'post_types'             => self::magic_page_landing_post_types(),
+			'location_meta_keys'     => self::magic_page_landing_location_meta_keys(),
+			'group_meta_keys'        => self::magic_page_landing_group_meta_keys(),
+			'total_posts_scanned'    => $total,
+			'candidate_count'        => count( $ids ),
+			'candidate_ids_sample'   => array_slice( $ids, 0, 40 ),
+			'blocked'                => $blocked,
+			'blocked_reason'         => $blocked_key,
+			'blocked_message'        => $blocked
+				? __( 'Refused to delete Magic Page landings: the footprint matched every page in the scanned post types. Adjust filters or remove pages manually to avoid deleting your entire site.', 'radius' )
+				: null,
+		);
+	}
+
+	/**
+	 * Permanently delete posts identified as Magic Page mass landings (location + group meta footprint).
+	 *
+	 * @return array<string,mixed> Preview fields plus deleted_count and delete_errors.
+	 */
+	public static function delete_magic_page_generated_landing_pages() {
+		$preview = self::preview_magic_page_landing_cleanup();
+		if ( ! empty( $preview['blocked'] ) ) {
+			$preview['deleted_count']  = 0;
+			$preview['delete_errors'] = array();
+			return $preview;
+		}
+
+		$ids = self::find_magic_page_generated_landing_post_ids();
+		$del = 0;
+		$err = array();
+		foreach ( $ids as $pid ) {
+			$pid = (int) $pid;
+			if ( $pid <= 0 ) {
+				continue;
+			}
+			if ( ! current_user_can( 'delete_post', $pid ) ) {
+				$err[] = sprintf(
+					/* translators: %d: post ID */
+					__( 'No permission to delete post %d.', 'radius' ),
+					$pid
+				);
+				continue;
+			}
+			$r = wp_delete_post( $pid, true );
+			if ( $r ) {
+				++$del;
+			} else {
+				$err[] = sprintf(
+					/* translators: %d: post ID */
+					__( 'Could not delete post %d.', 'radius' ),
+					$pid
+				);
+			}
+		}
+
+		$preview['deleted_count']  = $del;
+		$preview['delete_errors']  = $err;
+		$preview['candidate_count'] = count( $ids );
+		$preview['candidate_ids_sample'] = array_slice( $ids, 0, 40 );
+		return $preview;
+	}
+
+	/**
 	 * Ordered replacement pairs for service-line template variants (tags like towing_* → roadside_*).
 	 *
 	 * @param string $variant One of roadside, heavy, equipment.
@@ -2423,7 +2671,7 @@ class Radius_Legacy_Import_Service {
 			}
 		}
 
-		$meta_keys = array( 'location', '_location', 'magic_page_location', '_magic_page_location', 'service_location', 'location_id', '_location_id' );
+		$meta_keys = array( '_location_id', 'location_id', 'location', '_location', 'magic_page_location', '_magic_page_location', 'service_location' );
 		foreach ( $meta_keys as $mk ) {
 			$v = get_post_meta( $post_id, $mk, true );
 			if ( $v !== '' && $v !== false && is_numeric( $v ) ) {
