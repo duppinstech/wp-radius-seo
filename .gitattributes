@@ -1,0 +1,4 @@
+# Omitted from `git archive` (release ZIP). See CONTRIBUTING.md.
+# GitHub “Download ZIP” / source archives use the same rules for the chosen ref.
+.cursor/** export-ignore
+.github/** export-ignore

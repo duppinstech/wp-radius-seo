@@ -1,0 +1,4 @@
+# Paths excluded when packaging with wp-cli `dist-archive-command` / similar tools.
+# Release ZIPs built with `git archive` use .gitattributes export-ignore (same folders).
+.cursor/
+.github/

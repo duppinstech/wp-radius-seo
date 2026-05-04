@@ -36,6 +36,10 @@ Participation is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). Be respe
   git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD
   ```
 
+  `.gitattributes` marks `.cursor/**` and `.github/**` with `export-ignore`, so they are **not** included in that archive. The same applies to GitHub’s **Code → Download ZIP** for refs that contain this file.
+
+  **Older releases:** Tags created **before** `.gitattributes` shipped still point at commits without `export-ignore`, so their auto-generated source archives may still list those folders. To **replace** an attached `wp-radius-seo.zip` on a past release: check out that tag, export to a temp dir, delete `.cursor` and `.github`, then zip the plugin folder (or rebuild from `main` only if the plugin code matches). GitHub does not allow rewriting auto-generated “Source code” zips for existing tags without changing history.
+
   Without a release ZIP, sites using the GitHub updater will not see updates under **Dashboard → Updates**.
 
 ## Translations

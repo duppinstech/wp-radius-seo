@@ -1,7 +1,13 @@
 # OS / editor
 .DS_Store
 Thumbs.db
-# Cursor — track project rules; ignore other local Cursor data
+
+# --- Plugin packaging (do not ship in wp-radius-seo.zip) ---
+# Excluded from `git archive` via .gitattributes (`export-ignore`): .cursor/** .github/**
+# Also listed in .distignore for wp-cli style builds.
+# Do NOT gitignore .github/ here — issue templates must stay tracked on the default branch.
+
+# Cursor — track project rules only; ignore other local Cursor data (never shipped — see .gitattributes)
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
