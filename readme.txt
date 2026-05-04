@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.12
+Stable tag: 1.6.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +44,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_clear_imported_template_content_when_elementor_builder` — return false to keep classic/block `post_content` after import when Elementor builder data exists (default true: clear so Elementor-only templates do not show duplicate classic markup).
 * `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
 == Changelog ==
+
+= 1.6.13 =
+* Magic Page migration wizard: preserve “run this step” choices when starting migration; clear recorded step flags when redoing a completed step so templates, replacers, and anchors can be run again without the UI resetting checkboxes.
+* Service area anchors: derive legacy location IDs from magicpage template HTML, Elementor JSON, and post meta when Magic Page option rows are empty; map legacy terms to `radius_place` via import bridge (`_radius_imported_from_term`), slug, or zip → `radius_postal`.
 
 = 1.6.12 =
 * Magic Page / Elementor import: store `_elementor_page_settings` as a PHP array (WordPress-serialized), not a JSON string — fixes Elementor editor fatal on PHP 8+ (“Cannot access offset of type string on string” in `Page\Manager::get_saved_settings`). Keyword swaps use the same rule.
