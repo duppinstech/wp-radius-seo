@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.9
+Stable tag: 1.6.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,7 +38,16 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_token_engine_collapse_empty_paragraphs` — return false to skip removing empty `<p></p>` wrappers after stripping placeholders (default true).
 * `radius_elementor_exclude_post_types_from_admin_meta_queries` — array of CPT slugs to omit from Elementor’s admin `WP_Query` that lists “built with Elementor” across all supported types (reduces load from huge `radius_landing` tables). Return an empty array to keep default Elementor behavior.
 * `radius_deploy_batch_time_limit` — seconds for PHP `max_execution_time` during chained deploy AJAX (default 300, clamped 60–600).
+* `radius_migration_elementor_source_post_id` — adjust which post ID Elementor document meta is copied from when Magic Page embeds a library template (shortcode / meta) instead of storing `_elementor_data` on the magicpage row.
+* `radius_migration_imported_template_title` — filter the `radius_template` title when importing a Magic Page blueprint (default: legacy title with `[location]` etc. converted to `{{place_name}}`, …).
+* `radius_migration_clear_imported_template_content_when_elementor_builder` — return false to keep classic/block `post_content` after import when Elementor builder data exists (default true: clear so Elementor-only templates do not show duplicate classic markup).
+* `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
 == Changelog ==
+
+= 1.6.10 =
+* Magic Page template import: resolve Elementor data from linked Elementor library templates (`[elementor-template id="…"]` and common custom meta), use Elementor’s `copy_elementor_meta` when available, then fall back to manual `_elementor_*` copy; clear classic `post_content` when builder JSON exists so Elementor is not mixed with leftover classic markup.
+* Import applies Magic Page bracket/shortcode token conversion inside `_elementor_data` / page settings JSON, not only the post title/body.
+* Automated migration variant titles default to full towing-style names with `{{place_name}}`, `{{region}}` (Roadside, Heavy, Heavy Equipment).
 
 = 1.6.9 =
 * Magic Page migration wizard: load the tour whenever Magic Page is active and migration is not finished — detection of legacy CPT/tax/options no longer gates the modal (fixes missing wizard on installs where slugs differ or data is not detected yet).

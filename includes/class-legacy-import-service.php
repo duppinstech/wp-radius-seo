@@ -126,13 +126,91 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Copy Elementor document meta from a legacy template post onto a new radius_template so “Edit with Elementor” works.
+	 * Whether the post has non-empty Elementor document JSON (structure/widgets).
 	 *
-	 * @param int $source_post_id Source post ID (e.g. magicpage).
-	 * @param int $target_post_id New radius_template ID.
+	 * @param int $post_id Post ID.
+	 * @return bool
+	 */
+	private static function legacy_post_has_elementor_document_data( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( $post_id <= 0 ) {
+			return false;
+		}
+		$raw = get_post_meta( $post_id, '_elementor_data', true );
+		if ( is_array( $raw ) ) {
+			return $raw !== array();
+		}
+		if ( ! is_string( $raw ) || $raw === '' ) {
+			return false;
+		}
+		$decoded = json_decode( $raw, true );
+		return is_array( $decoded ) && $decoded !== array();
+	}
+
+	/**
+	 * Find the post that actually holds Elementor’s `_elementor_data` when the Magic Page template
+	 * row only references an Elementor library template via shortcode or custom meta.
+	 *
+	 * @param int $post_id Legacy magicpage (or linked) post ID.
+	 * @param int $depth   Recursion guard.
+	 * @param int $root_id Original magicpage ID (for filters).
+	 * @return int Post ID to copy Elementor meta from (same as input when data lives on this post).
+	 */
+	public static function resolve_elementor_document_source_post_id( $post_id, $depth = 0, $root_id = 0 ) {
+		$post_id = (int) $post_id;
+		if ( $post_id <= 0 || $depth > 5 ) {
+			return 0;
+		}
+		if ( $root_id <= 0 ) {
+			$root_id = $post_id;
+		}
+		if ( self::legacy_post_has_elementor_document_data( $post_id ) ) {
+			return (int) apply_filters( 'radius_migration_elementor_source_post_id', $post_id, $root_id );
+		}
+
+		$post = get_post( $post_id );
+		if ( $post ) {
+			$content = (string) $post->post_content;
+			if ( $content !== '' && preg_match( '/\[elementor-template[^\]]*\bid\s*=\s*["\']?(\d+)/i', $content, $m ) ) {
+				$tid = (int) $m[1];
+				if ( $tid > 0 && get_post( $tid ) ) {
+					return self::resolve_elementor_document_source_post_id( $tid, $depth + 1, $root_id );
+				}
+			}
+		}
+
+		$all = get_post_meta( $post_id );
+		if ( is_array( $all ) ) {
+			foreach ( $all as $meta_key => $values ) {
+				if ( ! is_string( $meta_key ) ) {
+					continue;
+				}
+				if ( ! preg_match( '/elementor.*template|template.*id|magic_page.*elementor|mp_.*elementor/i', $meta_key ) ) {
+					continue;
+				}
+				if ( ! is_array( $values ) ) {
+					continue;
+				}
+				foreach ( $values as $one ) {
+					$tid = absint( maybe_unserialize( $one ) );
+					if ( $tid > 0 && get_post( $tid ) ) {
+						return self::resolve_elementor_document_source_post_id( $tid, $depth + 1, $root_id );
+					}
+				}
+			}
+		}
+
+		return (int) apply_filters( 'radius_migration_elementor_source_post_id', $post_id, $root_id );
+	}
+
+	/**
+	 * Copy `_elementor_*` post meta keys from source to target (skips generated CSS/cache keys).
+	 *
+	 * @param int $source_post_id Resolved source post ID.
+	 * @param int $target_post_id radius_template ID.
 	 * @return void
 	 */
-	public static function copy_elementor_document_meta_to_template( $source_post_id, $target_post_id ) {
+	private static function copy_elementor_meta_manual( $source_post_id, $target_post_id ) {
 		$source_post_id = (int) $source_post_id;
 		$target_post_id = (int) $target_post_id;
 		if ( $source_post_id <= 0 || $target_post_id <= 0 ) {
@@ -161,14 +239,136 @@ class Radius_Legacy_Import_Service {
 				add_post_meta( $target_post_id, $meta_key, $val );
 			}
 		}
+	}
 
-		// Fresh Elementor session: avoid stale generated CSS pointing at old selectors.
-		foreach ( array_keys( $skip ) as $ephemeral ) {
+	/**
+	 * Recursively convert Magic Page bracket / shortcode tokens to Radius {{tokens}} inside strings.
+	 *
+	 * @param mixed $data Array, string, or scalar.
+	 * @return mixed
+	 */
+	public static function deep_convert_legacy_magic_page_tokens( $data ) {
+		if ( is_string( $data ) ) {
+			return self::convert_legacy_magic_page_tokens_to_curly( $data );
+		}
+		if ( is_array( $data ) ) {
+			foreach ( $data as $k => $v ) {
+				$data[ $k ] = self::deep_convert_legacy_magic_page_tokens( $v );
+			}
+		}
+		return $data;
+	}
+
+	/**
+	 * After importing a magicpage row into radius_template: convert legacy tokens in post fields + Elementor JSON meta.
+	 *
+	 * @param int $radius_template_id New radius_template post ID.
+	 * @return void
+	 */
+	public static function finalize_imported_magic_page_radius_template( $radius_template_id ) {
+		$radius_template_id = (int) $radius_template_id;
+		if ( $radius_template_id <= 0 ) {
+			return;
+		}
+		$post = get_post( $radius_template_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return;
+		}
+
+		$title   = self::convert_legacy_magic_page_tokens_to_curly( (string) $post->post_title );
+		$content = self::convert_legacy_magic_page_tokens_to_curly( (string) $post->post_content );
+		$excerpt = self::convert_legacy_magic_page_tokens_to_curly( (string) $post->post_excerpt );
+
+		$meta_keys = apply_filters(
+			'radius_migration_import_deep_token_meta_keys',
+			array( '_elementor_data', '_elementor_page_settings' )
+		);
+		foreach ( $meta_keys as $mk ) {
+			if ( ! is_string( $mk ) || $mk === '' ) {
+				continue;
+			}
+			$raw = get_post_meta( $radius_template_id, $mk, true );
+			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			if ( is_string( $raw ) ) {
+				$decoded = json_decode( $raw, true );
+				if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+					$changed = self::deep_convert_legacy_magic_page_tokens( $decoded );
+					$enc     = wp_json_encode( $changed );
+					if ( false !== $enc ) {
+						update_post_meta( $radius_template_id, $mk, wp_slash( $enc ) );
+					}
+				} else {
+					$new = self::convert_legacy_magic_page_tokens_to_curly( $raw );
+					if ( $new !== $raw ) {
+						update_post_meta( $radius_template_id, $mk, $new );
+					}
+				}
+				continue;
+			}
+			if ( is_array( $raw ) ) {
+				$changed = self::deep_convert_legacy_magic_page_tokens( $raw );
+				$enc     = wp_json_encode( $changed );
+				if ( false !== $enc ) {
+					update_post_meta( $radius_template_id, $mk, wp_slash( $enc ) );
+				}
+			}
+		}
+
+		$clear_content = self::legacy_post_has_elementor_document_data( $radius_template_id )
+			&& apply_filters( 'radius_migration_clear_imported_template_content_when_elementor_builder', true, $radius_template_id );
+		if ( $clear_content ) {
+			$content = '';
+		}
+
+		wp_update_post(
+			array(
+				'ID'           => $radius_template_id,
+				'post_title'   => $title,
+				'post_content' => $content,
+				'post_excerpt' => $excerpt,
+			)
+		);
+		clean_post_cache( $radius_template_id );
+	}
+
+	/**
+	 * Copy Elementor document meta from a legacy template post onto a new radius_template so “Edit with Elementor” works.
+	 *
+	 * @param int $source_post_id Source post ID (e.g. magicpage).
+	 * @param int $target_post_id New radius_template ID.
+	 * @return void
+	 */
+	public static function copy_elementor_document_meta_to_template( $source_post_id, $target_post_id ) {
+		$source_post_id = (int) $source_post_id;
+		$target_post_id = (int) $target_post_id;
+		if ( $source_post_id <= 0 || $target_post_id <= 0 ) {
+			return;
+		}
+
+		$resolved = self::resolve_elementor_document_source_post_id( $source_post_id );
+		if ( $resolved <= 0 ) {
+			$resolved = $source_post_id;
+		}
+
+		$copied = false;
+		if ( class_exists( '\Elementor\Plugin' ) ) {
+			$plugin = \Elementor\Plugin::$instance;
+			if ( $plugin && isset( $plugin->db ) && is_object( $plugin->db ) && method_exists( $plugin->db, 'copy_elementor_meta' ) ) {
+				$plugin->db->copy_elementor_meta( $resolved, $target_post_id );
+				$copied = true;
+			}
+		}
+		if ( ! $copied ) {
+			self::copy_elementor_meta_manual( $resolved, $target_post_id );
+		}
+
+		foreach ( self::elementor_ephemeral_meta_keys() as $ephemeral ) {
 			delete_post_meta( $target_post_id, $ephemeral );
 		}
 
-		// Encourage Elementor builder mode when document data exists.
-		if ( get_post_meta( $target_post_id, '_elementor_data', true ) ) {
+		if ( self::legacy_post_has_elementor_document_data( $target_post_id ) ) {
 			update_post_meta( $target_post_id, '_elementor_edit_mode', 'builder' );
 		}
 
@@ -401,12 +601,12 @@ class Radius_Legacy_Import_Service {
 	public static function migration_variant_default_titles( $base_label = '' ) {
 		unset( $base_label );
 		return array(
-			/* translators: draft template name */
-			'roadside'  => __( 'Roadside assistance', 'radius' ),
-			/* translators: draft template name */
-			'heavy'     => __( 'Heavy towing', 'radius' ),
-			/* translators: draft template name */
-			'equipment' => __( 'Heavy equipment towing', 'radius' ),
+			/* translators: default Radius template title for Roadside variant after Magic Page migration */
+			'roadside'  => __( '24/7 Emergency Roadside Assistance {{place_name}}, {{region}}', 'radius' ),
+			/* translators: default Radius template title for Heavy Towing variant after Magic Page migration */
+			'heavy'     => __( '24/7 Heavy Towing in {{place_name}}, {{region}}', 'radius' ),
+			/* translators: default Radius template title for Heavy Equipment variant after Magic Page migration */
+			'equipment' => __( '24/7 Heavy Equipment Towing in {{place_name}}, {{region}}', 'radius' ),
 		);
 	}
 
@@ -672,11 +872,17 @@ class Radius_Legacy_Import_Service {
 				continue;
 			}
 
+			$title_for_import = (string) apply_filters(
+				'radius_migration_imported_template_title',
+				self::convert_legacy_magic_page_tokens_to_curly( (string) $p->post_title ),
+				$p
+			);
+
 			$new_id = wp_insert_post(
 				array(
 					'post_type'    => 'radius_template',
 					'post_status'  => 'draft',
-					'post_title'   => sprintf( /* translators: %s original title */ __( 'Imported: %s', 'radius' ), $p->post_title ),
+					'post_title'   => $title_for_import,
 					'post_content' => $p->post_content,
 					'post_excerpt' => $p->post_excerpt,
 				),
@@ -693,6 +899,7 @@ class Radius_Legacy_Import_Service {
 			}
 			update_post_meta( (int) $new_id, '_radius_imported_from', (int) $p->ID );
 			self::copy_elementor_document_meta_to_template( (int) $p->ID, (int) $new_id );
+			self::finalize_imported_magic_page_radius_template( (int) $new_id );
 			++$out['imported'];
 		}
 
