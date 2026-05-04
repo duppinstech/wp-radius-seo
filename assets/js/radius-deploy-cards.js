@@ -168,6 +168,56 @@
 			}
 		}
 
+		function deployExtractErrorMessage( json ) {
+			if ( ! json || typeof json !== 'object' || ! ( 'success' in json ) ) {
+				return '';
+			}
+			if ( json.success ) {
+				return '';
+			}
+			var d = json.data;
+			if ( typeof d === 'string' && d !== '' ) {
+				return d;
+			}
+			if ( d && typeof d === 'object' && typeof d.message === 'string' ) {
+				return d.message;
+			}
+			return '';
+		}
+
+		function deployDescribeNonJson( bundle ) {
+			var st = bundle.status;
+			var tx = bundle.text || '';
+			if ( ! tx ) {
+				return (
+					cfg.i18n.emptyResponse ||
+					cfg.i18n.badResponse
+				) + ' (HTTP ' + st + ')';
+			}
+			if ( st === 502 || st === 503 || st === 504 ) {
+				return (
+					cfg.i18n.gatewayTimeout ||
+					cfg.i18n.badResponse
+				) +
+					' (HTTP ' +
+					st +
+					')';
+			}
+			if ( st >= 500 ) {
+				return (
+					cfg.i18n.serverError ||
+					cfg.i18n.badResponse
+				) +
+					' (HTTP ' +
+					st +
+					')';
+			}
+			if ( tx.charAt( 0 ) === '<' ) {
+				return cfg.i18n.htmlInsteadOfJson || cfg.i18n.badResponse;
+			}
+			return ( cfg.i18n.responseNotJson || cfg.i18n.badResponse ) + ' (HTTP ' + st + ')';
+		}
+
 		function runBatch( templateId, continuing, card, statusEl, formEl ) {
 			var fd = new FormData();
 			fd.append( 'action', 'radius_deploy_batch' );
@@ -179,21 +229,50 @@
 				fd.append( 'radius_deploy_continue', '1' );
 			}
 
+			function failUi() {
+				card.classList.remove( 'is-submitting' );
+				setRunning( card, false );
+				restoreDeployProgressSnapshot( card );
+				if ( statusEl ) {
+					statusEl.setAttribute( 'hidden', 'hidden' );
+					statusEl.textContent = '';
+				}
+			}
+
 			fetch( cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' } )
 				.then( function ( r ) {
-					return r.json();
+					return r.text().then( function ( text ) {
+						return { status: r.status, text: text };
+					} );
 				} )
-				.then( function ( json ) {
-					if ( ! json || ! json.success ) {
-						var msg = json && json.data && json.data.message ? json.data.message : cfg.i18n.badResponse;
-						window.alert( cfg.i18n.errorPrefix + ' ' + msg );
-						card.classList.remove( 'is-submitting' );
-						setRunning( card, false );
-						restoreDeployProgressSnapshot( card );
-						if ( statusEl ) {
-							statusEl.setAttribute( 'hidden', 'hidden' );
-							statusEl.textContent = '';
+				.then( function ( bundle ) {
+					var text = bundle.text;
+					var json = null;
+					if ( text ) {
+						try {
+							json = JSON.parse( text );
+						} catch ( e ) {
+							json = null;
 						}
+					}
+					if (
+						! json ||
+						typeof json !== 'object' ||
+						! ( 'success' in json )
+					) {
+						window.alert(
+							cfg.i18n.errorPrefix +
+								' ' +
+								deployDescribeNonJson( bundle )
+						);
+						failUi();
+						return;
+					}
+					if ( ! json.success ) {
+						var msg =
+							deployExtractErrorMessage( json ) || cfg.i18n.badResponse;
+						window.alert( cfg.i18n.errorPrefix + ' ' + msg );
+						failUi();
 						return;
 					}
 					var p = json.data;
@@ -227,14 +306,12 @@
 					}, delay );
 				} )
 				.catch( function () {
-					window.alert( cfg.i18n.errorPrefix + ' ' + cfg.i18n.badResponse );
-					card.classList.remove( 'is-submitting' );
-					setRunning( card, false );
-					restoreDeployProgressSnapshot( card );
-					if ( statusEl ) {
-						statusEl.setAttribute( 'hidden', 'hidden' );
-						statusEl.textContent = '';
-					}
+					window.alert(
+						cfg.i18n.errorPrefix +
+							' ' +
+							( cfg.i18n.networkError || cfg.i18n.badResponse )
+					);
+					failUi();
 				} );
 		}
 

@@ -465,6 +465,12 @@ class Radius_Admin {
 						'progressTpl' => __( 'Processed {done} of {total} places. This batch: +{c} new, {u} updated, {s} skipped.', 'radius' ),
 						'errorPrefix' => __( 'Error:', 'radius' ),
 						'badResponse' => __( 'Unexpected server response. Try again or use “Continue deployment”.', 'radius' ),
+						'emptyResponse' => __( 'Empty response from server.', 'radius' ),
+						'responseNotJson' => __( 'Response was not valid JSON (timeout, PHP error, or security block).', 'radius' ),
+						'htmlInsteadOfJson' => __( 'Server returned HTML instead of JSON (often a fatal error or login page).', 'radius' ),
+						'gatewayTimeout' => __( 'Gateway or upstream timeout. Lower “Deploy batch size” under Settings, or try again.', 'radius' ),
+						'serverError'    => __( 'Server error (5xx). Try a smaller batch or check the site error log.', 'radius' ),
+						'networkError'  => __( 'Network error or request was blocked before a response arrived.', 'radius' ),
 					),
 				)
 			);

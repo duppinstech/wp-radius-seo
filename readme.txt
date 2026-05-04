@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.7
+Stable tag: 1.6.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,7 +37,12 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_token_engine_after_strip_unresolved` — filter HTML/text after removing unresolved `{{token}}` placeholders.
 * `radius_token_engine_collapse_empty_paragraphs` — return false to skip removing empty `<p></p>` wrappers after stripping placeholders (default true).
 * `radius_elementor_exclude_post_types_from_admin_meta_queries` — array of CPT slugs to omit from Elementor’s admin `WP_Query` that lists “built with Elementor” across all supported types (reduces load from huge `radius_landing` tables). Return an empty array to keep default Elementor behavior.
+* `radius_deploy_batch_time_limit` — seconds for PHP `max_execution_time` during chained deploy AJAX (default 300, clamped 60–600).
 == Changelog ==
+
+= 1.6.8 =
+* Deploy: clearer alerts when the server returns HTML, timeouts, 5xx, or non-JSON (instead of only “Unexpected server response”); chained deploy parses text first so failures are classified.
+* Deploy batch AJAX: optional `radius_deploy_batch_time_limit` filter, raised admin memory limit when available, and try/catch with server-side logging on unhandled errors.
 
 = 1.6.7 =
 * Elementor: exclude `radius_landing` and `radius_service_area` from Elementor’s bulk admin queries that join `wp_postmeta` for `_elementor_edit_mode` (recent documents, floating buttons UI, etc.) so very large landing libraries do not slow every Elementor admin request. Editing landings in Elementor is unchanged. Optional filter `radius_elementor_exclude_post_types_from_admin_meta_queries` to adjust or disable.

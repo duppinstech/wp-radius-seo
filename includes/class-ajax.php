@@ -146,12 +146,17 @@ class Radius_Ajax {
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
 		}
 
+		$time_cap = (int) apply_filters( 'radius_deploy_batch_time_limit', 300 );
+		$time_cap = max( 60, min( 600, $time_cap ) );
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Deploy may process many posts per request.
-			@set_time_limit( 300 );
+			@set_time_limit( $time_cap );
 		}
 		if ( function_exists( 'ignore_user_abort' ) ) {
 			@ignore_user_abort( true );
+		}
+		if ( function_exists( 'wp_raise_memory_limit' ) ) {
+			wp_raise_memory_limit( 'admin' );
 		}
 
 		$template_id = isset( $_POST['radius_template_id'] ) ? absint( wp_unslash( $_POST['radius_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
@@ -161,7 +166,20 @@ class Radius_Ajax {
 			$target = 'radius_landing';
 		}
 
-		$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
+		try {
+			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
+		} catch ( \Throwable $e ) {
+			if ( function_exists( 'error_log' ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Operational logging for deploy failures.
+				error_log( 'Radius deploy_batch: ' . $e->getMessage() . "\n" . $e->getTraceAsString() );
+			}
+			$detail = $e->getMessage();
+			if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && current_user_can( 'manage_options' ) ) ) {
+				$detail = __( 'Deploy batch failed (server error). Try a smaller deploy batch under Radius → Settings, or deploy again with “Continue deployment”.', 'radius' );
+			}
+			wp_send_json_error( array( 'message' => $detail ) );
+			return;
+		}
 
 		if ( ! $result['success'] ) {
 			wp_send_json_error( array( 'message' => $result['message'] ) );
