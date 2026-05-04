@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -32,6 +32,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
 == Changelog ==
+
+= 1.6.1 =
+* Settings → **Database** tab: Magic Page storage summary (options + post meta row counts and approximate data size); Magic Page options cleanup moved here from Integrations.
 
 = 1.6.0 =
 * GitHub Releases updater: Dashboard → Updates when the latest release includes a ZIP asset (see readme Updates section).

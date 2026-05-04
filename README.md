@@ -13,7 +13,7 @@ Blueprint-first local SEO for WordPress: templates, CSV-backed place library, ba
 1. Download a release ZIP from [Releases](https://github.com/oduppinsjr/wp-radius-seo/releases) (ZIP root must be a single folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`).
 2. In wp-admin: **Plugins → Add New → Upload Plugin**, choose the ZIP, install, and activate.
 
-Or clone this repository into `wp-content/plugins/radius/` (same folder layout).
+Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder name; the main file remains `radius.php` in that folder).
 
 ---
 

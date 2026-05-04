@@ -1920,7 +1920,7 @@ Fast roadside help in {{region}}
 						<li><a href="<?php echo esc_url( self::import_screen_url( 'spintax' ) ); ?>"><?php esc_html_e( 'Spintax tab — import global Magic Page spintax into each template; use prefix filters (roadside, heavy, equipment, towing) as needed.', 'radius' ); ?></a></li>
 						<li><a href="<?php echo esc_url( admin_url( 'edit.php?post_type=radius_template' ) ); ?>"><?php esc_html_e( 'Templates list — open each draft in Elementor and verify dynamic tags.', 'radius' ); ?></a></li>
 						<li><a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy' ) ); ?>"><?php esc_html_e( 'Deploy landings when ready.', 'radius' ); ?></a></li>
-						<li><?php esc_html_e( 'Settings → Integrations — optional cleanup of Magic Page options from wp_options after you deactivate Magic Page.', 'radius' ); ?></li>
+						<li><?php esc_html_e( 'Settings → Database — optional cleanup of Magic Page options from wp_options after you deactivate Magic Page.', 'radius' ); ?></li>
 					</ul>
 				<?php endif; ?>
 
@@ -2011,7 +2011,7 @@ Fast roadside help in {{region}}
 
 		$default_tab = Radius_API_License::is_unlocked() ? 'general' : 'license';
 		$tab          = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : $default_tab; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'integrations' ), true ) ) {
+		if ( ! in_array( $tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'database', 'integrations' ), true ) ) {
 			$tab = $default_tab;
 		}
 		if ( ! Radius_API_License::is_unlocked() && 'license' !== $tab ) {
@@ -2048,6 +2048,7 @@ Fast roadside help in {{region}}
 				<a href="<?php echo esc_url( self::settings_screen_url( 'areas' ) ); ?>" class="nav-tab<?php echo $tab === 'areas' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Service areas', 'radius' ); ?></a>
 				<a href="<?php echo esc_url( self::settings_screen_url( 'site_replacements' ) ); ?>" class="nav-tab<?php echo $tab === 'site_replacements' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Site replacers', 'radius' ); ?></a>
 				<a href="<?php echo esc_url( self::settings_screen_url( 'content' ) ); ?>" class="nav-tab<?php echo $tab === 'content' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Content & rotation', 'radius' ); ?></a>
+				<a href="<?php echo esc_url( self::settings_screen_url( 'database' ) ); ?>" class="nav-tab<?php echo $tab === 'database' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Database', 'radius' ); ?></a>
 				<a href="<?php echo esc_url( self::settings_screen_url( 'integrations' ) ); ?>" class="nav-tab<?php echo $tab === 'integrations' ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Integrations', 'radius' ); ?></a>
 			</h2>
 
@@ -2411,6 +2412,66 @@ Fast roadside help in {{region}}
 					</table>
 				</div>
 
+				<div id="radius-panel-database" class="radius-settings-panel" style="<?php echo $tab === 'database' ? '' : 'display:none;'; ?>">
+					<?php
+					$mp_db = Radius_Legacy_Import_Service::get_magic_page_storage_footprint();
+					?>
+					<h2 class="screen-reader-text"><?php esc_html_e( 'Database', 'radius' ); ?></h2>
+					<p class="description"><?php esc_html_e( 'Legacy Magic Page data may remain in options and post meta after migration. Sizes below are approximate: MySQL sums the stored length of keys and values (actual disk usage includes row overhead and indexes).', 'radius' ); ?></p>
+					<table class="widefat striped radius-mp-db-matrix" style="max-width:720px;margin-top:12px;">
+						<thead>
+							<tr>
+								<th scope="col"><?php esc_html_e( 'Table', 'radius' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Matching rows', 'radius' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Approx. data', 'radius' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Scope', 'radius' ); ?></th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td><code><?php echo esc_html( $mp_db['options']['label'] ); ?></code></td>
+								<td><?php echo esc_html( number_format_i18n( (int) $mp_db['options']['rows'] ) ); ?></td>
+								<td><?php echo esc_html( size_format( (int) $mp_db['options']['bytes'], 2 ) ); ?></td>
+								<td><?php esc_html_e( 'Removed by “Delete Magic Page options” below.', 'radius' ); ?></td>
+							</tr>
+							<tr>
+								<td><code><?php echo esc_html( $mp_db['postmeta']['label'] ); ?></code></td>
+								<td><?php echo esc_html( number_format_i18n( (int) $mp_db['postmeta']['rows'] ) ); ?></td>
+								<td><?php echo esc_html( size_format( (int) $mp_db['postmeta']['bytes'], 2 ) ); ?></td>
+								<td><?php esc_html_e( 'Informational — not deleted by that button.', 'radius' ); ?></td>
+							</tr>
+						</tbody>
+					</table>
+					<p class="description" style="margin-top:12px;">
+						<?php
+						printf(
+							/* translators: %s: formatted byte size */
+							esc_html__( 'Approximate space reclaimable by running cleanup on options: %s', 'radius' ),
+							'<strong>' . esc_html( size_format( (int) $mp_db['cleanup_bytes'], 2 ) ) . '</strong>'
+						);
+						?>
+					</p>
+					<table class="form-table" style="margin-top:1.5em;">
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
+							<td>
+								<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page or magic_page_). This reduces options table bloat.', 'radius' ); ?></p>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+									<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+									<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+									<p>
+										<label>
+											<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
+											<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
+										</label>
+									</p>
+									<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
+								</form>
+							</td>
+						</tr>
+					</table>
+				</div>
+
 				<div id="radius-panel-integrations" class="radius-settings-panel" style="<?php echo $tab === 'integrations' ? '' : 'display:none;'; ?>">
 					<table class="form-table">
 						<tr>
@@ -2485,23 +2546,6 @@ Fast roadside help in {{region}}
 									<textarea name="deploy_copy_meta_keys" id="deploy_copy_meta_keys" class="large-text code" rows="6" placeholder="_yoast_wpseo_title&#10;_yoast_wpseo_metadesc"><?php echo esc_textarea( $meta_keys ); ?></textarea>
 								</p>
 								<p class="description"><?php esc_html_e( 'Optional. Prefix checkboxes usually cover Yoast; add lines here for other plugins or one-off keys.', 'radius' ); ?></p>
-							</td>
-						</tr>
-						<tr>
-							<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
-							<td>
-								<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page). This reduces options table bloat.', 'radius' ); ?></p>
-								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
-									<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
-									<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
-									<p>
-										<label>
-											<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
-											<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
-										</label>
-									</p>
-									<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
-								</form>
 							</td>
 						</tr>
 					</table>

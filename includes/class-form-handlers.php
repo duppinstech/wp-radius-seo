@@ -35,7 +35,7 @@ class Radius_Form_Handlers {
 	}
 
 	/**
-	 * Delete Magic Page leftovers from wp_options (Integrations → maintenance).
+	 * Delete Magic Page leftovers from wp_options (Settings → Database).
 	 *
 	 * @return void
 	 */
@@ -50,7 +50,7 @@ class Radius_Form_Handlers {
 			self::redirect(
 				'radius-settings',
 				__( 'Confirm the checkbox before clearing Magic Page options.', 'radius' ),
-				array( 'tab' => 'integrations' )
+				array( 'tab' => 'database' )
 			);
 			return;
 		}
@@ -61,7 +61,7 @@ class Radius_Form_Handlers {
 			__( 'Removed %d Magic Page–related option row(s) from the database.', 'radius' ),
 			(int) $res['deleted']
 		);
-		self::redirect( 'radius-settings', $msg, array( 'tab' => 'integrations' ) );
+		self::redirect( 'radius-settings', $msg, array( 'tab' => 'database' ) );
 	}
 
 	/**
@@ -906,7 +906,7 @@ class Radius_Form_Handlers {
 		Radius_Rotation_Cron::reschedule();
 
 		$return_tab = isset( $_POST['radius_settings_tab'] ) ? sanitize_key( wp_unslash( $_POST['radius_settings_tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $return_tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'integrations' ), true ) ) {
+		if ( ! in_array( $return_tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'database', 'integrations' ), true ) ) {
 			$return_tab = 'general';
 		}
 		self::redirect( 'radius-settings', __( 'Settings saved.', 'radius' ), array( 'tab' => $return_tab ) );

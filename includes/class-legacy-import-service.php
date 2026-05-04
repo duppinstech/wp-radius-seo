@@ -392,13 +392,11 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Remove Magic Page–related rows from wp_options (spintax snapshot, caches). Destructive.
+	 * LIKE patterns for Magic Page option names targeted by cleanup (filterable).
 	 *
-	 * @return array{deleted:int,names:string[]}
+	 * @return string[]
 	 */
-	public static function delete_magic_page_legacy_options() {
-		global $wpdb;
-
+	private static function magic_page_option_name_like_patterns() {
 		$patterns = apply_filters(
 			'radius_magic_page_cleanup_option_like_patterns',
 			array(
@@ -409,13 +407,100 @@ class Radius_Legacy_Import_Service {
 		if ( ! is_array( $patterns ) ) {
 			$patterns = array( '_magic_page%' );
 		}
+		$out = array();
+		foreach ( $patterns as $like ) {
+			$like = is_string( $like ) ? trim( $like ) : '';
+			if ( $like !== '' ) {
+				$out[] = $like;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Row counts and approximate stored size for Magic Page–related data.
+	 *
+	 * Options rows match what “Delete Magic Page options” removes. Postmeta is shown for awareness only.
+	 *
+	 * @return array{options: array{label:string,rows:int,bytes:int}, postmeta: array{label:string,rows:int,bytes:int}, cleanup_bytes:int}
+	 */
+	public static function get_magic_page_storage_footprint() {
+		global $wpdb;
+
+		$opt_patterns = self::magic_page_option_name_like_patterns();
+		$opt_rows     = 0;
+		$opt_bytes    = 0;
+		if ( ! empty( $opt_patterns ) ) {
+			$holders = implode( ' OR ', array_fill( 0, count( $opt_patterns ), 'option_name LIKE %s' ) );
+			$sql     = "SELECT COUNT(*), COALESCE(SUM(CHAR_LENGTH(option_name) + CHAR_LENGTH(IFNULL(option_value, ''))), 0) FROM {$wpdb->options} WHERE {$holders}";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built from counted patterns.
+			$row = $wpdb->get_row( $wpdb->prepare( $sql, $opt_patterns ), ARRAY_N );
+			if ( is_array( $row ) && isset( $row[0], $row[1] ) ) {
+				$opt_rows  = (int) $row[0];
+				$opt_bytes = (int) $row[1];
+			}
+		}
+
+		$pm_patterns = apply_filters(
+			'radius_magic_page_cleanup_postmeta_like_patterns',
+			array(
+				'magicpage%',
+				'_magic_page%',
+				'magic_page_%',
+			)
+		);
+		if ( ! is_array( $pm_patterns ) ) {
+			$pm_patterns = array( 'magicpage%' );
+		}
+		$pm_clean = array();
+		foreach ( $pm_patterns as $like ) {
+			$like = is_string( $like ) ? trim( $like ) : '';
+			if ( $like !== '' ) {
+				$pm_clean[] = $like;
+			}
+		}
+		$pm_clean = array_values( array_unique( $pm_clean ) );
+
+		$pm_rows  = 0;
+		$pm_bytes = 0;
+		if ( ! empty( $pm_clean ) ) {
+			$holders = implode( ' OR ', array_fill( 0, count( $pm_clean ), 'meta_key LIKE %s' ) );
+			$sql     = "SELECT COUNT(*), COALESCE(SUM(CHAR_LENGTH(meta_key) + CHAR_LENGTH(IFNULL(meta_value, ''))), 0) FROM {$wpdb->postmeta} WHERE {$holders}";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built from counted patterns.
+			$row = $wpdb->get_row( $wpdb->prepare( $sql, $pm_clean ), ARRAY_N );
+			if ( is_array( $row ) && isset( $row[0], $row[1] ) ) {
+				$pm_rows  = (int) $row[0];
+				$pm_bytes = (int) $row[1];
+			}
+		}
+
+		return array(
+			'options' => array(
+				'label' => $wpdb->options,
+				'rows'  => $opt_rows,
+				'bytes' => $opt_bytes,
+			),
+			'postmeta' => array(
+				'label' => $wpdb->postmeta,
+				'rows'  => $pm_rows,
+				'bytes' => $pm_bytes,
+			),
+			'cleanup_bytes' => $opt_bytes,
+		);
+	}
+
+	/**
+	 * Remove Magic Page–related rows from wp_options (spintax snapshot, caches). Destructive.
+	 *
+	 * @return array{deleted:int,names:string[]}
+	 */
+	public static function delete_magic_page_legacy_options() {
+		global $wpdb;
+
+		$patterns = self::magic_page_option_name_like_patterns();
 
 		$names = array();
 		foreach ( $patterns as $like ) {
-			$like = is_string( $like ) ? trim( $like ) : '';
-			if ( $like === '' ) {
-				continue;
-			}
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPlaceholder -- one placeholder.
 			$found = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
 			if ( is_array( $found ) ) {
