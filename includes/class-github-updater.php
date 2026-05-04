@@ -18,7 +18,8 @@ class Radius_GitHub_Updater {
 
 	private const TRANSIENT_PREFIX = 'radius_github_rel_';
 
-	private const CACHE_TTL = 43200; // 12 hours.
+	/** Default seconds to cache GitHub API JSON (override with filter radius_github_updater_cache_ttl). */
+	private const CACHE_TTL = 3600; // 1 hour — stale cache hid new releases until this expired.
 
 	/**
 	 * @return void
@@ -29,6 +30,22 @@ class Radius_GitHub_Updater {
 		}
 		add_filter( 'pre_set_site_transient_update_plugins', array( __CLASS__, 'inject_plugin_update' ), 10, 1 );
 		add_filter( 'plugins_api', array( __CLASS__, 'plugin_information' ), 10, 3 );
+		// When WP clears plugin update data (Dashboard → Updates “Check again”, cron, etc.), drop our GitHub cache too.
+		add_action( 'delete_site_transient_update_plugins', array( __CLASS__, 'bust_release_cache' ), 10, 1 );
+	}
+
+	/**
+	 * Clears cached GitHub `releases/latest` payload so the next check refetches.
+	 *
+	 * @param string|false $transient Transient name (unused).
+	 * @return void
+	 */
+	public static function bust_release_cache( $transient = false ) {
+		$repo = self::repo_slug();
+		if ( $repo === '' ) {
+			return;
+		}
+		delete_site_transient( self::TRANSIENT_PREFIX . md5( $repo ) );
 	}
 
 	/**
@@ -208,7 +225,9 @@ class Radius_GitHub_Updater {
 			'notes'   => $notes,
 		);
 
-		set_site_transient( $tkey, $out, self::CACHE_TTL );
+		$ttl = (int) apply_filters( 'radius_github_updater_cache_ttl', self::CACHE_TTL );
+		$ttl = max( 60, min( 86400, $ttl ) );
+		set_site_transient( $tkey, $out, $ttl );
 
 		return $out;
 	}
