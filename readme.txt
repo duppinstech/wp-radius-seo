@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.10
+Stable tag: 1.6.11
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -34,6 +34,7 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_github_updater_cache_ttl` — seconds to cache GitHub Releases API JSON (default 3600).
 * `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
 * `radius_maintenance_applied` — action after maintenance apply finishes (rewrites, updater cache bust, optional object cache).
+* `radius_admin_maintenance_show_notice` — return false to hide the admin maintenance banner when it would otherwise show.
 * `radius_token_engine_after_strip_unresolved` — filter HTML/text after removing unresolved `{{token}}` placeholders.
 * `radius_token_engine_collapse_empty_paragraphs` — return false to skip removing empty `<p></p>` wrappers after stripping placeholders (default true).
 * `radius_elementor_exclude_post_types_from_admin_meta_queries` — array of CPT slugs to omit from Elementor’s admin `WP_Query` that lists “built with Elementor” across all supported types (reduces load from huge `radius_landing` tables). Return an empty array to keep default Elementor behavior.
@@ -43,6 +44,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_clear_imported_template_content_when_elementor_builder` — return false to keep classic/block `post_content` after import when Elementor builder data exists (default true: clear so Elementor-only templates do not show duplicate classic markup).
 * `radius_migration_import_deep_token_meta_keys` — post meta keys (default `_elementor_data`, `_elementor_page_settings`) that receive recursive Magic Page → `{{token}}` conversion after import.
 == Changelog ==
+
+= 1.6.11 =
+* Admin notice: only show the “Apply recommended updates” banner after **LocaleForge → Radius** database migration (lf_* / `localeforge_settings` detected), not on every fresh install. Schema bumps and service-area slug saves still flush permalinks automatically in the background without nagging.
+* Banner copy explains LocaleForge migration when applicable; optional filter `radius_admin_maintenance_show_notice` to hide it.
 
 = 1.6.10 =
 * Magic Page template import: resolve Elementor data from linked Elementor library templates (`[elementor-template id="…"]` and common custom meta), use Elementor’s `copy_elementor_meta` when available, then fall back to manual `_elementor_*` copy; clear classic `post_content` when builder JSON exists so Elementor is not mixed with leftover classic markup.

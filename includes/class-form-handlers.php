@@ -900,7 +900,6 @@ class Radius_Form_Handlers {
 
 		if ( $old_slug !== $new_slug ) {
 			update_option( 'radius_needs_rewrite_flush', 1 );
-			Radius_Admin_Maintenance::flag_banner();
 		}
 
 		Radius_Elementor_Compat::sync_cpt_option();

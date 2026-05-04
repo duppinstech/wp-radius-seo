@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin banner + one-click “apply” after migrations or permalink-related changes (WooCommerce-style).
+ * Admin banner after LocaleForge → Radius DB migration (WooCommerce-style Apply/Dismiss).
  *
  * @package Radius
  */
@@ -10,17 +10,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Shows a site-wide admin notice with Apply / Dismiss until addressed.
+ * Shows a site-wide admin notice when legacy lf_* data was migrated until Apply or Dismiss.
  */
 final class Radius_Admin_Maintenance {
 
 	/**
-	 * Set when identifiers migrate, schema bumps, or service-area slug changes — cleared by Apply or Dismiss.
+	 * Show the maintenance banner (optional reason for copy).
 	 *
+	 * @param string $reason Internal slug, e.g. localeforge_migrated.
 	 * @return void
 	 */
-	public static function flag_banner() {
+	public static function flag_banner( $reason = '' ) {
 		update_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER, '1', false );
+		if ( is_string( $reason ) && $reason !== '' ) {
+			update_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER_REASON, $reason, false );
+		}
 	}
 
 	/**
@@ -40,6 +44,14 @@ final class Radius_Admin_Maintenance {
 	}
 
 	/**
+	 * @return string
+	 */
+	private static function banner_reason() {
+		$r = get_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER_REASON, '' );
+		return is_string( $r ) ? $r : '';
+	}
+
+	/**
 	 * @return void
 	 */
 	public static function render_notice() {
@@ -49,16 +61,40 @@ final class Radius_Admin_Maintenance {
 		if ( ! self::should_show_notice() ) {
 			return;
 		}
-		$apply_url   = admin_url( 'admin-post.php' );
-		$apply_nonce = wp_nonce_field( 'radius_apply_maintenance', '_wpnonce', true, false );
+
+		/**
+		 * Hide the Radius maintenance admin notice (rare overrides).
+		 *
+		 * @param bool $show Default true when the banner option is set.
+		 */
+		if ( ! apply_filters( 'radius_admin_maintenance_show_notice', true ) ) {
+			return;
+		}
+
+		$reason       = self::banner_reason();
+		$apply_url    = admin_url( 'admin-post.php' );
+		$apply_nonce  = wp_nonce_field( 'radius_apply_maintenance', '_wpnonce', true, false );
 		$dismiss_nonce = wp_nonce_field( 'radius_dismiss_maintenance', '_wpnonce', true, false );
+
+		if ( 'localeforge_migrated' === $reason ) {
+			$title = __( 'Radius: LocaleForge data migrated', 'radius' );
+			/* translators: LocaleForge was the old plugin name; lf_* was its database prefix. */
+			$body  = __( 'Legacy LocaleForge settings, post types, taxonomies, and lf_* metadata in the database were converted to Radius automatically. Use the button below once to flush WordPress permalink rules (so landing URLs resolve), refresh this plugin’s GitHub release cache, and optionally clear the object cache if your host enables that filter.', 'radius' );
+		} elseif ( $reason === '' ) {
+			// Older installs may have the banner flag without a stored reason (before this version).
+			$title = __( 'Radius: refresh permalinks & caches', 'radius' );
+			$body  = __( 'Flush permalink rules, refresh the plugin update cache, and optionally clear object cache if configured.', 'radius' );
+		} else {
+			$title = __( 'Radius: maintenance', 'radius' );
+			$body  = __( 'Apply recommended permalink and cache updates for Radius.', 'radius' );
+		}
 		?>
 		<div class="notice notice-warning radius-maintenance-notice">
 			<p>
-				<strong><?php esc_html_e( 'Radius: finish setup after an upgrade or URL change', 'radius' ); ?></strong>
+				<strong><?php echo esc_html( $title ); ?></strong>
 			</p>
 			<p>
-				<?php esc_html_e( 'Click the button below to flush WordPress permalinks (rewrite rules), refresh the plugin’s GitHub update cache, and optionally clear the object cache if your site enables it. This replaces hunting through cache plugins or visiting Settings → Permalinks manually.', 'radius' ); ?>
+				<?php echo esc_html( $body ); ?>
 			</p>
 			<p style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
 				<form method="post" action="<?php echo esc_url( $apply_url ); ?>" style="display:inline;">
@@ -77,7 +113,7 @@ final class Radius_Admin_Maintenance {
 				</form>
 			</p>
 			<p class="description">
-				<?php esc_html_e( 'If landing URLs still fail after this, open Settings → Permalinks in WordPress and click Save once—some hosts require that extra step.', 'radius' ); ?>
+				<?php esc_html_e( 'If URLs still fail after this, open Settings → Permalinks and click Save once—some hosts require that step.', 'radius' ); ?>
 			</p>
 		</div>
 		<?php
@@ -109,6 +145,7 @@ final class Radius_Admin_Maintenance {
 		}
 
 		delete_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER );
+		delete_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER_REASON );
 		delete_transient( 'radius_prefix_migration_notice' );
 
 		/**
@@ -135,6 +172,7 @@ final class Radius_Admin_Maintenance {
 		check_admin_referer( 'radius_dismiss_maintenance' );
 
 		delete_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER );
+		delete_option( Radius_Data_Registry::OPTION_MAINTENANCE_BANNER_REASON );
 		delete_transient( 'radius_prefix_migration_notice' );
 
 		wp_safe_redirect( self::safe_redirect_target() );

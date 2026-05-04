@@ -46,8 +46,10 @@ final class Radius_Data_Registry {
 	public const OPTION_SCHEMA_VERSION        = 'radius_schema_version';
 	public const OPTION_PREFIX_MIGRATION_DONE = 'radius_prefix_migration_done';
 	public const OPTION_NEEDS_REWRITE_FLUSH   = 'radius_needs_rewrite_flush';
-	/** Set after LocaleForge migration, schema bumps, or slug changes until Apply/Dismiss in wp-admin. */
-	public const OPTION_MAINTENANCE_BANNER    = 'radius_maintenance_banner';
+	/** Set until Apply/Dismiss in wp-admin (usually after LocaleForge DB migration). */
+	public const OPTION_MAINTENANCE_BANNER         = 'radius_maintenance_banner';
+	/** Why the banner was shown: e.g. localeforge_migrated (see Radius_Admin_Maintenance). */
+	public const OPTION_MAINTENANCE_BANNER_REASON = 'radius_maintenance_banner_reason';
 	public const OPTION_TEMPLATE_PUBLIC_QUERYABLE_FLAG = 'radius_template_public_queryable_bootstrapped';
 
 	/**

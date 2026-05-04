@@ -264,13 +264,11 @@ class Radius_Plugin {
 		if ( $v < 2 ) {
 			update_option( 'radius_schema_version', 2 );
 			update_option( 'radius_needs_rewrite_flush', true );
-			Radius_Admin_Maintenance::flag_banner();
 		}
 		// v3: register CPTs after other init-10 plugins so duplicate slug rewrites favor Radius.
 		if ( $v < 3 ) {
 			update_option( 'radius_schema_version', 3 );
 			update_option( 'radius_needs_rewrite_flush', true );
-			Radius_Admin_Maintenance::flag_banner();
 		}
 	}
 

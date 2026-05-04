@@ -30,7 +30,7 @@ final class Radius_Prefix_Migration {
 		self::run();
 		update_option( Radius_Data_Registry::OPTION_PREFIX_MIGRATION_DONE, '1', false );
 		update_option( Radius_Data_Registry::OPTION_NEEDS_REWRITE_FLUSH, true, false );
-		Radius_Admin_Maintenance::flag_banner();
+		Radius_Admin_Maintenance::flag_banner( 'localeforge_migrated' );
 	}
 
 	/**
