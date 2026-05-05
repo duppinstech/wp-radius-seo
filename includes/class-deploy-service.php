@@ -58,11 +58,14 @@ class Radius_Deploy_Service {
 				continue;
 			}
 
-			$seed    = $template_id * 100000 + $place_id;
-			$title   = self::compute_landing_title( $template, $tokens, $seed );
-			$content = Radius_Token_Engine::render( $template->post_content, $tokens, $seed );
+		$seed    = $template_id * 100000 + $place_id;
+		$title   = self::compute_landing_title( $template, $tokens, $seed );
+		$content = self::expand_cities_shortcode(
+			Radius_Token_Engine::render( $template->post_content, $tokens, $seed ),
+			$place_id
+		);
 
-			$slug_base = 'radius_service_area' === $target_pt
+		$slug_base = 'radius_service_area' === $target_pt
 				? self::compute_service_area_slug_base( $tokens )
 				: self::compute_landing_slug_base( $template, $tokens, $seed );
 
@@ -162,7 +165,10 @@ class Radius_Deploy_Service {
 
 		$seed    = $template_id * 100000 + $place_id;
 		$title   = self::compute_landing_title( $template, $tokens, $seed );
-		$content = Radius_Token_Engine::render( $template->post_content, $tokens, $seed );
+		$content = self::expand_cities_shortcode(
+			Radius_Token_Engine::render( $template->post_content, $tokens, $seed ),
+			$place_id
+		);
 		$slug_base = 'radius_service_area' === $post->post_type
 			? self::compute_service_area_slug_base( $tokens )
 			: self::compute_landing_slug_base( $template, $tokens, $seed );
@@ -700,6 +706,219 @@ class Radius_Deploy_Service {
 				$css->update();
 			}
 		}
+	}
+
+	/**
+	 * Expand [cities ...] Magic Page shortcodes to static HTML at deploy time.
+	 *
+	 * Scans all radius_place terms by Haversine distance from the current place and builds
+	 * the requested list type (ul / ult / csv / csvt).  Called after Radius_Token_Engine::render()
+	 * so the final content is shortcode-free before being written to the database.
+	 *
+	 * Supported [cities] attributes:
+	 *   count        (default 35)  – max number of cities to include.
+	 *   type         (default csv) – ul | ult | csv | csvt.
+	 *   max-radius   (miles)       – exclude places farther than this.
+	 *   min-radius   (miles)       – exclude places closer than this.
+	 *   label        (default %location%) – %location% is replaced with the place name.
+	 *
+	 * @param string $content  Rendered template content.
+	 * @param int    $place_id Current radius_place term ID.
+	 * @return string
+	 */
+	private static function expand_cities_shortcode( $content, $place_id ) {
+		if ( strpos( $content, '[cities' ) === false ) {
+			return $content;
+		}
+
+		$place_id = (int) $place_id;
+		$lat      = get_term_meta( $place_id, 'radius_lat', true );
+		$lng      = get_term_meta( $place_id, 'radius_lng', true );
+
+		if ( ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
+			// No coordinates for this place: remove the shortcode tags silently.
+			return (string) preg_replace( '/\[cities[^\]]*\]/', '', $content );
+		}
+
+		$plat = (float) $lat;
+		$plng = (float) $lng;
+
+		// Build a distance-sorted list of every other place once per unique origin.
+		// Keyed by place_id so that two places at the same coords each exclude themselves.
+		static $nearby_cache = array();
+
+		if ( ! isset( $nearby_cache[ $place_id ] ) ) {
+			$nearby_all = array();
+			$offset     = 0;
+			$chunk      = 250;
+
+			do {
+				$terms = get_terms(
+					array(
+						'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
+						'hide_empty' => false,
+						'number'     => $chunk,
+						'offset'     => $offset,
+						'orderby'    => 'id',
+						'order'      => 'ASC',
+					)
+				);
+
+				if ( is_wp_error( $terms ) || empty( $terms ) ) {
+					break;
+				}
+
+				// Bulk-load term meta for this chunk to keep query count low.
+				update_termmeta_cache( wp_list_pluck( $terms, 'term_id' ) );
+
+				foreach ( $terms as $term ) {
+					$tid = (int) $term->term_id;
+					if ( $tid === $place_id ) {
+						continue; // Skip self.
+					}
+					$tlat = get_term_meta( $tid, 'radius_lat', true );
+					$tlng = get_term_meta( $tid, 'radius_lng', true );
+					if ( ! is_numeric( $tlat ) || ! is_numeric( $tlng ) ) {
+						continue;
+					}
+					$nearby_all[] = array(
+						'term_id'  => $tid,
+						'name'     => $term->name,
+						'distance' => Radius_Geo_Service::distance_miles( $plat, $plng, (float) $tlat, (float) $tlng ),
+					);
+				}
+
+				$offset += $chunk;
+			} while ( count( $terms ) === $chunk );
+
+			usort(
+				$nearby_all,
+				function ( $a, $b ) {
+					return $a['distance'] <=> $b['distance'];
+				}
+			);
+
+			$nearby_cache[ $place_id ] = $nearby_all;
+		}
+
+		$all_nearby = $nearby_cache[ $place_id ];
+
+		return (string) preg_replace_callback(
+			'/\[cities([^\]]*)\]/',
+			function ( $matches ) use ( $all_nearby ) {
+				$parsed = function_exists( 'shortcode_parse_atts' )
+					? shortcode_parse_atts( $matches[1] )
+					: array();
+
+				$atts = wp_parse_args(
+					is_array( $parsed ) ? $parsed : array(),
+					array(
+						'type'       => 'csv',
+						'count'      => '35',
+						'max-radius' => '',
+						'min-radius' => '',
+						'label'      => '%location%',
+					)
+				);
+
+				$count      = max( 1, min( 500, (int) $atts['count'] ) );
+				$max_radius = $atts['max-radius'] !== '' ? (float) $atts['max-radius'] : PHP_FLOAT_MAX;
+				$min_radius = $atts['min-radius'] !== '' ? (float) $atts['min-radius'] : 0.0;
+				$type       = strtolower( (string) $atts['type'] );
+				$label_tpl  = (string) $atts['label'];
+				$with_links = in_array( $type, array( 'csv', 'ul' ), true );
+
+				// Filter by radius constraints and take the closest $count.
+				$items = array();
+				foreach ( $all_nearby as $p ) {
+					if ( $p['distance'] < $min_radius || $p['distance'] > $max_radius ) {
+						continue;
+					}
+					$label = str_replace( '%location%', esc_html( $p['name'] ), $label_tpl );
+					$link  = '';
+					if ( $with_links ) {
+						$link = self::get_deployed_permalink_for_place( $p['term_id'] );
+					}
+					$items[] = array(
+						'label' => $label,
+						'link'  => $link,
+					);
+					if ( count( $items ) >= $count ) {
+						break;
+					}
+				}
+
+				if ( empty( $items ) ) {
+					return '';
+				}
+
+				if ( $type === 'ul' || $type === 'ult' ) {
+					$li = '';
+					foreach ( $items as $row ) {
+						$li .= ( $row['link'] && $type === 'ul' )
+							? '<li><a href="' . esc_url( $row['link'] ) . '">' . $row['label'] . '</a></li>'
+							: '<li>' . $row['label'] . '</li>';
+					}
+					return '<ul>' . $li . '</ul>';
+				}
+
+				$parts = array();
+				foreach ( $items as $row ) {
+					$parts[] = ( $row['link'] && $type === 'csv' )
+						? '<a href="' . esc_url( $row['link'] ) . '">' . $row['label'] . '</a>'
+						: $row['label'];
+				}
+				return implode( ', ', $parts );
+			},
+			$content
+		);
+	}
+
+	/**
+	 * Find the permalink of the first published deployed page for a place.
+	 * Prefers radius_service_area (hub page) over radius_landing.
+	 * Results are cached per process to avoid repeated queries during batch deploys.
+	 *
+	 * @param int $place_id radius_place term ID.
+	 * @return string Permalink URL or empty string if none found.
+	 */
+	private static function get_deployed_permalink_for_place( $place_id ) {
+		$place_id = (int) $place_id;
+		if ( $place_id <= 0 ) {
+			return '';
+		}
+
+		static $link_cache = array();
+
+		if ( array_key_exists( $place_id, $link_cache ) ) {
+			return $link_cache[ $place_id ];
+		}
+
+		$link = '';
+		foreach ( array( 'radius_service_area', 'radius_landing' ) as $pt ) {
+			$q = new WP_Query(
+				array(
+					'post_type'      => $pt,
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+					'meta_query'     => array(
+						array(
+							'key'   => '_radius_place_id',
+							'value' => (string) $place_id,
+						),
+					),
+				)
+			);
+			if ( $q->have_posts() ) {
+				$link = (string) get_permalink( (int) $q->posts[0] );
+				break;
+			}
+		}
+
+		$link_cache[ $place_id ] = $link;
+		return $link;
 	}
 
 	/**

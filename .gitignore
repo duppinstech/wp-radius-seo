@@ -29,6 +29,9 @@ wp-config-local.php
 .env
 .env.*
 
+# Legacy Magic Page plugin reference — local reference only, never distributed
+/magic-page/
+
 # Archives / temp
 *.zip
 *.tar.gz

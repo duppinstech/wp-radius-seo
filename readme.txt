@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.40
+Stable tag: 1.6.41
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.41 =
+* **New: `[cities]` Magic Page shortcode expanded at deploy time.** Templates that contain `[cities count="35" type="ul"]` (or any supported variant) are now resolved to a proper HTML unordered list (or CSV) of nearby places when a landing or service-area page is deployed/redeployed. Supports attributes: `count`, `type` (ul/ult/csv/csvt), `max-radius`, `min-radius`, `label`. Links point to the nearest published service-area or landing page for each place.
+* **Gitignore: `magic-page/` reference folder.** Added to `.gitignore` so the local legacy plugin reference is never distributed.
 
 = 1.6.40 =
 * **Fix: Rerun Migration modal now opens reliably.** Corrected two bugs: (1) the wizard JS was not always loaded when the rerun redirect landed on the Deploy page; (2) an internal `wizard_available` gate was blocking the auto-open even when the URL explicitly requested it. The wizard now opens every time after clicking Rerun Migration.
