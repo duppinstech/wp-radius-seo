@@ -491,13 +491,29 @@ class Radius_Admin {
 						'htmlInsteadOfJson' => __( 'Server returned HTML instead of JSON (often a fatal error or login page).', 'radius' ),
 						'gatewayTimeout' => __( 'Gateway or upstream timeout. Lower “Deploy batch size” under Settings, or try again.', 'radius' ),
 						'serverError'    => __( 'Server error (5xx). Try a smaller batch or check the site error log.', 'radius' ),
-						'networkError'  => __( 'Network error or request was blocked before a response arrived.', 'radius' ),
-					),
-				)
-			);
-			return;
-		}
-		if ( 'radius_page_radius-analytics' === $hook_suffix ) {
+					'networkError'  => __( 'Network error or request was blocked before a response arrived.', 'radius' ),
+				),
+			)
+		);
+		wp_localize_script(
+			'radius-deploy-cards',
+			'radiusDeployMigration',
+			array(
+				'ajaxurl'     => admin_url( 'admin-ajax.php' ),
+				'nonce'       => wp_create_nonce( 'radius_migration_wizard' ),
+				'wizardAction' => 'radius_migration_wizard',
+				'redirectUrl' => admin_url( 'admin.php?page=radius-deploy&tab=migration&radius_open_migration=1' ),
+				'i18n'        => array(
+					'noSteps'     => __( 'Select at least one step to reset.', 'radius' ),
+					'running'     => __( 'Resetting…', 'radius' ),
+					'confirm'     => __( 'Reset & Reopen Wizard', 'radius' ),
+					'errorPrefix' => __( 'Error:', 'radius' ),
+				),
+			)
+		);
+		return;
+	}
+	if ( 'radius_page_radius-analytics' === $hook_suffix ) {
 			self::enqueue_admin_style();
 			return;
 		}
@@ -1445,6 +1461,25 @@ class Radius_Admin {
 			$ready_class = 'radius-deploy-summary--warn';
 			$ready_msg   = __( 'No places fall inside your service areas (check radii and coordinates).', 'radius' );
 		}
+
+		$deploy_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'landings'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration' ), true ) ) {
+			$deploy_tab = 'landings';
+		}
+
+		$migration_state = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_state() : '';
+		$migration_steps = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::build_steps_status() : array();
+		$migration_log   = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_activity_log() : array();
+		$step_labels     = array(
+			'places'            => __( 'Import locations into place library', 'radius' ),
+			'templates'         => __( 'Import & configure templates', 'radius' ),
+			'anchors'           => __( 'Configure service area anchors', 'radius' ),
+			'replacers'         => __( 'Set up site replacers', 'radius' ),
+			'magic_pages'       => __( 'Remove Magic Page landing pages', 'radius' ),
+			'magic_page_plugin' => __( 'Deactivate/remove Magic Page plugin', 'radius' ),
+			'deploy_areas'      => __( 'Deploy service area pages', 'radius' ),
+			'deploy_landings'   => __( 'Deploy landing pages', 'radius' ),
+		);
 		?>
 		<div class="wrap radius-admin radius-deploy">
 			<h1><?php esc_html_e( 'Deploy', 'radius' ); ?></h1>
@@ -1489,12 +1524,19 @@ class Radius_Admin {
 						<a href="<?php echo esc_url( $settings ); ?>"><?php esc_html_e( 'Service areas & deploy batch size', 'radius' ); ?></a>
 						&nbsp;·&nbsp;
 						<a href="#radius-deploy-service-areas"><?php esc_html_e( 'Jump to service area deploy', 'radius' ); ?></a>
-					</p>
+				</p>
 				</div>
 			</div>
 
-			<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Landings', 'radius' ); ?></h2>
-			<?php if ( empty( $templates ) ) : ?>
+		<h2 class="nav-tab-wrapper radius-tab-nav">
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=landings' ) ); ?>" class="nav-tab<?php echo 'landings' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Landings', 'radius' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=service-areas' ) ); ?>" class="nav-tab<?php echo 'service-areas' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Service Areas', 'radius' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=migration' ) ); ?>" class="nav-tab<?php echo 'migration' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Migration', 'radius' ); ?></a>
+		</h2>
+
+		<?php if ( 'landings' === $deploy_tab ) : ?>
+		<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Landings', 'radius' ); ?></h2>
+		<?php if ( empty( $templates ) ) : ?>
 				<div class="radius-card radius-card-muted">
 					<p><?php esc_html_e( 'No templates yet. Create a template under Templates, then return here to deploy.', 'radius' ); ?></p>
 					<a class="button button-primary" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=radius_template' ) ); ?>"><?php esc_html_e( 'Add template', 'radius' ); ?></a>
@@ -1659,11 +1701,13 @@ class Radius_Admin {
 						</article>
 					<?php endforeach; ?>
 				</div>
-			<?php endif; ?>
+		<?php endif; ?>
+		<?php endif; /* landings tab */ ?>
 
-			<?php
-			$slug_prefix = Radius_Settings::get_service_area_url_slug();
-			$url_sample  = home_url( '/' . $slug_prefix . '/boroughs-mo/' );
+		<?php if ( 'service-areas' === $deploy_tab ) : ?>
+		<?php
+		$slug_prefix = Radius_Settings::get_service_area_url_slug();
+		$url_sample  = home_url( '/' . $slug_prefix . '/boroughs-mo/' );
 			$sa_tpl_obj  = $sa_tpl_ok ? get_post( $sa_tid ) : null;
 			$sa_edit     = $sa_tpl_ok ? get_edit_post_link( $sa_tid, 'raw' ) : '';
 			$sa_deployed = ( $sa_run_tid > 0 && isset( $sa_counts[ $sa_run_tid ] ) ) ? (int) $sa_counts[ $sa_run_tid ] : 0;
@@ -1809,8 +1853,115 @@ class Radius_Admin {
 					</div>
 				</article>
 			</div>
+		<?php endif; /* service-areas tab */ ?>
 
-			<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
+		<?php if ( 'migration' === $deploy_tab ) : ?>
+			<?php
+			if ( 'completed' === $migration_state ) {
+				$state_label = __( '✓ Complete', 'radius' );
+				$state_class = 'radius-migration-status--completed';
+			} elseif ( in_array( $migration_state, array( 'open', 'dismissed' ), true ) ) {
+				$state_label = 'open' === $migration_state ? __( 'In Progress', 'radius' ) : __( 'Dismissed', 'radius' );
+				$state_class = 'radius-migration-status--open';
+			} else {
+				$state_label = __( 'Not Started', 'radius' );
+				$state_class = '';
+			}
+			?>
+			<div class="radius-deploy-migration">
+				<div class="radius-migration-status <?php echo esc_attr( $state_class ); ?>">
+					<div class="radius-migration-status__header">
+						<div class="radius-migration-status__title-group">
+							<h3 class="radius-migration-status__title"><?php esc_html_e( 'Magic Page → Radius Migration', 'radius' ); ?></h3>
+							<span class="radius-migration-status__badge"><?php echo esc_html( $state_label ); ?></span>
+						</div>
+						<button type="button" id="radius-migration-rerun-trigger" class="button button-secondary" aria-haspopup="dialog" aria-controls="radius-migration-rerun-dialog" aria-expanded="false">
+							<span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span>
+							<?php esc_html_e( 'Rerun Migration', 'radius' ); ?>
+						</button>
+					</div>
+				</div>
+
+				<?php if ( ! empty( $migration_steps ) ) : ?>
+				<div class="radius-migration-steps">
+					<h3><?php esc_html_e( 'Migration Steps', 'radius' ); ?></h3>
+					<ul class="radius-migration-steps__list" role="list">
+						<?php foreach ( $migration_steps as $step_key => $step_data ) : ?>
+						<?php $step_done = ! empty( $step_data['done'] ); ?>
+						<li class="radius-migration-steps__item radius-migration-steps__item--<?php echo $step_done ? 'done' : 'pending'; ?>">
+							<span class="dashicons <?php echo $step_done ? 'dashicons-yes-alt' : 'dashicons-clock'; ?>" aria-hidden="true"></span>
+							<span class="radius-migration-steps__label">
+								<?php echo esc_html( isset( $step_labels[ $step_key ] ) ? $step_labels[ $step_key ] : $step_key ); ?>
+								<?php if ( $step_done && ! empty( $step_data['inferred'] ) && empty( $step_data['recorded'] ) ) : ?>
+									<span class="radius-migration-steps__inferred"><?php esc_html_e( '(auto-detected)', 'radius' ); ?></span>
+								<?php endif; ?>
+							</span>
+							<?php if ( $step_done ) : ?>
+								<span class="radius-badge radius-badge-ok"><?php esc_html_e( 'Done', 'radius' ); ?></span>
+							<?php else : ?>
+								<span class="radius-badge"><?php esc_html_e( 'Pending', 'radius' ); ?></span>
+							<?php endif; ?>
+						</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+				<?php else : ?>
+				<p class="description"><?php esc_html_e( 'No migration data found. The migration wizard has not been run on this site.', 'radius' ); ?></p>
+				<?php endif; ?>
+
+				<?php if ( ! empty( $migration_log ) ) : ?>
+				<div class="radius-migration-activity">
+					<h3><?php esc_html_e( 'Recent Activity', 'radius' ); ?></h3>
+					<ul class="radius-migration-activity__list">
+						<?php foreach ( array_slice( $migration_log, 0, 8 ) as $log_row ) : ?>
+						<li class="radius-migration-activity__item">
+							<span class="radius-migration-activity__time"><?php echo esc_html( isset( $log_row['t'] ) ? date_i18n( 'M j, Y g:ia', (int) $log_row['t'] ) : '' ); ?></span>
+							<span><?php echo esc_html( isset( $log_row['m'] ) ? $log_row['m'] : '' ); ?></span>
+						</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+				<?php endif; ?>
+			</div>
+		<?php endif; /* migration tab */ ?>
+
+		<div id="radius-migration-rerun-dialog" class="radius-deploy-help-overlay" hidden aria-hidden="true">
+			<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-rerun-close="1"></button>
+			<div class="radius-deploy-help-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="radius-migration-rerun-heading">
+				<div class="radius-deploy-help-modal__chrome">
+					<header class="radius-deploy-help-modal__header">
+						<h2 class="radius-deploy-help-modal__title" id="radius-migration-rerun-heading"><?php esc_html_e( 'Rerun Migration Steps', 'radius' ); ?></h2>
+						<button type="button" class="radius-deploy-help-modal__x" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-rerun-close="1">&times;</button>
+					</header>
+					<div class="radius-deploy-help-modal__body">
+						<p><?php esc_html_e( 'Select which steps to reset. The migration wizard will reopen so you can run them again.', 'radius' ); ?></p>
+						<ul class="radius-migration-rerun-steps">
+							<?php foreach ( $step_labels as $step_key => $step_label ) : ?>
+							<?php $step_done_modal = ! empty( $migration_steps[ $step_key ]['done'] ); ?>
+							<li>
+								<label>
+									<input type="checkbox" name="radius_rerun_step" value="<?php echo esc_attr( $step_key ); ?>"<?php echo $step_done_modal ? ' checked' : ''; ?>>
+									<?php echo esc_html( $step_label ); ?>
+									<?php if ( $step_done_modal ) : ?>
+										<span class="radius-badge radius-badge-ok"><?php esc_html_e( 'Done', 'radius' ); ?></span>
+									<?php else : ?>
+										<span class="radius-badge"><?php esc_html_e( 'Pending', 'radius' ); ?></span>
+									<?php endif; ?>
+								</label>
+							</li>
+							<?php endforeach; ?>
+						</ul>
+					</div>
+					<footer class="radius-deploy-help-modal__footer radius-migration-rerun-footer">
+						<button id="radius-migration-rerun-confirm" class="button button-primary"><?php esc_html_e( 'Reset & Reopen Wizard', 'radius' ); ?></button>
+						<button type="button" class="button button-secondary" data-radius-rerun-close="1"><?php esc_html_e( 'Cancel', 'radius' ); ?></button>
+						<p id="radius-migration-rerun-status" class="description" hidden></p>
+					</footer>
+				</div>
+			</div>
+		</div>
+
+		<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
 				<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-deploy-close="1"></button>
 				<div class="radius-deploy-help-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="radius-deploy-help-heading">
 					<div class="radius-deploy-help-modal__chrome">

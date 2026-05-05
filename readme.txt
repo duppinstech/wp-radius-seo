@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.36
+Stable tag: 1.6.37
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.37 =
+* **Deploy page tabs:** Landings, Service Areas, and Migration are now separated into three tabs on the Deploy screen.
+* **Migration tab:** Shows the current migration state (Complete / In Progress / Not Started), a step-by-step checklist with done/pending status and auto-detected badges, and a recent activity log.
+* **Rerun Migration modal:** "Rerun Migration" button on the Migration tab opens a modal where you can select which steps to reset (places, templates, anchors, replacers, Magic Page landings/plugin, deploy areas/landings). Confirming resets those steps and reopens the migration wizard so you can run them again without going one by one.
 
 = 1.6.36 =
 * **Migration / Yoast inheritance:** Imported Magic Page templates now **inherit `_yoast_wpseo*`** meta from their legacy source — `linkdex`, `content_score`, `inclusive_language_score`, `estimated-reading-time-minutes`, Open Graph image / image-id, schema markers, etc. Per-line keys (`focuskw`, `title`, `metadesc`) are still set per service line by `apply_migration_template_yoast_meta()` so each variant gets its keyword/tokens. New helpers: `Radius_Legacy_Import_Service::copy_yoast_meta_from_legacy_template_to_radius_template()` (called inside `import_templates()`) and `backfill_legacy_yoast_meta_on_service_templates()` (idempotent, walks `_radius_imported_from` / `_radius_migration_clone_of`). Filter: `radius_legacy_yoast_meta_skip_keys`.

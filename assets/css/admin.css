@@ -1017,6 +1017,218 @@
 	font-size: 13px;
 }
 
+/* Deploy page — migration tab */
+.radius-deploy-migration {
+	max-width: 780px;
+	margin-top: 20px;
+}
+
+.radius-migration-status {
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	padding: 16px 20px;
+	margin-bottom: 20px;
+}
+
+.radius-migration-status--completed {
+	border-color: #7ad03a;
+	background: #f7fdf5;
+}
+
+.radius-migration-status--open {
+	border-color: #72aee6;
+	background: #f5f9ff;
+}
+
+.radius-migration-status__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.radius-migration-status__title-group {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.radius-migration-status__title {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.radius-migration-status__badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 10px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+	background: #e2e4e7;
+	color: #3c434a;
+}
+
+.radius-migration-status--completed .radius-migration-status__badge {
+	background: #edfaef;
+	color: #1e4620;
+}
+
+.radius-migration-status--open .radius-migration-status__badge {
+	background: #e8f0fb;
+	color: #135e96;
+}
+
+.radius-migration-status__rerun-btn .dashicons {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	margin-right: 4px;
+	vertical-align: middle;
+}
+
+/* Step checklist */
+.radius-migration-steps {
+	margin-bottom: 24px;
+}
+
+.radius-migration-steps h3,
+.radius-migration-activity h3 {
+	font-size: 14px;
+	margin: 0 0 10px;
+	font-weight: 600;
+}
+
+.radius-migration-steps__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.radius-migration-steps__item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #f0f0f0;
+	font-size: 13px;
+}
+
+.radius-migration-steps__item:last-child {
+	border-bottom: none;
+}
+
+.radius-migration-steps__item--done {
+	background: #fafff9;
+}
+
+.radius-migration-steps__item--pending {
+	background: #fff;
+}
+
+.radius-migration-steps__item .dashicons {
+	flex-shrink: 0;
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+}
+
+.radius-migration-steps__item--done .dashicons {
+	color: #5bab0c;
+}
+
+.radius-migration-steps__item--pending .dashicons {
+	color: #b5b5b5;
+}
+
+.radius-migration-steps__label {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.radius-migration-steps__inferred {
+	font-size: 11px;
+	color: #757575;
+	font-style: italic;
+}
+
+/* Activity log */
+.radius-migration-activity {
+	margin-bottom: 24px;
+}
+
+.radius-migration-activity__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.radius-migration-activity__item {
+	display: flex;
+	gap: 12px;
+	padding: 6px 0;
+	border-bottom: 1px solid #f0f0f0;
+	font-size: 12px;
+}
+
+.radius-migration-activity__item:last-child {
+	border-bottom: none;
+}
+
+.radius-migration-activity__time {
+	color: #757575;
+	white-space: nowrap;
+	flex-shrink: 0;
+	min-width: 120px;
+}
+
+/* Rerun modal step checklist */
+.radius-migration-rerun-steps {
+	list-style: none;
+	margin: 12px 0 0;
+	padding: 0;
+}
+
+.radius-migration-rerun-steps li {
+	margin-bottom: 10px;
+}
+
+.radius-migration-rerun-steps label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.radius-migration-rerun-steps input[type="checkbox"] {
+	flex-shrink: 0;
+}
+
+.radius-migration-rerun-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.radius-migration-rerun-footer .description {
+	margin: 0;
+	color: #d63638;
+	width: 100%;
+}
+
 /* License tab — API key + validate (compact row, not full width) */
 .radius-api-key-row {
 	display: inline-flex;

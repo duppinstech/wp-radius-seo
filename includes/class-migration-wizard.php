@@ -780,9 +780,39 @@ final class Radius_Migration_Wizard {
 				);
 				wp_send_json_success( array( 'ok' => true, 'basename' => $b ) );
 				return;
-			default:
-				wp_send_json_error( array( 'message' => __( 'Unknown action.', 'radius' ) ), 400 );
-		}
+		case 'rerun':
+			// Reset selected steps and re-open the wizard so the user can run them again.
+			$raw  = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+			$list = array();
+			if ( is_string( $raw ) && $raw !== '' ) {
+				foreach ( explode( ',', $raw ) as $part ) {
+					$s = sanitize_key( trim( (string) $part ) );
+					if ( $s !== '' ) {
+						$list[] = $s;
+					}
+				}
+			}
+			if ( ! empty( $list ) ) {
+				self::clear_recorded_steps( $list );
+			}
+			if ( self::get_state() === 'completed' ) {
+				self::set_state( 'open' );
+				self::append_activity_log(
+					__( 'Migration rerun initiated: state reset from completed to open.', 'radius' ),
+					array( 'source' => 'manual' )
+				);
+			}
+			wp_send_json_success(
+				array(
+					'ok'       => true,
+					'redirect' => admin_url( 'admin.php?page=radius-deploy&tab=migration&radius_open_migration=1' ),
+					'steps'    => self::build_steps_status(),
+				)
+			);
+			return;
+		default:
+			wp_send_json_error( array( 'message' => __( 'Unknown action.', 'radius' ) ), 400 );
+	}
 	}
 
 	/**
