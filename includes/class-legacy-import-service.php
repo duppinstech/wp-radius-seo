@@ -1632,6 +1632,7 @@ class Radius_Legacy_Import_Service {
 			}
 			update_post_meta( (int) $new_id, '_radius_imported_from', (int) $p->ID );
 			self::copy_elementor_document_meta_to_template( (int) $p->ID, (int) $new_id );
+			self::copy_yoast_meta_from_legacy_template_to_radius_template( (int) $p->ID, (int) $new_id );
 			self::finalize_imported_magic_page_radius_template( (int) $new_id );
 			++$out['imported'];
 		}
@@ -2208,6 +2209,10 @@ class Radius_Legacy_Import_Service {
 		foreach ( $map as $from => $to ) {
 			$text = str_ireplace( $from, $to, $text );
 		}
+		// Defensive: legacy Magic Page editors occasionally typoed location tokens without closing
+		// bracket (e.g. `[location.` `[location,` `[location ` from authors hand-editing meta desc).
+		// Rewrite those to the canonical place token so the migration never ships stray `[location`.
+		$text = preg_replace( '/\[location\b(?!\])/i', '{{place_name}}', $text );
 		// Legacy meta_* aliases (before generic [meta_key] → {{key}}).
 		$meta_aliases = array(
 			'[meta_region_code]' => '{{region}}',
@@ -2576,7 +2581,7 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Set Yoast SEO fields on a service template: focus keyword + SEO title / meta description tokens (resolved at deploy from site replacers).
+	 * Set Yoast SEO fields on a service template: focus keyword + SEO title / meta description tokens (resolved at deploy from template `_radius_xfields` / merged token map).
 	 *
 	 * @param int    $template_id  radius_template post ID.
 	 * @param string $service_line towing|roadside|heavy|equipment
@@ -2635,52 +2640,298 @@ class Radius_Legacy_Import_Service {
 		if ( isset( $m['desc_tpl'] ) ) {
 			update_post_meta( $template_id, '_yoast_wpseo_metadesc', (string) $m['desc_tpl'] );
 		}
+
+		self::seed_default_meta_xfields_on_template( $template_id, $service_line );
+
 		clean_post_cache( $template_id );
 		return true;
 	}
 
 	/**
-	 * Add site replacer rows for Yoast meta tokens if missing (Radius → Settings → Site replacers).
+	 * Default per-service meta-title / meta-desc patterns used to seed template `_radius_xfields`
+	 * so Yoast `{{*-meta-title}}` / `{{*-meta-desc}}` resolve at deploy.
 	 *
-	 * @return void
+	 * @return array<string,array{title:string,desc:string}>
 	 */
-	private static function merge_yoast_meta_site_replacer_rows() {
-		$cfg  = Radius_Settings::get();
-		$rows = isset( $cfg['site_replacements'] ) && is_array( $cfg['site_replacements'] ) ? $cfg['site_replacements'] : array();
-		$need = array(
-			'towing-meta-title',
-			'towing-meta-desc',
-			'roadside-meta-title',
-			'roadside-meta-desc',
-			'heavy-meta-title',
-			'heavy-meta-desc',
-			'equipment-meta-title',
-			'equipment-meta-desc',
+	public static function default_template_meta_xfield_patterns() {
+		$defaults = array(
+			'towing'    => array(
+				'title' => '{{towing-keyword}} in {{place_name}}, {{region}} | {{company-short}}',
+				'desc'  => 'Need a {{towing-keyword}} in {{place_name}}, {{region}}? {{company-short}} dispatches 24/7. Call {{phone-number}} for fast service.',
+			),
+			'roadside'  => array(
+				'title' => '24/7 {{roadside-keyword}} in {{place_name}}, {{region}} | {{company-short}}',
+				'desc'  => 'Stranded in {{place_name}}, {{region}}? {{company-short}} provides {{roadside-keyword}} 24/7. Call {{phone-number}} now.',
+			),
+			'heavy'     => array(
+				'title' => '{{heavy-keyword}} in {{place_name}}, {{region}} | {{company-short}}',
+				'desc'  => 'Need {{heavy-keyword}} in {{place_name}}, {{region}}? {{company-short}} dispatches heavy-duty wreckers 24/7. Call {{phone-number}}.',
+			),
+			'equipment' => array(
+				'title' => '{{equipment-keyword}} in {{place_name}}, {{region}} | {{company-short}}',
+				'desc'  => '{{equipment-keyword}} services in {{place_name}}, {{region}}. {{company-short}} 24/7 — call {{phone-number}}.',
+			),
 		);
-		$have = array();
-		foreach ( $rows as $row ) {
-			if ( empty( $row['key'] ) ) {
-				continue;
-			}
-			$have[ sanitize_key( (string) $row['key'] ) ] = true;
+		/**
+		 * Default text used to seed `*-meta-title` / `*-meta-desc` on service templates.
+		 *
+		 * @param array<string,array{title:string,desc:string}> $defaults Map keyed by service line.
+		 */
+		$f = apply_filters( 'radius_template_default_meta_xfield_patterns', $defaults );
+		return is_array( $f ) ? $f : $defaults;
+	}
+
+	/**
+	 * Add `<line>-meta-title` / `-meta-desc` rows to a service template’s `_radius_xfields` if missing.
+	 *
+	 * @param int    $template_id  radius_template post ID.
+	 * @param string $service_line towing|roadside|heavy|equipment.
+	 * @return bool True if a row was added.
+	 */
+	public static function seed_default_meta_xfields_on_template( $template_id, $service_line ) {
+		$template_id  = (int) $template_id;
+		$service_line = sanitize_key( (string) $service_line );
+		if ( $template_id <= 0 || $service_line === '' ) {
+			return false;
 		}
+		$patterns = self::default_template_meta_xfield_patterns();
+		if ( empty( $patterns[ $service_line ] ) ) {
+			return false;
+		}
+		$pat        = $patterns[ $service_line ];
+		$title_key  = $service_line . '-meta-title';
+		$desc_key   = $service_line . '-meta-desc';
+
+		$raw = get_post_meta( $template_id, '_radius_xfields', true );
+		if ( is_string( $raw ) ) {
+			$raw = json_decode( $raw, true );
+		}
+		if ( ! is_array( $raw ) ) {
+			$raw = array();
+		}
+
+		$by_key = array();
+		foreach ( $raw as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+
 		$added = false;
-		foreach ( $need as $k ) {
-			$sk = sanitize_key( $k );
-			if ( $sk === '' || ! empty( $have[ $sk ] ) ) {
+		foreach ( array( $title_key => $pat['title'], $desc_key => $pat['desc'] ) as $k => $val ) {
+			$sk = sanitize_key( (string) $k );
+			if ( $sk === '' || isset( $by_key[ $sk ] ) ) {
 				continue;
 			}
-			$rows[]        = array(
-				'key'            => $k,
-				'values'         => array( '' ),
+			$by_key[ $sk ] = array(
+				'key'            => $sk,
+				'values'         => array( (string) $val ),
 				'area_overrides' => array(),
 			);
-			$have[ $sk ] = true;
-			$added       = true;
+			$added = true;
 		}
-		if ( $added ) {
-			Radius_Settings::update( array( 'site_replacements' => $rows ) );
+
+		if ( ! $added ) {
+			return false;
 		}
+		$enc = wp_json_encode( array_values( $by_key ) );
+		if ( $enc === false ) {
+			return false;
+		}
+		update_post_meta( $template_id, '_radius_xfields', wp_slash( $enc ) );
+		return true;
+	}
+
+	/**
+	 * Run `seed_default_meta_xfields_on_template()` for every imported service template (idempotent).
+	 *
+	 * @return int Templates updated.
+	 */
+	public static function backfill_default_meta_xfields_on_service_templates() {
+		$slug_to_line = array(
+			'towing'                 => 'towing',
+			'roadside-assistance'    => 'roadside',
+			'heavy-towing'           => 'heavy',
+			'heavy-equipment-towing' => 'equipment',
+		);
+		$updated = 0;
+		foreach ( $slug_to_line as $slug => $line ) {
+			$posts = get_posts(
+				array(
+					'post_type'              => 'radius_template',
+					'name'                   => $slug,
+					'post_status'            => 'any',
+					'posts_per_page'         => 1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			);
+			if ( empty( $posts[0] ) ) {
+				continue;
+			}
+			if ( self::seed_default_meta_xfields_on_template( (int) $posts[0], $line ) ) {
+				++$updated;
+			}
+		}
+		return $updated;
+	}
+
+	/**
+	 * Per-line Yoast meta keys overwritten programmatically — never copy verbatim from legacy.
+	 *
+	 * `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`, `_yoast_wpseo_metadesc` are set per service line by
+	 * {@see apply_migration_template_yoast_meta()}; preserving them from legacy would clobber the new tokens.
+	 *
+	 * @return string[]
+	 */
+	private static function legacy_yoast_meta_keys_overwritten_per_line() {
+		$keys = array(
+			'_yoast_wpseo_focuskw',
+			'_yoast_wpseo_title',
+			'_yoast_wpseo_metadesc',
+		);
+		/**
+		 * Yoast meta keys that should NOT be copied from a legacy template because the migration
+		 * sets them per service line (focus keyword, SEO title, meta description).
+		 *
+		 * @param string[] $keys Meta keys.
+		 */
+		$f = apply_filters( 'radius_legacy_yoast_meta_skip_keys', $keys );
+		return is_array( $f ) ? array_values( array_unique( array_filter( array_map( 'strval', $f ) ) ) ) : $keys;
+	}
+
+	/**
+	 * Copy every `_yoast_wpseo*` meta from a legacy template post onto a new radius_template.
+	 *
+	 * Preserves the analysis scores (`linkdex`, `content_score`, `inclusive_language_score`,
+	 * `estimated-reading-time-minutes`), Open Graph / Twitter image references, schema markers,
+	 * etc. so the migrated template inherits the legacy SEO state instead of starting from zero.
+	 * String values run through {@see convert_legacy_magic_page_tokens_to_curly()} so any embedded
+	 * `[xfield_*]` / `[location]` / `{spintax_*}` references are rewritten in place. Per-line keys
+	 * (`focuskw`, `title`, `metadesc`) are skipped because they are reset per service line.
+	 *
+	 * @param int $legacy_post_id     Magic Page (or legacy template) post ID.
+	 * @param int $radius_template_id Target radius_template post ID.
+	 * @return int Number of meta rows copied.
+	 */
+	public static function copy_yoast_meta_from_legacy_template_to_radius_template( $legacy_post_id, $radius_template_id ) {
+		$legacy_post_id     = (int) $legacy_post_id;
+		$radius_template_id = (int) $radius_template_id;
+		if ( $legacy_post_id <= 0 || $radius_template_id <= 0 ) {
+			return 0;
+		}
+		$all = get_post_meta( $legacy_post_id );
+		if ( ! is_array( $all ) ) {
+			return 0;
+		}
+		$skip = array_fill_keys( self::legacy_yoast_meta_keys_overwritten_per_line(), true );
+
+		$copied = 0;
+		foreach ( $all as $meta_key => $values ) {
+			if ( ! is_string( $meta_key ) ) {
+				continue;
+			}
+			if ( strpos( $meta_key, '_yoast_wpseo' ) !== 0 ) {
+				continue;
+			}
+			if ( isset( $skip[ $meta_key ] ) ) {
+				continue;
+			}
+			if ( ! is_array( $values ) ) {
+				continue;
+			}
+			delete_post_meta( $radius_template_id, $meta_key );
+			foreach ( $values as $one ) {
+				$decoded = maybe_unserialize( $one );
+				if ( is_string( $decoded ) ) {
+					$decoded = self::convert_legacy_magic_page_tokens_to_curly( $decoded );
+				}
+				add_post_meta( $radius_template_id, $meta_key, $decoded );
+				++$copied;
+			}
+		}
+		if ( $copied > 0 ) {
+			clean_post_cache( $radius_template_id );
+		}
+		return $copied;
+	}
+
+	/**
+	 * Backfill Yoast meta on already-imported service templates from their legacy magicpage source.
+	 *
+	 * Idempotent: copies non-per-line `_yoast_wpseo*` rows (scores, OG image, etc.) from the legacy
+	 * post recorded in `_radius_imported_from`, walking variant clones via `_radius_migration_clone_of`.
+	 *
+	 * @return array{templates_updated:int,rows_copied:int}
+	 */
+	public static function backfill_legacy_yoast_meta_on_service_templates() {
+		$out = array(
+			'templates_updated' => 0,
+			'rows_copied'       => 0,
+		);
+		$slugs = array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
+		foreach ( $slugs as $slug ) {
+			$posts = get_posts(
+				array(
+					'post_type'              => 'radius_template',
+					'name'                   => $slug,
+					'post_status'            => 'any',
+					'posts_per_page'         => 1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			);
+			if ( empty( $posts[0] ) ) {
+				continue;
+			}
+			$tid       = (int) $posts[0];
+			$legacy_id = self::resolve_legacy_source_id_for_template( $tid );
+			if ( $legacy_id <= 0 ) {
+				continue;
+			}
+			$copied = self::copy_yoast_meta_from_legacy_template_to_radius_template( $legacy_id, $tid );
+			if ( $copied > 0 ) {
+				++$out['templates_updated'];
+				$out['rows_copied'] += $copied;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Walk `_radius_imported_from` (direct) or `_radius_migration_clone_of` (variant) chains to find the legacy source post.
+	 *
+	 * @param int $radius_template_id radius_template post ID.
+	 * @return int Legacy post ID or 0.
+	 */
+	private static function resolve_legacy_source_id_for_template( $radius_template_id ) {
+		$radius_template_id = (int) $radius_template_id;
+		if ( $radius_template_id <= 0 ) {
+			return 0;
+		}
+		$direct = (int) get_post_meta( $radius_template_id, '_radius_imported_from', true );
+		if ( $direct > 0 ) {
+			return $direct;
+		}
+		$visited = array();
+		$cursor  = $radius_template_id;
+		while ( $cursor > 0 && empty( $visited[ $cursor ] ) ) {
+			$visited[ $cursor ] = true;
+			$parent             = (int) get_post_meta( $cursor, '_radius_migration_clone_of', true );
+			if ( $parent <= 0 ) {
+				break;
+			}
+			$direct = (int) get_post_meta( $parent, '_radius_imported_from', true );
+			if ( $direct > 0 ) {
+				return $direct;
+			}
+			$cursor = $parent;
+		}
+		return 0;
 	}
 
 	/**
@@ -2701,8 +2952,6 @@ class Radius_Legacy_Import_Service {
 		);
 
 		$out['templates_pruned'] = self::delete_migration_sourced_radius_templates();
-
-		self::merge_yoast_meta_site_replacer_rows();
 
 		$imp = self::import_templates();
 		$out['import'] = $imp;
@@ -2945,6 +3194,138 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Map Magic Page `%location-set-city-slug%` tokens to Radius service-anchor `location_code` (e.g. sa-city-slug).
+	 *
+	 * @param string $token Single token from Magic Page `custom[].locations[]`.
+	 * @return string Sanitized code or empty.
+	 */
+	private static function magic_page_location_token_to_area_code( $token ) {
+		$token = trim( (string) $token );
+		if ( $token === '' ) {
+			return '';
+		}
+		if ( preg_match( '/location-set-([^%\]]+)/i', $token, $m ) ) {
+			$slug = sanitize_title( trim( $m[1], " \t\n\r\0\x0B%" ) );
+			if ( $slug === '' ) {
+				return '';
+			}
+			return sanitize_key( 'sa-' . $slug );
+		}
+		return '';
+	}
+
+	/**
+	 * Magic Page option-style entry + imported rows with `custom` → default string + per–service-area overrides.
+	 *
+	 * @param mixed $entry Row from `_magic_page_xfields` or radius xfield row.
+	 * @return array{default:string,overrides:array<int,array{area:string,value:string}>}
+	 */
+	private static function xfield_or_magic_entry_to_replacer_payload( $entry ) {
+		$payload = array(
+			'default'   => '',
+			'overrides' => array(),
+		);
+		if ( is_string( $entry ) ) {
+			$payload['default'] = $entry;
+			return $payload;
+		}
+		if ( ! is_array( $entry ) ) {
+			return $payload;
+		}
+		$payload['default'] = self::magic_page_xfield_entry_to_string( $entry );
+		if ( empty( $entry['custom'] ) || ! is_array( $entry['custom'] ) ) {
+			return $payload;
+		}
+		foreach ( $entry['custom'] as $cust ) {
+			if ( ! is_array( $cust ) ) {
+				continue;
+			}
+			$val = isset( $cust['value'] ) ? (string) $cust['value'] : '';
+			$locs = isset( $cust['locations'] ) ? $cust['locations'] : array();
+			if ( ! is_array( $locs ) ) {
+				$locs = array( $locs );
+			}
+			foreach ( $locs as $loc_token ) {
+				$code = self::magic_page_location_token_to_area_code( (string) $loc_token );
+				/**
+				 * Adjust Magic Page location token → Radius `location_code` (must match service anchors).
+				 *
+				 * @param string               $code      Sanitized `sa-*` code or empty.
+				 * @param string               $loc_token Raw token string.
+				 * @param array<string,mixed> $cust_row   Magic Page custom row.
+				 */
+				$code = apply_filters( 'radius_magic_page_location_token_to_area_code', $code, (string) $loc_token, $cust );
+				$code = sanitize_key( (string) $code );
+				if ( $code === '' ) {
+					continue;
+				}
+				$payload['overrides'][] = array(
+					'area'  => $code,
+					'value' => $val,
+				);
+			}
+		}
+		return $payload;
+	}
+
+	/**
+	 * Merge payload into one site replacer row (values + area_overrides).
+	 *
+	 * @param array<string,mixed>                                  $row In/out row.
+	 * @param array{default:string,overrides:array<int,array{area:string,value:string}>} $payload Payload.
+	 * @return void
+	 */
+	private static function merge_replacer_payload_into_row( array &$row, array $payload ) {
+		if ( $payload['default'] !== '' ) {
+			$row['values'] = array( $payload['default'] );
+		}
+		if ( empty( $payload['overrides'] ) ) {
+			return;
+		}
+		$merged = array();
+		if ( ! empty( $row['area_overrides'] ) && is_array( $row['area_overrides'] ) ) {
+			foreach ( $row['area_overrides'] as $o ) {
+				if ( ! is_array( $o ) || empty( $o['area'] ) ) {
+					continue;
+				}
+				$merged[ sanitize_key( (string) $o['area'] ) ] = isset( $o['value'] ) ? (string) $o['value'] : '';
+			}
+		}
+		foreach ( $payload['overrides'] as $o ) {
+			$ac = sanitize_key( (string) $o['area'] );
+			if ( $ac === '' ) {
+				continue;
+			}
+			$merged[ $ac ] = isset( $o['value'] ) ? (string) $o['value'] : '';
+		}
+		$row['area_overrides'] = array();
+		foreach ( $merged as $ac => $val ) {
+			$row['area_overrides'][] = array(
+				'area'  => $ac,
+				'value' => $val,
+			);
+		}
+	}
+
+	/**
+	 * Imported template `_radius_xfields` row → payload (optional Magic Page `custom` on that meta).
+	 *
+	 * @param array<string,mixed> $xrow One x-field row.
+	 * @return array{default:string,overrides:array<int,array{area:string,value:string}>}
+	 */
+	private static function radius_template_xfield_row_to_replacer_payload( array $xrow ) {
+		if ( ! empty( $xrow['custom'] ) && is_array( $xrow['custom'] ) ) {
+			return self::xfield_or_magic_entry_to_replacer_payload( $xrow );
+		}
+		$vals = Radius_Template_Tokens::normalize_xfield_values( $xrow );
+		$first = isset( $vals[0] ) ? (string) $vals[0] : '';
+		return array(
+			'default'   => $first,
+			'overrides' => array(),
+		);
+	}
+
+	/**
 	 * Fill site replacer values from Magic Page xfields: `_magic_page_xfields` in wp_options and/or `_radius_xfields` on the imported template.
 	 *
 	 * @return array<string,mixed>
@@ -2991,11 +3372,6 @@ class Radius_Legacy_Import_Service {
 				continue;
 			}
 			$xk = strtolower( (string) $xrow['key'] );
-			$vals = Radius_Template_Tokens::normalize_xfield_values( $xrow );
-			$first = isset( $vals[0] ) ? (string) $vals[0] : '';
-			if ( $first === '' ) {
-				continue;
-			}
 
 			$target = '';
 			if ( preg_match( '/company|business/i', $xk ) && preg_match( '/short|abbr/i', $xk ) ) {
@@ -3010,8 +3386,12 @@ class Radius_Legacy_Import_Service {
 			if ( $target === '' || ! isset( $by_key[ $target ] ) ) {
 				continue;
 			}
-			$by_key[ $target ]['values'] = array( $first );
-			$out['keys'][]               = $target;
+			$payload = self::radius_template_xfield_row_to_replacer_payload( $xrow );
+			if ( $payload['default'] === '' && empty( $payload['overrides'] ) ) {
+				continue;
+			}
+			self::merge_replacer_payload_into_row( $by_key[ $target ], $payload );
+			$out['keys'][] = $target;
 		}
 
 		$opt_names = apply_filters(
@@ -3032,12 +3412,12 @@ class Radius_Legacy_Import_Service {
 				if ( $rk === '' || ! isset( $by_key[ $rk ] ) ) {
 					continue;
 				}
-				$str = self::magic_page_xfield_entry_to_string( $entry );
-				if ( $str === '' ) {
+				$payload = self::xfield_or_magic_entry_to_replacer_payload( $entry );
+				if ( $payload['default'] === '' && empty( $payload['overrides'] ) ) {
 					continue;
 				}
-				$by_key[ $rk ]['values'] = array( $str );
-				$out['keys'][]           = $rk;
+				self::merge_replacer_payload_into_row( $by_key[ $rk ], $payload );
+				$out['keys'][] = $rk;
 			}
 		}
 

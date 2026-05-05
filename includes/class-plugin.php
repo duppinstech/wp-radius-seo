@@ -278,6 +278,7 @@ class Radius_Plugin {
 	 * @return void
 	 */
 	public static function on_activate() {
+		Radius_Settings::bootstrap_plugin_defaults();
 		Radius_Place_Taxonomy::register_taxonomy();
 		Radius_Place_Taxonomy::register_term_meta();
 		$tmp = self::instance();

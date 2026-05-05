@@ -436,28 +436,122 @@ class Radius_Deploy_Service {
 	private static function sync_deployed_landing( $landing_id, $template_id, array $tokens, $seed ) {
 		self::copy_selected_template_meta( $landing_id, $template_id, $tokens, $seed );
 
-		if ( empty( Radius_Settings::get()['enable_elementor'] ) ) {
-			return '';
-		}
-		if ( ! class_exists( '\Elementor\Plugin' ) ) {
-			return '';
-		}
-		if ( get_post_meta( $template_id, '_elementor_edit_mode', true ) !== 'builder' ) {
-			return '';
+		$elementor_ok = false;
+		if ( ! empty( Radius_Settings::get()['enable_elementor'] )
+			&& class_exists( '\Elementor\Plugin' )
+			&& get_post_meta( $template_id, '_elementor_edit_mode', true ) === 'builder' ) {
+			try {
+				self::sync_elementor_document_to_landing( $landing_id, $template_id, $tokens, $seed );
+				$elementor_ok = true;
+			} catch ( \Throwable $e ) {
+				return sprintf(
+					/* translators: %s: error message */
+					__( 'Elementor deploy sync failed (landing %1$d): %2$s', 'radius' ),
+					(int) $landing_id,
+					$e->getMessage()
+				);
+			}
 		}
 
-		try {
-			self::sync_elementor_document_to_landing( $landing_id, $template_id, $tokens, $seed );
-		} catch ( \Throwable $e ) {
-			return sprintf(
-				/* translators: %s: error message */
-				__( 'Elementor deploy sync failed (landing %1$d): %2$s', 'radius' ),
-				(int) $landing_id,
-				$e->getMessage()
-			);
+		if ( $elementor_ok ) {
+			self::maybe_sync_elementor_rendered_html_for_yoast( $landing_id );
 		}
+
+		self::maybe_ping_yoast_indexable( $landing_id );
 
 		return '';
+	}
+
+	/**
+	 * Meta keys to skip when copying template → landing.
+	 *
+	 * Defaults to empty: Yoast analysis values (`linkdex`, `content_score`, etc.) inherited from the
+	 * legacy template are propagated forward so editors see the original Magic Page scores instead of
+	 * Yoast resetting them to zero on first deploy. Override via the
+	 * `radius_deploy_exclude_meta_keys_from_copy` filter to opt back into per-post analysis.
+	 *
+	 * @return string[]
+	 */
+	private static function meta_keys_never_copy_from_template() {
+		$keys = array();
+		/**
+		 * Post meta keys to skip when copying from template to landing.
+		 *
+		 * @param string[] $keys Meta keys (full prefixed names). Default empty.
+		 */
+		$f = apply_filters( 'radius_deploy_exclude_meta_keys_from_copy', $keys );
+		return is_array( $f ) ? array_values( array_unique( array_filter( array_map( 'strval', $f ) ) ) ) : $keys;
+	}
+
+	/**
+	 * Elementor stores layout in `_elementor_data`; Yoast’s indexable link builder reads `post_content`.
+	 * Bake a rendered HTML snapshot into `post_content` so Yoast can count internal/outbound links after deploy.
+	 *
+	 * @param int $landing_id Landing or service-area post ID.
+	 * @return void
+	 */
+	private static function maybe_sync_elementor_rendered_html_for_yoast( $landing_id ) {
+		$landing_id = (int) $landing_id;
+		if ( $landing_id <= 0 || ! class_exists( '\Elementor\Plugin' ) ) {
+			return;
+		}
+		if ( get_post_meta( $landing_id, '_elementor_edit_mode', true ) !== 'builder' ) {
+			return;
+		}
+
+		$html = '';
+		try {
+			$html = (string) \Elementor\Plugin::$instance->frontend->get_builder_content_for_display( $landing_id, false );
+		} catch ( \Throwable $e ) {
+			return;
+		}
+
+		if ( $html === '' ) {
+			return;
+		}
+
+		/**
+		 * Whether to write Elementor’s frontend HTML into `post_content` after deploy for Yoast/link indexing.
+		 *
+		 * @param bool   $sync       Default true.
+		 * @param int    $landing_id Post ID.
+		 * @param string $html       Rendered HTML.
+		 */
+		if ( ! apply_filters( 'radius_deploy_elementor_sync_rendered_post_content', true, $landing_id, $html ) ) {
+			return;
+		}
+
+		$marker = '<!-- Created With Elementor -->';
+		wp_update_post(
+			array(
+				'ID'           => $landing_id,
+				'post_content' => $marker . "\n\n" . $html,
+			)
+		);
+	}
+
+	/**
+	 * Ensure Yoast’s indexable / SEO link tables refresh after deploy (meta + content are final).
+	 *
+	 * @param int $landing_id Post ID.
+	 * @return void
+	 */
+	private static function maybe_ping_yoast_indexable( $landing_id ) {
+		$landing_id = (int) $landing_id;
+		if ( $landing_id <= 0 || ! defined( 'WPSEO_VERSION' ) ) {
+			return;
+		}
+
+		$kw = get_post_meta( $landing_id, '_yoast_wpseo_focuskw', true );
+		if ( $kw !== false && $kw !== '' ) {
+			update_post_meta( $landing_id, '_yoast_wpseo_focuskw', (string) $kw );
+			return;
+		}
+
+		$t = get_post_meta( $landing_id, '_yoast_wpseo_title', true );
+		if ( $t !== false && $t !== '' ) {
+			update_post_meta( $landing_id, '_yoast_wpseo_title', (string) $t );
+		}
 	}
 
 	/**
@@ -476,7 +570,11 @@ class Radius_Deploy_Service {
 		}
 		$s                       = Radius_Settings::get();
 		$allow_elementor_prefix = ! empty( $s['deploy_copy_prefix_elementor'] );
+		$skip_copy = array_fill_keys( self::meta_keys_never_copy_from_template(), true );
 		foreach ( $keys as $key ) {
+			if ( isset( $skip_copy[ $key ] ) ) {
+				continue;
+			}
 			if ( strpos( $key, '_elementor' ) === 0 && ! $allow_elementor_prefix ) {
 				continue;
 			}

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.31
+Stable tag: 1.6.36
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,7 +60,35 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_magic_page_anchor_row_legacy_term_keys` — keys tried on each saved row to find the legacy location term ID.
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
+* `radius_integration_plugin_detection_files` — map of integration group = plugin file path(s) under `wp-content/plugins` used for default deploy-prefix checkboxes and the **Detected** labels (filterable).
+* `radius_deploy_exclude_meta_keys_from_copy` — post meta keys not copied template → landing. **Default empty in 1.6.36+** so Yoast scores (`linkdex`, `content_score`, …) inherited from the legacy Magic Page template flow forward; return a string list to opt back into per-post analysis.
+* `radius_legacy_yoast_meta_skip_keys` — Yoast meta keys NOT copied from a legacy template (default `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`, `_yoast_wpseo_metadesc` because the migration sets those per service line).
+* `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
+* `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.36 =
+* **Migration / Yoast inheritance:** Imported Magic Page templates now **inherit `_yoast_wpseo*`** meta from their legacy source — `linkdex`, `content_score`, `inclusive_language_score`, `estimated-reading-time-minutes`, Open Graph image / image-id, schema markers, etc. Per-line keys (`focuskw`, `title`, `metadesc`) are still set per service line by `apply_migration_template_yoast_meta()` so each variant gets its keyword/tokens. New helpers: `Radius_Legacy_Import_Service::copy_yoast_meta_from_legacy_template_to_radius_template()` (called inside `import_templates()`) and `backfill_legacy_yoast_meta_on_service_templates()` (idempotent, walks `_radius_imported_from` / `_radius_migration_clone_of`). Filter: `radius_legacy_yoast_meta_skip_keys`.
+* **Deploy:** Reverted **never-copy** Yoast list — the legacy scores now propagate template → landing on deploy so editors see the original Magic Page numbers instead of zeros. Filter `radius_deploy_exclude_meta_keys_from_copy` (default empty) restores the previous “strip scores” behavior.
+* **Token cleanup:** `convert_legacy_magic_page_tokens_to_curly()` rewrites malformed `[location` (typoed without closing bracket — e.g. `[location.`, `[location,`, `[location ` from authors hand-editing meta in Magic Page) to `{{place_name}}` so migrated spintax / Yoast meta no longer ship stray `[location` text.
+
+= 1.6.35 =
+* **Migration / templates:** `apply_migration_template_yoast_meta()` now also calls **`seed_default_meta_xfields_on_template()`** so each service template’s `_radius_xfields` includes default `*-meta-title` / `*-meta-desc` rows when those tokens are referenced by Yoast meta on the template (filter `radius_template_default_meta_xfield_patterns`). Spintax block rows still **win** when present.
+* **Backfill helper:** `Radius_Legacy_Import_Service::backfill_default_meta_xfields_on_service_templates()` (idempotent) seeds xfields on existing `towing` / `roadside-assistance` / `heavy-towing` / `heavy-equipment-towing` templates so Yoast `{{*-meta-title}}` / `{{*-meta-desc}}` resolve at deploy even on sites where spintax rows are missing.
+
+= 1.6.34 =
+* **Deploy + Yoast + Elementor:** After Elementor document sync, the **rendered** page HTML is written to `post_content` (with the standard `<!-- Created With Elementor -->` marker) so Yoast’s **indexable link** builder and related server-side indexing see real content (internal / outbound links, first image, etc.). **Do not copy** template `_yoast_wpseo_linkdex` / `content_score` / `inclusive_language_score` to landings (they were always wrong for a new URL). After deploy, Yoast meta is **touched** to queue an indexable rebuild so metadata copied from the template is merged into Yoast’s tables after content is final.
+* **Hooks:** `radius_deploy_exclude_meta_keys_from_copy`, `radius_deploy_elementor_sync_rendered_post_content`.
+
+= 1.6.33 =
+* **Site replacers:** Removed **global** rows for `towing-meta-title` / `*meta-desc` (those belong on **templates** as `_radius_xfields`). **Token map** now **merges** Settings → site replacers with the template’s `_radius_xfields` (template **overrides** the same key). Saved global rows for those keys are **stripped** on load/save.
+* **Integrations (first-time defaults):** When `radius_plugin_defaults_version` is below **2**, Radius **detects** installed plugins on disk and turns on matching **deploy meta copy** prefixes (+ Yoast integration + Elementor meta prefix when relevant). The Integrations tab shows **Detected** next to each known plugin. **Scheduled content rotation** is turned **on** by default and `radius_rotate_content` is **rescheduled** via WP-Cron (`radius_ndays` interval from Settings → Content).
+* **Migration:** Removed writing Yoast meta-token rows into **global** site replacers during the templates pipeline (templates already carry those tokens).
+
+= 1.6.32 =
+* **Migration wizard step order:** **Service area anchors** now run **before** **site replacers** so `location_code` / per–service-area values resolve when copying Magic Page x-fields.
+* **Site replacers (Magic Page):** `_magic_page_xfields` entries with **`custom` + `locations`** (e.g. `%location-set-downers-grove%`) map to **`area_overrides`** by `sa-*` **location_code**; default + per-area **phone** HTML (e.g. `tel:` links) is preserved.
+* **Settings:** Partial `site_replacements` in the database is **merged** with default rows for non-template keys. **phone-number** / **phone-tel** primary values allow **HTML** in sanitize (not `sanitize_textarea_field` alone). *(Yoast meta-line tokens moved to template-only merge in 1.6.33.)*
 
 = 1.6.31 =
 * **Migration wizard / templates:** Automated templates pipeline runs in **two HTTP requests** — import/publish/variants first (`templates_pipeline`), then spintax + labels + default service-area template (`templates_pipeline_continue`). Shortens each admin-ajax request to reduce **Cloudflare 524** / proxy timeouts. Wizard retries **continue** up to 3 times with backoff after transient failures.

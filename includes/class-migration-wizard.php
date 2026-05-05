@@ -33,8 +33,8 @@ final class Radius_Migration_Wizard {
 		return array(
 			'places',
 			'templates',
-			'replacers',
 			'anchors',
+			'replacers',
 			'magic_pages',
 			'magic_page_plugin',
 			'deploy_areas',

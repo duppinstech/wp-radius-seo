@@ -2042,8 +2042,8 @@ Fast roadside help in {{region}}
 							$labels = array(
 								'places'      => __( 'Locations in the place library', 'radius' ),
 								'templates'   => __( 'Service templates (import & variants)', 'radius' ),
-								'replacers'   => __( 'Site replacers (company & phone)', 'radius' ),
 								'anchors'     => __( 'Service area anchors', 'radius' ),
+								'replacers'   => __( 'Site replacers (company & phone)', 'radius' ),
 								'magic_pages' => __( 'Magic Page landing pages removed (or cleared manually)', 'radius' ),
 							);
 							foreach ( $labels as $k => $label ) :
@@ -2760,6 +2760,9 @@ Fast roadside help in {{region}}
 									<input type="checkbox" name="enable_elementor" value="1" <?php checked( ! empty( $s['enable_elementor'] ) ); ?> />
 									<?php esc_html_e( 'Register Landings and Templates for Elementor editing.', 'radius' ); ?>
 								</label>
+								<?php if ( Radius_Settings::integration_plugin_detected( 'elementor' ) ) : ?>
+									<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+								<?php endif; ?>
 								<p class="description"><?php esc_html_e( 'After toggling, save once so Radius can merge supported post types, then open a landing or template → Edit with Elementor.', 'radius' ); ?></p>
 							</td>
 						</tr>
@@ -2770,8 +2773,13 @@ Fast roadside help in {{region}}
 									<input type="checkbox" name="integrate_yoast" value="1" <?php checked( ! empty( $s['integrate_yoast'] ) ); ?> />
 									<?php esc_html_e( 'Show Yoast SEO on Templates and Landings (block editor sidebar or classic metabox).', 'radius' ); ?>
 								</label>
-								<?php if ( ! defined( 'WPSEO_VERSION' ) ) : ?>
-									<p class="description" style="color:#b32d2e;"><?php esc_html_e( 'Yoast SEO is not active — install/activate it to use this option.', 'radius' ); ?></p>
+								<?php if ( Radius_Settings::integration_plugin_detected( 'yoast' ) ) : ?>
+									<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+								<?php endif; ?>
+								<?php if ( ! defined( 'WPSEO_VERSION' ) && ! Radius_Settings::integration_plugin_detected( 'yoast' ) ) : ?>
+									<p class="description" style="color:#b32d2e;"><?php esc_html_e( 'Yoast SEO is not installed — add it to use this option.', 'radius' ); ?></p>
+								<?php elseif ( ! defined( 'WPSEO_VERSION' ) ) : ?>
+									<p class="description"><?php esc_html_e( 'Yoast is installed but not active — activate it under Plugins.', 'radius' ); ?></p>
 								<?php else : ?>
 									<p class="description"><?php esc_html_e( 'Templates use a non-public post type; Radius registers them with Yoast so the SEO panel appears. Template URLs stay out of the XML sitemap; landings remain indexable when Yoast allows. The sitemap index uses landing-sitemap.xml and service-area-sitemap.xml instead of the internal CPT filenames.', 'radius' ); ?></p>
 								<?php endif; ?>
@@ -2789,6 +2797,9 @@ Fast roadside help in {{region}}
 											<?php esc_html_e( 'Yoast SEO — all keys starting with', 'radius' ); ?>
 											<code>_yoast_wpseo</code>
 										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'yoast' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
 									</p>
 									<p>
 										<label>
@@ -2797,6 +2808,9 @@ Fast roadside help in {{region}}
 											<code>_elementor</code>
 											<?php esc_html_e( '(in addition to the normal Elementor document copy when the template is built with Elementor)', 'radius' ); ?>
 										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'elementor' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
 									</p>
 									<p>
 										<label>
@@ -2804,6 +2818,9 @@ Fast roadside help in {{region}}
 											<?php esc_html_e( 'LiteSpeed — all keys starting with', 'radius' ); ?>
 											<code>_litespeed</code>
 										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'litespeed' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
 									</p>
 									<p>
 										<label>
@@ -2811,6 +2828,9 @@ Fast roadside help in {{region}}
 											<?php esc_html_e( 'Rank Math — all keys starting with', 'radius' ); ?>
 											<code>_rank_math</code>
 										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'rankmath' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
 									</p>
 									<p>
 										<label>
@@ -2818,6 +2838,9 @@ Fast roadside help in {{region}}
 											<?php esc_html_e( 'AIOSEO — all keys starting with', 'radius' ); ?>
 											<code>_aioseo</code>
 										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'aioseo' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
 									</p>
 								</fieldset>
 								<p>

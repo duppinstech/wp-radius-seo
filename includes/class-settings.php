@@ -16,6 +16,36 @@ class Radius_Settings {
 
 	const OPTION = 'radius_settings';
 
+	/** Option key: one-time integration + rotation defaults (see bootstrap_plugin_defaults). */
+	const OPTION_PLUGIN_DEFAULTS_VERSION = 'radius_plugin_defaults_version';
+
+	/**
+	 * Replacer keys reserved for template `_radius_xfields` / Yoast tokens — not global Site replacers.
+	 *
+	 * @return string[]
+	 */
+	public static function template_level_site_replacer_keys() {
+		return array(
+			'towing-meta-title',
+			'towing-meta-desc',
+			'roadside-meta-title',
+			'roadside-meta-desc',
+			'heavy-meta-title',
+			'heavy-meta-desc',
+			'equipment-meta-title',
+			'equipment-meta-desc',
+		);
+	}
+
+	/**
+	 * @param string $key Sanitized key.
+	 * @return bool
+	 */
+	public static function is_template_level_site_replacer_key( $key ) {
+		$key = sanitize_key( (string) $key );
+		return $key !== '' && in_array( $key, self::template_level_site_replacer_keys(), true );
+	}
+
 	/**
 	 * Default Site replacers rows for new installs (also used when stored list is empty).
 	 *
@@ -51,46 +81,6 @@ class Radius_Settings {
 			array(
 				'key'            => 'equipment-keyword',
 				'values'         => array( 'Heavy Equipment Towing' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'towing-meta-title',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'towing-meta-desc',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'roadside-meta-title',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'roadside-meta-desc',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'heavy-meta-title',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'heavy-meta-desc',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'equipment-meta-title',
-				'values'         => array( '' ),
-				'area_overrides' => array(),
-			),
-			array(
-				'key'            => 'equipment-meta-desc',
-				'values'         => array( '' ),
 				'area_overrides' => array(),
 			),
 			array(
@@ -131,7 +121,7 @@ class Radius_Settings {
 			'deploy_copy_prefix_litespeed'    => 0,
 			'deploy_copy_prefix_rankmath'     => 0,
 			'deploy_copy_prefix_aioseo'       => 0,
-			'content_rotation_enabled'        => 0,
+			'content_rotation_enabled'        => 1,
 			'content_rotation_interval_days'  => 30,
 			'content_rotation_batch'          => 25,
 			'dynamic_content_per_request'     => 0,
@@ -156,8 +146,154 @@ class Radius_Settings {
 		}
 		if ( ! isset( $v['site_replacements'] ) || ! is_array( $v['site_replacements'] ) || $v['site_replacements'] === array() ) {
 			$v['site_replacements'] = self::default_site_replacements();
+		} else {
+			$v['site_replacements'] = self::merge_site_replacements_with_defaults( $v['site_replacements'] );
 		}
 		return $v;
+	}
+
+	/**
+	 * Ensure partial saved rows still include every default key; drop template-only Yoast/meta rows from global storage.
+	 *
+	 * @param array<int,mixed> $stored_rows Rows from the option.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function merge_site_replacements_with_defaults( array $stored_rows ) {
+		$by_key = array();
+		foreach ( $stored_rows as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$k = sanitize_key( (string) $row['key'] );
+				if ( self::is_template_level_site_replacer_key( $k ) ) {
+					continue;
+				}
+				$by_key[ $k ] = $row;
+			}
+		}
+		$out = array();
+		foreach ( self::default_site_replacements() as $def ) {
+			$k = sanitize_key( (string) $def['key'] );
+			if ( $k === '' ) {
+				continue;
+			}
+			$out[] = isset( $by_key[ $k ] ) ? $by_key[ $k ] : $def;
+			unset( $by_key[ $k ] );
+		}
+		foreach ( $by_key as $extra ) {
+			$out[] = $extra;
+		}
+		return $out;
+	}
+
+	/**
+	 * Plugin basename(s) used only to detect presence under WP_PLUGIN_DIR (activation / Integrations UI).
+	 *
+	 * @return array<string,string|string[]> Option key => single basename or list of alternatives.
+	 */
+	public static function integration_plugin_detection_files() {
+		$map = array(
+			'yoast'      => array(
+				'wordpress-seo/wp-seo.php',
+				'wordpress-seo-premium/wp-seo-premium.php',
+			),
+			'elementor'  => array( 'elementor/elementor.php' ),
+			'litespeed'  => array( 'litespeed-cache/litespeed-cache.php' ),
+			'rankmath'   => array( 'seo-by-rank-math/rank-math.php' ),
+			'aioseo'     => array(
+				'all-in-one-seo-pack/all_in_one_seo_pack.php',
+				'all-in-one-seo-pack-pro/all_in_one_seo_pack.php',
+			),
+		);
+		/**
+		 * Adjust plugin paths checked for “Detected” badges and deploy-prefix defaults.
+		 *
+		 * @param array<string,string|string[]> $map Group => basename(s).
+		 */
+		$f = apply_filters( 'radius_integration_plugin_detection_files', $map );
+		return is_array( $f ) ? $f : $map;
+	}
+
+	/**
+	 * @param string|string[] $basename_or_list Relative path under wp-plugins.
+	 * @return bool
+	 */
+	public static function is_plugin_file_present( $basename_or_list ) {
+		if ( ! defined( 'WP_PLUGIN_DIR' ) || WP_PLUGIN_DIR === '' ) {
+			return false;
+		}
+		$list = is_array( $basename_or_list ) ? $basename_or_list : array( $basename_or_list );
+		foreach ( $list as $rel ) {
+			$rel = is_string( $rel ) ? trim( $rel ) : '';
+			if ( $rel === '' ) {
+				continue;
+			}
+			if ( file_exists( WP_PLUGIN_DIR . '/' . $rel ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a known SEO/build plugin folder exists (Integrations tab “Detected” badge).
+	 *
+	 * @param string $group yoast|elementor|litespeed|rankmath|aioseo.
+	 * @return bool
+	 */
+	public static function integration_plugin_detected( $group ) {
+		$group = sanitize_key( (string) $group );
+		$map   = self::integration_plugin_detection_files();
+		if ( empty( $map[ $group ] ) ) {
+			return false;
+		}
+		return self::is_plugin_file_present( $map[ $group ] );
+	}
+
+	/**
+	 * One-time: enable deploy-copy flags (+ Yoast UI + scheduled rotation) for plugins present on disk; schedules cron.
+	 *
+	 * @return void
+	 */
+	public static function bootstrap_plugin_defaults() {
+		if ( (int) get_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 0 ) >= 2 ) {
+			return;
+		}
+		if ( ! defined( 'WP_PLUGIN_DIR' ) || WP_PLUGIN_DIR === '' ) {
+			return;
+		}
+
+		$cur = get_option( self::OPTION, array() );
+		if ( ! is_array( $cur ) ) {
+			$cur = array();
+		}
+		$out = wp_parse_args( $cur, self::defaults() );
+
+		$out['content_rotation_enabled'] = 1;
+
+		$m = self::integration_plugin_detection_files();
+		if ( self::is_plugin_file_present( isset( $m['yoast'] ) ? $m['yoast'] : array() ) ) {
+			$out['integrate_yoast']           = 1;
+			$out['deploy_copy_prefix_yoast'] = 1;
+		}
+		if ( self::is_plugin_file_present( isset( $m['elementor'] ) ? $m['elementor'] : array() ) ) {
+			$out['deploy_copy_prefix_elementor'] = 1;
+			$out['enable_elementor']             = 1;
+		}
+		if ( self::is_plugin_file_present( isset( $m['litespeed'] ) ? $m['litespeed'] : array() ) ) {
+			$out['deploy_copy_prefix_litespeed'] = 1;
+		}
+		if ( self::is_plugin_file_present( isset( $m['rankmath'] ) ? $m['rankmath'] : array() ) ) {
+			$out['deploy_copy_prefix_rankmath'] = 1;
+		}
+		if ( self::is_plugin_file_present( isset( $m['aioseo'] ) ? $m['aioseo'] : array() ) ) {
+			$out['deploy_copy_prefix_aioseo'] = 1;
+		}
+
+		update_option( self::OPTION, $out );
+		update_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 2, false );
+
+		if ( class_exists( 'Radius_Rotation_Cron' ) ) {
+			Radius_Rotation_Cron::reschedule();
+		}
 	}
 
 	/**
@@ -404,10 +540,13 @@ class Radius_Settings {
 			$vals = array();
 			if ( ! empty( $row['values'] ) && is_array( $row['values'] ) ) {
 				foreach ( $row['values'] as $v ) {
-					$vals[] = sanitize_textarea_field( is_string( $v ) ? $v : (string) $v );
+					$vals[] = self::sanitize_site_replacement_value_for_key(
+						$key,
+						is_string( $v ) ? $v : (string) $v
+					);
 				}
 			} elseif ( isset( $row['value'] ) ) {
-				$vals[] = sanitize_textarea_field( (string) $row['value'] );
+				$vals[] = self::sanitize_site_replacement_value_for_key( $key, (string) $row['value'] );
 			}
 			if ( empty( $vals ) ) {
 				$vals = array( '' );
@@ -443,6 +582,9 @@ class Radius_Settings {
 					'value' => $val,
 				);
 			}
+			if ( self::is_template_level_site_replacer_key( $key ) ) {
+				continue;
+			}
 			$out[] = array(
 				'key'            => $key,
 				'values'         => $vals,
@@ -450,6 +592,25 @@ class Radius_Settings {
 			);
 		}
 		return $out;
+	}
+
+	/**
+	 * Allow telephone shortcode/HTML in site replacer primary values (Magic Page stores `<a href="tel:…">`).
+	 *
+	 * @param string $key Row key (already sanitized).
+	 * @param string $raw Raw string.
+	 * @return string
+	 */
+	private static function sanitize_site_replacement_value_for_key( $key, $raw ) {
+		$key = sanitize_key( (string) $key );
+		$raw = is_string( $raw ) ? $raw : (string) $raw;
+		if ( in_array( $key, array( 'phone-number', 'phone-tel' ), true ) ) {
+			if ( current_user_can( 'unfiltered_html' ) ) {
+				return $raw;
+			}
+			return wp_kses_post( $raw );
+		}
+		return sanitize_textarea_field( $raw );
 	}
 
 	/**

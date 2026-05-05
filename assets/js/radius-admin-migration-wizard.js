@@ -13,8 +13,8 @@
 	var STEP_KEYS = [
 		'places',
 		'templates',
-		'replacers',
 		'anchors',
+		'replacers',
 		'magic_pages',
 		'magic_page_plugin',
 		'deploy_areas',
@@ -23,8 +23,8 @@
 	var STEP_IDS = {
 		places: 'mw-step-places',
 		templates: 'mw-step-templates',
-		replacers: 'mw-step-replacers',
 		anchors: 'mw-step-anchors',
+		replacers: 'mw-step-replacers',
 		magic_pages: 'mw-step-magic-pages',
 		magic_page_plugin: 'mw-step-magic-page-plugin',
 		deploy_areas: 'mw-step-deploy-areas',
@@ -365,15 +365,15 @@
 			)
 		);
 		stepsOl.appendChild(
+			createStepRow('mw-step-anchors', i18n.stepAnchors, 'spin', 'anchors')
+		);
+		stepsOl.appendChild(
 			createStepRow(
 				'mw-step-replacers',
 				i18n.stepReplacers,
 				'spin',
 				'replacers'
 			)
-		);
-		stepsOl.appendChild(
-			createStepRow('mw-step-anchors', i18n.stepAnchors, 'spin', 'anchors')
 		);
 		stepsOl.appendChild(
 			createStepRow(
@@ -719,29 +719,6 @@
 				});
 				parts.push('</ul>');
 			}
-			if (skips.replacers) {
-				parts.push(
-					'<p><strong>' +
-						esc(i18n.summaryReplacers) +
-						':</strong> ' +
-						esc(i18n.summarySkippedReplacers || '') +
-						'</p>'
-				);
-			} else if (data && data.replacers && Object.keys(data.replacers).length) {
-				parts.push(
-					'<p><strong>' +
-						esc(i18n.summaryReplacers) +
-						':</strong> ' +
-						esc(String(data.replacers.updated || 0)) +
-						' ' +
-						esc(
-							data.replacers.keys && data.replacers.keys.length
-								? '(' + data.replacers.keys.join(', ') + ')'
-								: ''
-						) +
-						'</p>'
-				);
-			}
 			if (skips.anchors) {
 				parts.push(
 					'<p><strong>' +
@@ -767,6 +744,29 @@
 					});
 					parts.push('</ul>');
 				}
+			}
+			if (skips.replacers) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryReplacers) +
+						':</strong> ' +
+						esc(i18n.summarySkippedReplacers || '') +
+						'</p>'
+				);
+			} else if (data && data.replacers && Object.keys(data.replacers).length) {
+				parts.push(
+					'<p><strong>' +
+						esc(i18n.summaryReplacers) +
+						':</strong> ' +
+						esc(String(data.replacers.updated || 0)) +
+						' ' +
+						esc(
+							data.replacers.keys && data.replacers.keys.length
+								? '(' + data.replacers.keys.join(', ') + ')'
+								: ''
+						) +
+						'</p>'
+				);
 			}
 			if (skips.magic_pages) {
 				parts.push(
@@ -1176,41 +1176,6 @@
 			}
 
 			ensurePriorStepsComplete(steps, 2);
-			if (userWants.replacers) {
-				setStepState('mw-step-replacers', 'wait');
-				var jRep = await postWizard('site_replacers');
-				if (!jRep.success) {
-					throw new Error(
-						(jRep.data && jRep.data.message) ||
-							i18n.requestFailed ||
-							'Request failed'
-					);
-				}
-				jRepData = jRep.data || {};
-				setStepState('mw-step-replacers', 'done');
-				stFresh = await postWizard('status');
-				if (stFresh.success && stFresh.data && stFresh.data.steps) {
-					steps = stFresh.data.steps;
-					refreshStepRows(steps, preserveAfterRan(userWants, ran));
-				}
-				throwIfStepNotDone('replacers', steps);
-			} else {
-				if (steps.replacers && steps.replacers.done) {
-					setStepState('mw-step-replacers', 'done');
-				} else {
-					setStepState('mw-step-replacers', 'idle');
-				}
-				skips.replacers = true;
-			}
-			ran.replacers = true;
-
-			stFresh = await postWizard('status');
-			if (stFresh.success && stFresh.data && stFresh.data.steps) {
-				steps = stFresh.data.steps;
-				refreshStepRows(steps, preserveAfterRan(userWants, ran));
-			}
-
-			ensurePriorStepsComplete(steps, 3);
 			if (userWants.anchors) {
 				setStepState('mw-step-anchors', 'wait');
 				var jAnc = await postWizard('service_anchors');
@@ -1238,6 +1203,41 @@
 				skips.anchors = true;
 			}
 			ran.anchors = true;
+
+			stFresh = await postWizard('status');
+			if (stFresh.success && stFresh.data && stFresh.data.steps) {
+				steps = stFresh.data.steps;
+				refreshStepRows(steps, preserveAfterRan(userWants, ran));
+			}
+
+			ensurePriorStepsComplete(steps, 3);
+			if (userWants.replacers) {
+				setStepState('mw-step-replacers', 'wait');
+				var jRep = await postWizard('site_replacers');
+				if (!jRep.success) {
+					throw new Error(
+						(jRep.data && jRep.data.message) ||
+							i18n.requestFailed ||
+							'Request failed'
+					);
+				}
+				jRepData = jRep.data || {};
+				setStepState('mw-step-replacers', 'done');
+				stFresh = await postWizard('status');
+				if (stFresh.success && stFresh.data && stFresh.data.steps) {
+					steps = stFresh.data.steps;
+					refreshStepRows(steps, preserveAfterRan(userWants, ran));
+				}
+				throwIfStepNotDone('replacers', steps);
+			} else {
+				if (steps.replacers && steps.replacers.done) {
+					setStepState('mw-step-replacers', 'done');
+				} else {
+					setStepState('mw-step-replacers', 'idle');
+				}
+				skips.replacers = true;
+			}
+			ran.replacers = true;
 
 			stFresh = await postWizard('status');
 			if (stFresh.success && stFresh.data && stFresh.data.steps) {

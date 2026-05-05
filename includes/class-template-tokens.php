@@ -123,6 +123,51 @@ class Radius_Template_Tokens {
 	 * @param int $place_id    radius_place term ID.
 	 * @return void
 	 */
+	/**
+	 * Site-wide replacers merged with this template’s `_radius_xfields` (template wins on duplicate keys).
+	 * Yoast/meta-line tokens live on templates only; globals hold company/phone/keywords.
+	 *
+	 * @param int $template_id Template post ID.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function merged_site_and_template_xfield_rows( $template_id ) {
+		$template_id = (int) $template_id;
+		$lf_opts     = Radius_Settings::get();
+		$global      = isset( $lf_opts['site_replacements'] ) && is_array( $lf_opts['site_replacements'] ) ? $lf_opts['site_replacements'] : array();
+		$raw_opts    = get_option( Radius_Settings::OPTION, array() );
+		if ( is_array( $raw_opts ) && array_key_exists( 'site_replacements', $raw_opts ) && is_array( $raw_opts['site_replacements'] ) && $raw_opts['site_replacements'] === array() ) {
+			$global = array();
+		}
+		$tmpl = array();
+		if ( $template_id > 0 ) {
+			$tm = get_post_meta( $template_id, '_radius_xfields', true );
+			if ( is_string( $tm ) ) {
+				$tm = json_decode( $tm, true );
+			}
+			if ( is_array( $tm ) ) {
+				$tmpl = $tm;
+			}
+		}
+		if ( empty( $global ) ) {
+			return is_array( $tmpl ) ? array_values( $tmpl ) : array();
+		}
+		if ( empty( $tmpl ) ) {
+			return array_values( $global );
+		}
+		$by_key = array();
+		foreach ( $global as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+		foreach ( $tmpl as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+		return array_values( $by_key );
+	}
+
 	public static function prime_caches( $template_id, $place_id ) {
 		$template_id = (int) $template_id;
 		$place_id    = (int) $place_id;
@@ -164,22 +209,7 @@ class Radius_Template_Tokens {
 			$tokens['template_slug']  = '';
 		}
 
-		$lf_opts = Radius_Settings::get();
-		$xfields = isset( $lf_opts['site_replacements'] ) && is_array( $lf_opts['site_replacements'] ) ? $lf_opts['site_replacements'] : array();
-		// Persisted empty global list + per-template xfields: get() merges UI defaults; restore legacy fallback.
-		$raw_opts = get_option( Radius_Settings::OPTION, array() );
-		if ( is_array( $raw_opts ) && array_key_exists( 'site_replacements', $raw_opts ) && is_array( $raw_opts['site_replacements'] ) && $raw_opts['site_replacements'] === array() ) {
-			$xfields = array();
-		}
-		if ( empty( $xfields ) ) {
-			$xfields = get_post_meta( $template_id, '_radius_xfields', true );
-			if ( is_string( $xfields ) ) {
-				$xfields = json_decode( $xfields, true );
-			}
-			if ( ! is_array( $xfields ) ) {
-				$xfields = array();
-			}
-		}
+		$xfields = self::merged_site_and_template_xfield_rows( $template_id );
 
 		foreach ( $xfields as $row ) {
 			if ( empty( $row['key'] ) ) {
