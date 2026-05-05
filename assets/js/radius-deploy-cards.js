@@ -385,7 +385,15 @@
 						window.alert( msg );
 						return;
 					}
-					window.dispatchEvent( new CustomEvent( 'radiusOpenMigrationWizard' ) );
+					// Use the global exposed by radius-admin-migration-wizard.js when it is
+					// loaded on this page; fall back to a redirect when it is not.
+					var fallback = ( json.data && json.data.redirect ) ? json.data.redirect : null;
+					if ( typeof window.radiusMigrationWizardOpen === 'function' && window.radiusMigrationWizardOpen( fallback ) !== false ) {
+						return;
+					}
+					if ( fallback ) {
+						window.location.href = fallback;
+					}
 				} )
 				.catch( function () {
 					openBtn.disabled = false;

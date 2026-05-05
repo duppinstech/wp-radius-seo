@@ -1592,14 +1592,25 @@
 
 	// Allow external code (e.g. the "Rerun Migration" button on the deploy page) to
 	// open the wizard after a state reset without a full page reload.
-	window.addEventListener('radiusOpenMigrationWizard', function () {
+	window.radiusMigrationWizardOpen = function (fallbackUrl) {
 		if (!cfg.wizardNonce || !cfg.ajaxurl) {
-			return;
+			return false;
 		}
 		postWizard('status').then(function (st) {
 			if (st.success && st.data) {
 				ensureModal(st.data);
+			} else if (fallbackUrl) {
+				window.location.href = fallbackUrl;
+			}
+		}).catch(function () {
+			if (fallbackUrl) {
+				window.location.href = fallbackUrl;
 			}
 		});
+		return true;
+	};
+
+	window.addEventListener('radiusOpenMigrationWizard', function () {
+		window.radiusMigrationWizardOpen();
 	});
 })();
