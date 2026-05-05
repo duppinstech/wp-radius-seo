@@ -2782,13 +2782,72 @@ class Radius_Legacy_Import_Service {
 		}
 		$out['variant_ids'] = $variant_ids;
 
+		set_transient(
+			self::templates_pipeline_resume_transient_key(),
+			array(
+				'base_id'     => $base_id,
+				'variant_ids' => $variant_ids,
+				'titles'      => $titles,
+				'out_partial' => $out,
+			),
+			30 * MINUTE_IN_SECONDS
+		);
+
+		$out['pipeline_continue_required'] = true;
+		return $out;
+	}
+
+	/**
+	 * Transient key for splitting templates pipeline across two HTTP requests (proxy / Cloudflare timeouts).
+	 *
+	 * @return string
+	 */
+	private static function templates_pipeline_resume_transient_key() {
+		return 'radius_mw_tpl_resume_' . get_current_user_id();
+	}
+
+	/**
+	 * Second half of automated migration templates pipeline (spintax import + labels + default service-area template).
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function automated_migration_templates_pipeline_continue() {
+		$resume = get_transient( self::templates_pipeline_resume_transient_key() );
+		if ( ! is_array( $resume ) || empty( $resume['base_id'] ) || empty( $resume['out_partial'] ) || ! is_array( $resume['out_partial'] ) ) {
+			return array(
+				'errors'                     => array(
+					__( 'No in-progress templates pipeline (session expired). Run the templates step again.', 'radius' ),
+				),
+				'base_id'                    => 0,
+				'variant_ids'               => array(),
+				'pipeline_continue_expired' => true,
+			);
+		}
+
+		$out = self::automated_migration_templates_pipeline_finish_from_resume( $resume );
+		delete_transient( self::templates_pipeline_resume_transient_key() );
+		return $out;
+	}
+
+	/**
+	 * Spintax + service labels + service area template id (was tail of automated_migration_templates_pipeline).
+	 *
+	 * @param array<string,mixed> $resume Transient payload.
+	 * @return array<string,mixed>
+	 */
+	private static function automated_migration_templates_pipeline_finish_from_resume( array $resume ) {
+		$base_id     = (int) $resume['base_id'];
+		$variant_ids = isset( $resume['variant_ids'] ) && is_array( $resume['variant_ids'] ) ? $resume['variant_ids'] : array();
+		$titles      = isset( $resume['titles'] ) && is_array( $resume['titles'] ) ? $resume['titles'] : array();
+		$out         = isset( $resume['out_partial'] ) && is_array( $resume['out_partial'] ) ? $resume['out_partial'] : array();
+
 		$prefix_map = apply_filters(
 			'radius_migration_automated_spintax_prefix_map',
 			array(
-				$base_id                => array( 'towing' ),
-				$variant_ids['roadside'] => array( 'roadside' ),
-				$variant_ids['heavy']    => array( 'heavy' ),
-				$variant_ids['equipment'] => array( 'equipment' ),
+				$base_id                                         => array( 'towing' ),
+				isset( $variant_ids['roadside'] ) ? (int) $variant_ids['roadside'] : 0 => array( 'roadside' ),
+				isset( $variant_ids['heavy'] ) ? (int) $variant_ids['heavy'] : 0 => array( 'heavy' ),
+				isset( $variant_ids['equipment'] ) ? (int) $variant_ids['equipment'] : 0 => array( 'equipment' ),
 			),
 			$base_id,
 			$variant_ids

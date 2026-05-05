@@ -626,11 +626,27 @@ final class Radius_Migration_Wizard {
 					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
 					@set_time_limit( 600 );
 				}
+				if ( function_exists( 'ignore_user_abort' ) ) {
+					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+					@ignore_user_abort( true );
+				}
 				$res = Radius_Legacy_Import_Service::automated_migration_templates_pipeline();
+				wp_send_json_success( $res );
+				return;
+			case 'templates_pipeline_continue':
+				if ( function_exists( 'set_time_limit' ) ) {
+					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+					@set_time_limit( 600 );
+				}
+				if ( function_exists( 'ignore_user_abort' ) ) {
+					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+					@ignore_user_abort( true );
+				}
+				$res = Radius_Legacy_Import_Service::automated_migration_templates_pipeline_continue();
 				$tpl_ok = ! empty( $res['base_id'] )
 					|| ! empty( $res['variant_ids'] )
 					|| self::infer_templates_ready();
-				if ( $tpl_ok ) {
+				if ( $tpl_ok && empty( $res['pipeline_continue_expired'] ) ) {
 					self::record_step_done(
 						'templates',
 						__( 'Templates step finished (import, slugs, variants, spintax prefixes).', 'radius' ),

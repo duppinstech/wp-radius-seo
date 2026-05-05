@@ -118,14 +118,17 @@
 					i18n.requestFailed ||
 					'Request failed.';
 				if (!res.ok) {
+					var httpHint =
+						res.status === 403
+							? ' — your host/WAF may be blocking admin-ajax POSTs.'
+							: res.status === 524 || res.status === 504
+								? ' — often a Cloudflare/proxy timeout (origin took too long). Retry, or pause Cloudflare for wp-admin / raise origin timeouts.'
+								: '';
 					return {
 						success: false,
 						data: {
 							message:
-								bad +
-								' (HTTP ' +
-								res.status +
-								' — if this is 403, your host/WAF may be blocking admin-ajax POSTs.)',
+								bad + ' (HTTP ' + res.status + httpHint + ')',
 						},
 					};
 				}
@@ -1119,7 +1122,36 @@
 							'Request failed'
 					);
 				}
-				tpl = jTpl.data || {};
+				var tplAcc = jTpl.data || {};
+				while (tplAcc.pipeline_continue_required) {
+					await new Promise(function (r) {
+						setTimeout(r, 400);
+					});
+					var contOk = false;
+					var ctry = 0;
+					while (ctry < 3 && !contOk) {
+						jTpl = await postWizard('templates_pipeline_continue');
+						if (jTpl.success) {
+							contOk = true;
+						} else {
+							ctry += 1;
+							if (ctry < 3) {
+								await new Promise(function (r) {
+									setTimeout(r, 2000 * ctry);
+								});
+							}
+						}
+					}
+					if (!contOk) {
+						throw new Error(
+							(jTpl.data && jTpl.data.message) ||
+								i18n.requestFailed ||
+								'Request failed'
+						);
+					}
+					tplAcc = jTpl.data || {};
+				}
+				tpl = tplAcc;
 				setStepState('mw-step-templates', 'done');
 				stFresh = await postWizard('status');
 				if (stFresh.success && stFresh.data && stFresh.data.steps) {

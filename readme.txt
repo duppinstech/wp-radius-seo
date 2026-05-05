@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.30
+Stable tag: 1.6.31
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
 == Changelog ==
+
+= 1.6.31 =
+* **Migration wizard / templates:** Automated templates pipeline runs in **two HTTP requests** — import/publish/variants first (`templates_pipeline`), then spintax + labels + default service-area template (`templates_pipeline_continue`). Shortens each admin-ajax request to reduce **Cloudflare 524** / proxy timeouts. Wizard retries **continue** up to 3 times with backoff after transient failures.
+* **Wizard AJAX:** Clearer error hint when HTTP **524** or **504** (often proxy/origin timeout).
 
 = 1.6.30 =
 * **Magic Page mass landing delete:** Deletes run in **chunked AJAX batches** (cursor `after_post_id`, default ~45 posts per request) instead of one giant request — avoids **HTTP 500 / timeouts** on thousands of pages. Preview uses **COUNT** + sample IDs (no longer loads every candidate ID into memory). Wizard loops until `has_more` is false; running delete total is logged when the step completes. New helpers: `count_magic_page_generated_landing_candidates()`, `find_magic_page_generated_landing_post_ids_after()`, `delete_magic_page_generated_landing_pages_batch()`, `magic_page_landing_delete_blocked_reason_for_counts()`.
