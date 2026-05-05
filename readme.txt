@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.37
+Stable tag: 1.6.38
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.38 =
+* **Deploy step auto-detection:** "Deploy service area pages" and "Deploy landing pages" migration steps are now auto-detected as complete when published `radius_service_area` or `radius_landing` posts exist on the site, eliminating the false "Pending" status on migrated sites.
+* **Rerun Migration UX:** The "Rerun Migration" button now directly opens the full migration wizard modal (no intermediate step-picker modal). Click the button → state resets to open in the background → the wizard pops up immediately. Use the wizard's own step checkboxes to choose which steps to re-run.
+* **Wizard always available on Deploy page:** Migration wizard JS is now always loaded on the Deploy page when a migration is completed, so the rerun flow works without a page redirect.
 
 = 1.6.37 =
 * **Deploy page tabs:** Landings, Service Areas, and Migration are now separated into three tabs on the Deploy screen.

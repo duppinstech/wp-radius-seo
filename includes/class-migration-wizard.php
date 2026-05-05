@@ -345,12 +345,14 @@ final class Radius_Migration_Wizard {
 	 */
 	public static function build_steps_status() {
 		$rec = self::get_recorded_steps();
-		$inf_places    = self::infer_places_counts_match();
-		$inf_templates = self::infer_templates_ready();
-		$inf_rep       = self::infer_replacers_filled();
-		$inf_anc       = self::infer_anchors_configured();
-		$inf_mp_clear  = self::infer_magic_page_landings_cleared();
-		$inf_plugin_ok = self::infer_magic_page_plugin_step_complete();
+		$inf_places       = self::infer_places_counts_match();
+		$inf_templates    = self::infer_templates_ready();
+		$inf_rep          = self::infer_replacers_filled();
+		$inf_anc          = self::infer_anchors_configured();
+		$inf_mp_clear     = self::infer_magic_page_landings_cleared();
+		$inf_plugin_ok    = self::infer_magic_page_plugin_step_complete();
+		$inf_areas        = self::infer_deploy_areas_done();
+		$inf_landings     = self::infer_deploy_landings_done();
 
 		return array(
 			'places'    => array(
@@ -384,14 +386,14 @@ final class Radius_Migration_Wizard {
 				'inferred'  => $inf_plugin_ok,
 			),
 			'deploy_areas' => array(
-				'done'      => ! empty( $rec['deploy_areas'] ),
+				'done'      => ! empty( $rec['deploy_areas'] ) || $inf_areas,
 				'recorded'  => ! empty( $rec['deploy_areas'] ),
-				'inferred'  => false,
+				'inferred'  => $inf_areas && empty( $rec['deploy_areas'] ),
 			),
 			'deploy_landings' => array(
-				'done'      => ! empty( $rec['deploy_landings'] ),
+				'done'      => ! empty( $rec['deploy_landings'] ) || $inf_landings,
 				'recorded'  => ! empty( $rec['deploy_landings'] ),
-				'inferred'  => false,
+				'inferred'  => $inf_landings && empty( $rec['deploy_landings'] ),
 			),
 		);
 	}
@@ -487,6 +489,28 @@ final class Radius_Migration_Wizard {
 			return;
 		}
 		update_option( self::OPTION_STATE, $state, false );
+	}
+
+	/**
+	 * True when at least one published radius_service_area post exists.
+	 *
+	 * @return bool
+	 */
+	private static function infer_deploy_areas_done() {
+		$c = wp_count_posts( 'radius_service_area' );
+		if ( ! is_object( $c ) ) {
+			return false;
+		}
+		return (int) $c->publish > 0;
+	}
+
+	/**
+	 * True when at least one published radius_landing post exists.
+	 *
+	 * @return bool
+	 */
+	private static function infer_deploy_landings_done() {
+		return ! self::has_no_deployed_landings();
 	}
 
 	/**

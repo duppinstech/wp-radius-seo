@@ -1589,4 +1589,17 @@
 			});
 		}
 	});
+
+	// Allow external code (e.g. the "Rerun Migration" button on the deploy page) to
+	// open the wizard after a state reset without a full page reload.
+	window.addEventListener('radiusOpenMigrationWizard', function () {
+		if (!cfg.wizardNonce || !cfg.ajaxurl) {
+			return;
+		}
+		postWizard('status').then(function (st) {
+			if (st.success && st.data) {
+				ensureModal(st.data);
+			}
+		});
+	});
 })();

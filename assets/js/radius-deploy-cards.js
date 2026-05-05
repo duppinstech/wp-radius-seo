@@ -352,130 +352,53 @@
 		} );
 	}
 
-	function initMigrationRerunModal() {
-		var cfg = typeof window.radiusDeployMigration !== 'undefined' ? window.radiusDeployMigration : null;
-		if ( ! cfg ) {
-			return;
-		}
-		var overlay    = document.getElementById( 'radius-migration-rerun-dialog' );
-		var openBtn    = document.getElementById( 'radius-migration-rerun-trigger' );
-		var confirmBtn = document.getElementById( 'radius-migration-rerun-confirm' );
-		var statusEl   = document.getElementById( 'radius-migration-rerun-status' );
-		if ( ! overlay || ! openBtn ) {
+	function initMigrationRerunButton() {
+		var cfg    = typeof window.radiusDeployMigration !== 'undefined' ? window.radiusDeployMigration : null;
+		var openBtn = document.getElementById( 'radius-migration-rerun-trigger' );
+		if ( ! cfg || ! openBtn ) {
 			return;
 		}
 
-		function isOpen() {
-			return ! overlay.hasAttribute( 'hidden' );
-		}
+		openBtn.addEventListener( 'click', function () {
+			var originalHTML = openBtn.innerHTML;
+			openBtn.disabled = true;
+			openBtn.textContent = cfg.i18n.running || 'Opening wizard\u2026';
 
-		function openModal() {
-			overlay.removeAttribute( 'hidden' );
-			overlay.setAttribute( 'aria-hidden', 'false' );
-			openBtn.setAttribute( 'aria-expanded', 'true' );
-			if ( confirmBtn ) {
-				confirmBtn.focus();
-			}
-		}
+			var fd = new FormData();
+			fd.append( 'action', cfg.wizardAction || 'radius_migration_wizard' );
+			fd.append( 'nonce', cfg.nonce || '' );
+			fd.append( 'wizard_action', 'rerun' );
 
-		function closeModal() {
-			overlay.setAttribute( 'hidden', 'hidden' );
-			overlay.setAttribute( 'aria-hidden', 'true' );
-			openBtn.setAttribute( 'aria-expanded', 'false' );
-			openBtn.focus();
-		}
-
-		openBtn.addEventListener( 'click', function ( e ) {
-			e.preventDefault();
-			openModal();
-		} );
-
-		overlay.querySelectorAll( '[data-radius-rerun-close]' ).forEach( function ( el ) {
-			el.addEventListener( 'click', function () {
-				closeModal();
-			} );
-		} );
-
-		document.addEventListener( 'keydown', function ( e ) {
-			if ( e.key !== 'Escape' || ! isOpen() ) {
-				return;
-			}
-			e.preventDefault();
-			closeModal();
-		} );
-
-		if ( confirmBtn ) {
-			confirmBtn.addEventListener( 'click', function () {
-				var checked = overlay.querySelectorAll( 'input[name="radius_rerun_step"]:checked' );
-				var steps   = [];
-				checked.forEach( function ( cb ) {
-					steps.push( cb.value );
-				} );
-
-				if ( steps.length === 0 ) {
-					if ( statusEl ) {
-						statusEl.textContent = cfg.i18n.noSteps || 'Select at least one step to reset.';
-						statusEl.removeAttribute( 'hidden' );
+			fetch( cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' } )
+				.then( function ( r ) {
+					return r.json();
+				} )
+				.then( function ( json ) {
+					openBtn.disabled = false;
+					openBtn.innerHTML = originalHTML;
+					if ( ! json || ! json.success ) {
+						var msg =
+							json && json.data && json.data.message
+								? json.data.message
+								: ( cfg.i18n.errorPrefix || 'Error:' ) + ' Could not reset migration state.';
+						// eslint-disable-next-line no-alert
+						window.alert( msg );
+						return;
 					}
-					return;
-				}
-
-				if ( statusEl ) {
-					statusEl.setAttribute( 'hidden', 'hidden' );
-				}
-				confirmBtn.disabled    = true;
-				confirmBtn.textContent = cfg.i18n.running || 'Resetting\u2026';
-
-				var fd = new FormData();
-				fd.append( 'action', cfg.wizardAction || 'radius_migration_wizard' );
-				fd.append( 'nonce', cfg.nonce || '' );
-				fd.append( 'wizard_action', 'rerun' );
-				fd.append( 'steps', steps.join( ',' ) );
-
-				fetch( cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' } )
-					.then( function ( r ) {
-						return r.json();
-					} )
-					.then( function ( json ) {
-						if ( ! json || ! json.success ) {
-							var msg =
-								json && json.data && json.data.message
-									? json.data.message
-									: ( cfg.i18n.errorPrefix || 'Error:' ) + ' Unknown error.';
-							if ( statusEl ) {
-								statusEl.textContent = msg;
-								statusEl.removeAttribute( 'hidden' );
-							}
-							confirmBtn.disabled    = false;
-							confirmBtn.textContent = cfg.i18n.confirm || 'Reset \u0026 Reopen Wizard';
-							return;
-						}
-						var redirectUrl =
-							json.data && json.data.redirect
-								? json.data.redirect
-								: cfg.redirectUrl;
-						if ( redirectUrl ) {
-							window.location.href = redirectUrl;
-						} else {
-							window.location.reload();
-						}
-					} )
-					.catch( function () {
-						if ( statusEl ) {
-							statusEl.textContent =
-								( cfg.i18n.errorPrefix || 'Error:' ) + ' Network error.';
-							statusEl.removeAttribute( 'hidden' );
-						}
-						confirmBtn.disabled    = false;
-						confirmBtn.textContent = cfg.i18n.confirm || 'Reset \u0026 Reopen Wizard';
-					} );
-			} );
-		}
+					window.dispatchEvent( new CustomEvent( 'radiusOpenMigrationWizard' ) );
+				} )
+				.catch( function () {
+					openBtn.disabled = false;
+					openBtn.innerHTML = originalHTML;
+					// eslint-disable-next-line no-alert
+					window.alert( ( cfg.i18n.errorPrefix || 'Error:' ) + ' Network error.' );
+				} );
+		} );
 	}
 
 	document.addEventListener( 'DOMContentLoaded', function () {
 		initDeployHelpModal();
-		initMigrationRerunModal();
+		initMigrationRerunButton();
 		initChainedDeploy();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {

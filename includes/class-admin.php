@@ -214,7 +214,13 @@ class Radius_Admin {
 		if ( ! current_user_can( 'manage_options' ) || ! class_exists( 'Radius_Migration_Wizard' ) ) {
 			return;
 		}
-		if ( ! Radius_Migration_Wizard::should_enqueue_assets() ) {
+		// Also load on the deploy page when migration is completed so the "Rerun Migration"
+		// button can reset state then immediately open the wizard without a full redirect.
+		$is_deploy_rerun = ( 'radius_page_radius-deploy' === $hook_suffix )
+			&& class_exists( 'Radius_API_License' )
+			&& Radius_API_License::is_unlocked()
+			&& Radius_Migration_Wizard::get_state() === 'completed';
+		if ( ! Radius_Migration_Wizard::should_enqueue_assets() && ! $is_deploy_rerun ) {
 			return;
 		}
 		if ( self::$legacy_import_scripts_enqueued ) {
@@ -280,7 +286,7 @@ class Radius_Admin {
 				'wizardNonce'           => wp_create_nonce( 'radius_migration_wizard' ),
 				'wizardAction'          => 'radius_migration_wizard',
 				'deployBatchNonce'      => wp_create_nonce( 'radius_deploy_batch' ),
-				'openOnLoad'            => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+				'openOnLoad'            => ! $is_deploy_rerun && isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
 				'deployPageUrl'         => admin_url( 'admin.php?page=radius-deploy' ),
 				'importPageUrl'         => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 				'serviceAreasUrl'       => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
@@ -499,14 +505,11 @@ class Radius_Admin {
 			'radius-deploy-cards',
 			'radiusDeployMigration',
 			array(
-				'ajaxurl'     => admin_url( 'admin-ajax.php' ),
-				'nonce'       => wp_create_nonce( 'radius_migration_wizard' ),
+				'ajaxurl'      => admin_url( 'admin-ajax.php' ),
+				'nonce'        => wp_create_nonce( 'radius_migration_wizard' ),
 				'wizardAction' => 'radius_migration_wizard',
-				'redirectUrl' => admin_url( 'admin.php?page=radius-deploy&tab=migration&radius_open_migration=1' ),
-				'i18n'        => array(
-					'noSteps'     => __( 'Select at least one step to reset.', 'radius' ),
-					'running'     => __( 'Resetting…', 'radius' ),
-					'confirm'     => __( 'Reset & Reopen Wizard', 'radius' ),
+				'i18n'         => array(
+					'running'     => __( 'Opening wizard…', 'radius' ),
 					'errorPrefix' => __( 'Error:', 'radius' ),
 				),
 			)
@@ -1875,10 +1878,10 @@ class Radius_Admin {
 							<h3 class="radius-migration-status__title"><?php esc_html_e( 'Magic Page → Radius Migration', 'radius' ); ?></h3>
 							<span class="radius-migration-status__badge"><?php echo esc_html( $state_label ); ?></span>
 						</div>
-						<button type="button" id="radius-migration-rerun-trigger" class="button button-secondary" aria-haspopup="dialog" aria-controls="radius-migration-rerun-dialog" aria-expanded="false">
-							<span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span>
-							<?php esc_html_e( 'Rerun Migration', 'radius' ); ?>
-						</button>
+					<button type="button" id="radius-migration-rerun-trigger" class="button button-secondary">
+						<span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span>
+						<?php esc_html_e( 'Rerun Migration', 'radius' ); ?>
+					</button>
 					</div>
 				</div>
 
@@ -1925,43 +1928,7 @@ class Radius_Admin {
 			</div>
 		<?php endif; /* migration tab */ ?>
 
-		<div id="radius-migration-rerun-dialog" class="radius-deploy-help-overlay" hidden aria-hidden="true">
-			<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-rerun-close="1"></button>
-			<div class="radius-deploy-help-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="radius-migration-rerun-heading">
-				<div class="radius-deploy-help-modal__chrome">
-					<header class="radius-deploy-help-modal__header">
-						<h2 class="radius-deploy-help-modal__title" id="radius-migration-rerun-heading"><?php esc_html_e( 'Rerun Migration Steps', 'radius' ); ?></h2>
-						<button type="button" class="radius-deploy-help-modal__x" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-rerun-close="1">&times;</button>
-					</header>
-					<div class="radius-deploy-help-modal__body">
-						<p><?php esc_html_e( 'Select which steps to reset. The migration wizard will reopen so you can run them again.', 'radius' ); ?></p>
-						<ul class="radius-migration-rerun-steps">
-							<?php foreach ( $step_labels as $step_key => $step_label ) : ?>
-							<?php $step_done_modal = ! empty( $migration_steps[ $step_key ]['done'] ); ?>
-							<li>
-								<label>
-									<input type="checkbox" name="radius_rerun_step" value="<?php echo esc_attr( $step_key ); ?>"<?php echo $step_done_modal ? ' checked' : ''; ?>>
-									<?php echo esc_html( $step_label ); ?>
-									<?php if ( $step_done_modal ) : ?>
-										<span class="radius-badge radius-badge-ok"><?php esc_html_e( 'Done', 'radius' ); ?></span>
-									<?php else : ?>
-										<span class="radius-badge"><?php esc_html_e( 'Pending', 'radius' ); ?></span>
-									<?php endif; ?>
-								</label>
-							</li>
-							<?php endforeach; ?>
-						</ul>
-					</div>
-					<footer class="radius-deploy-help-modal__footer radius-migration-rerun-footer">
-						<button id="radius-migration-rerun-confirm" class="button button-primary"><?php esc_html_e( 'Reset & Reopen Wizard', 'radius' ); ?></button>
-						<button type="button" class="button button-secondary" data-radius-rerun-close="1"><?php esc_html_e( 'Cancel', 'radius' ); ?></button>
-						<p id="radius-migration-rerun-status" class="description" hidden></p>
-					</footer>
-				</div>
-			</div>
-		</div>
-
-		<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
+	<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
 				<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-deploy-close="1"></button>
 				<div class="radius-deploy-help-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="radius-deploy-help-heading">
 					<div class="radius-deploy-help-modal__chrome">
