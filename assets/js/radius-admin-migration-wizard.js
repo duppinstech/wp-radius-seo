@@ -1481,7 +1481,9 @@
 			return;
 		}
 		var p = st.data;
-		if (!p.wizard_available && !p.offer) {
+		// When openOnLoad is set the user explicitly requested the wizard via URL — skip
+		// the wizard_available gate so the modal always opens on that redirect.
+		if (!cfg.openOnLoad && !p.wizard_available && !p.offer) {
 			return;
 		}
 		if (p.show_auto_modal || p.show_modal || cfg.openOnLoad) {
@@ -1515,15 +1517,16 @@
 			if (overlayEl || !cfg.wizardNonce || !cfg.openOnLoad) {
 				return;
 			}
-			return postWizard('status').then(function (st) {
-				if (overlayEl) {
-					return;
-				}
-				var p = st.success && st.data ? st.data : {};
-				if (!p.wizard_available && !p.offer) {
-					return;
-				}
-				ensureModal(p);
+		return postWizard('status').then(function (st) {
+			if (overlayEl) {
+				return;
+			}
+			var p = st.success && st.data ? st.data : {};
+			// openOnLoad path: open regardless of wizard_available.
+			if (!cfg.openOnLoad && !p.wizard_available && !p.offer) {
+				return;
+			}
+			ensureModal(p);
 				try {
 					window.history.replaceState(
 						{},

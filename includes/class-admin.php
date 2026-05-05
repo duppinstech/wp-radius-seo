@@ -214,12 +214,16 @@ class Radius_Admin {
 		if ( ! current_user_can( 'manage_options' ) || ! class_exists( 'Radius_Migration_Wizard' ) ) {
 			return;
 		}
-		// Also load on the deploy page when migration is completed so the "Rerun Migration"
-		// button can reset state then immediately open the wizard without a full redirect.
-		$is_deploy_rerun = ( 'radius_page_radius-deploy' === $hook_suffix )
+		// Also load on the deploy page when migration is completed (rerun button available)
+		// OR when the rerun redirect lands (?radius_open_migration=1), so the wizard JS
+		// is present and can auto-open regardless of the saved migration state.
+		$is_deploy_page  = ( 'radius_page_radius-deploy' === $hook_suffix );
+		$has_open_param  = $is_deploy_page // phpcs:ignore WordPress.Security.NonceVerification
+			&& isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration']; // phpcs:ignore WordPress.Security.NonceVerification
+		$is_deploy_rerun = $is_deploy_page
 			&& class_exists( 'Radius_API_License' )
 			&& Radius_API_License::is_unlocked()
-			&& Radius_Migration_Wizard::get_state() === 'completed';
+			&& ( Radius_Migration_Wizard::get_state() === 'completed' || $has_open_param );
 		if ( ! Radius_Migration_Wizard::should_enqueue_assets() && ! $is_deploy_rerun ) {
 			return;
 		}
@@ -286,7 +290,7 @@ class Radius_Admin {
 				'wizardNonce'           => wp_create_nonce( 'radius_migration_wizard' ),
 				'wizardAction'          => 'radius_migration_wizard',
 				'deployBatchNonce'      => wp_create_nonce( 'radius_deploy_batch' ),
-				'openOnLoad'            => ! $is_deploy_rerun && isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+				'openOnLoad'            => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
 				'deployPageUrl'         => admin_url( 'admin.php?page=radius-deploy' ),
 				'importPageUrl'         => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 				'serviceAreasUrl'       => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
