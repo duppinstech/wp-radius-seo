@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.38
+Stable tag: 1.6.39
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.39 =
+* **Rerun Migration:** "Rerun Migration" button on the Migration tab now opens the full migration wizard modal directly — no intermediate step-picker, no confusing redirect. If the inline open path is unavailable the page performs a seamless redirect that auto-opens the wizard. Either way the wizard appears immediately so you can choose which steps to re-run using the wizard's own checkboxes.
+* **Deploy step auto-detection:** "Deploy service area pages" and "Deploy landing pages" migration steps now show as Done (auto-detected) whenever published service area or landing posts already exist on the site, eliminating false Pending status on completed sites.
+* **Wizard always available on Deploy page:** Migration wizard JS is loaded on the Deploy page whenever a migration has been completed, so the rerun flow works without a manual page reload.
 
 = 1.6.38 =
 * **Deploy step auto-detection:** "Deploy service area pages" and "Deploy landing pages" migration steps are now auto-detected as complete when published `radius_service_area` or `radius_landing` posts exist on the site, eliminating the false "Pending" status on migrated sites.
