@@ -60,6 +60,9 @@ class Radius_Plugin {
 		// rewrite rules are not overwritten when both use the same URL prefix (e.g. service-area).
 		add_action( 'init', array( $this, 'register_post_types' ), 20 );
 		add_action( 'init', array( $this, 'register_post_meta' ), 21 );
+		// Late so we lose the race to Magic Page (init/10) and any other plugin that
+		// owns `[cities]`. Only takes over when nobody else has claimed the shortcode.
+		add_action( 'init', array( $this, 'maybe_register_cities_shortcode_fallback' ), 99 );
 		add_action( 'elementor/loaded', array( $this, 'register_elementor_support' ) );
 		add_filter( 'the_content', array( $this, 'maybe_render_template_preview_content' ), 19 );
 		add_filter( 'the_content', array( $this, 'maybe_render_landing_content' ), 20 );
@@ -87,6 +90,33 @@ class Radius_Plugin {
 		$post_types[] = 'radius_service_area';
 		$post_types[] = 'radius_template';
 		return array_unique( $post_types );
+	}
+
+	/**
+	 * Register Radius's `[cities]` shortcode handler only when no other plugin has claimed it.
+	 *
+	 * Acts as a render-time fallback for builders we don't walk at deploy time
+	 * (Beaver Builder modules, Avada Fusion elements, custom meta) and for legacy
+	 * deployed pages that still contain a literal `[cities …]` because they were
+	 * built before the Elementor-JSON expansion fix. Magic Page (init/10) keeps
+	 * priority while it is active; this hook is registered on init/99.
+	 *
+	 * @return void
+	 */
+	public function maybe_register_cities_shortcode_fallback() {
+		/**
+		 * Disable the runtime `[cities]` fallback (e.g. when another plugin should
+		 * always handle the shortcode regardless of registration order).
+		 *
+		 * @param bool $enabled Default true.
+		 */
+		if ( ! apply_filters( 'radius_register_cities_shortcode_fallback', true ) ) {
+			return;
+		}
+		if ( shortcode_exists( 'cities' ) ) {
+			return;
+		}
+		add_shortcode( 'cities', array( 'Radius_Deploy_Service', 'shortcode_cities_runtime' ) );
 	}
 
 	/**

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.41
+Stable tag: 1.6.42
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.42 =
+* **Fix: `[cities]` shortcode now expands inside Elementor templates.** The shortcode lives in `_elementor_data` JSON (not `post_content`) on Elementor-built templates. The deploy pipeline now threads `$place_id` through `render_value_for_deploy`, which walks the entire Elementor element tree and expands `[cities …]` in every string node — including text-editor widget `editor` fields — at deploy time. Copied meta (Yoast, page settings) is also walked. A runtime fallback `add_shortcode('cities', ...)` registered at `init/99` handles any remaining legacy pages or page-builders not covered by the deploy walk; Magic Page keeps priority while active.
 
 = 1.6.41 =
 * **New: `[cities]` Magic Page shortcode expanded at deploy time.** Templates that contain `[cities count="35" type="ul"]` (or any supported variant) are now resolved to a proper HTML unordered list (or CSV) of nearby places when a landing or service-area page is deployed/redeployed. Supports attributes: `count`, `type` (ul/ult/csv/csvt), `max-radius`, `min-radius`, `label`. Links point to the nearest published service-area or landing page for each place.

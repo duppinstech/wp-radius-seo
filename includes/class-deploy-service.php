@@ -56,7 +56,7 @@ class Radius_Deploy_Service {
 			if ( empty( $tokens ) || empty( $tokens['place_name'] ) ) {
 				++$out['skipped'];
 				continue;
-			}
+		}
 
 		$seed    = $template_id * 100000 + $place_id;
 		$title   = self::compute_landing_title( $template, $tokens, $seed );
@@ -66,10 +66,10 @@ class Radius_Deploy_Service {
 		);
 
 		$slug_base = 'radius_service_area' === $target_pt
-				? self::compute_service_area_slug_base( $tokens )
-				: self::compute_landing_slug_base( $template, $tokens, $seed );
+			? self::compute_service_area_slug_base( $tokens )
+			: self::compute_landing_slug_base( $template, $tokens, $seed );
 
-			$existing = self::find_deployed( $template_id, $place_id, $target_pt );
+		$existing = self::find_deployed( $template_id, $place_id, $target_pt );
 
 			if ( $existing ) {
 				if ( ! $update ) {
@@ -90,7 +90,7 @@ class Radius_Deploy_Service {
 					continue;
 				}
 				self::attach_meta( (int) $existing, $template_id, $place_id );
-				$err = self::sync_deployed_landing( (int) $existing, $template_id, $tokens, $seed );
+				$err = self::sync_deployed_landing( (int) $existing, $template_id, $place_id, $tokens, $seed );
 				if ( $err !== '' ) {
 					$out['errors'][] = $err;
 				}
@@ -116,7 +116,7 @@ class Radius_Deploy_Service {
 			}
 
 			self::attach_meta( (int) $post_id, $template_id, $place_id );
-			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $tokens, $seed );
+			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $place_id, $tokens, $seed );
 			if ( $err !== '' ) {
 				$out['errors'][] = $err;
 			}
@@ -190,7 +190,7 @@ class Radius_Deploy_Service {
 		}
 
 		self::attach_meta( $landing_id, $template_id, $place_id );
-		$err = self::sync_deployed_landing( $landing_id, $template_id, $tokens, $seed );
+		$err = self::sync_deployed_landing( $landing_id, $template_id, $place_id, $tokens, $seed );
 		wp_set_object_terms( $landing_id, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
 
 		return $err;
@@ -439,15 +439,15 @@ class Radius_Deploy_Service {
 	 * @param int                  $seed        Spintax seed.
 	 * @return string Empty on success, short error message on failure.
 	 */
-	private static function sync_deployed_landing( $landing_id, $template_id, array $tokens, $seed ) {
-		self::copy_selected_template_meta( $landing_id, $template_id, $tokens, $seed );
+	private static function sync_deployed_landing( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
+		self::copy_selected_template_meta( $landing_id, $template_id, (int) $place_id, $tokens, $seed );
 
 		$elementor_ok = false;
 		if ( ! empty( Radius_Settings::get()['enable_elementor'] )
 			&& class_exists( '\Elementor\Plugin' )
 			&& get_post_meta( $template_id, '_elementor_edit_mode', true ) === 'builder' ) {
 			try {
-				self::sync_elementor_document_to_landing( $landing_id, $template_id, $tokens, $seed );
+				self::sync_elementor_document_to_landing( $landing_id, $template_id, (int) $place_id, $tokens, $seed );
 				$elementor_ok = true;
 			} catch ( \Throwable $e ) {
 				return sprintf(
@@ -565,11 +565,12 @@ class Radius_Deploy_Service {
 	 *
 	 * @param int                  $landing_id  Landing post ID.
 	 * @param int                  $template_id Template post ID.
+	 * @param int                  $place_id    radius_place term ID (for [cities] expansion).
 	 * @param array<string,string> $tokens      Token map.
 	 * @param int                  $seed        Seed.
 	 * @return void
 	 */
-	private static function copy_selected_template_meta( $landing_id, $template_id, array $tokens, $seed ) {
+	private static function copy_selected_template_meta( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
 		$keys = self::collect_deploy_meta_keys_to_copy( (int) $template_id );
 		if ( empty( $keys ) ) {
 			return;
@@ -588,7 +589,7 @@ class Radius_Deploy_Service {
 			if ( false === $val ) {
 				continue;
 			}
-			$rendered = self::render_value_for_deploy( $val, $tokens, $seed );
+			$rendered = self::render_value_for_deploy( $val, $tokens, $seed, (int) $place_id );
 			update_post_meta( $landing_id, $key, $rendered );
 		}
 	}
@@ -638,19 +639,29 @@ class Radius_Deploy_Service {
 	}
 
 	/**
-	 * @param mixed                  $value Value from meta or Elementor JSON.
-	 * @param array<string,string> $tokens Token map.
-	 * @param int                    $seed   Seed.
+	 * Render Radius tokens on a value tree, then expand the legacy `[cities]` Magic Page
+	 * shortcode for the destination place. Walks both meta values and Elementor JSON so
+	 * `[cities …]` embedded in widget settings (e.g. `text-editor.editor`) is baked into
+	 * static HTML at deploy time and survives Magic Page being uninstalled.
+	 *
+	 * @param mixed                $value    Value from meta or Elementor JSON.
+	 * @param array<string,string> $tokens   Token map.
+	 * @param int                  $seed     Seed for deterministic spintax/random picks.
+	 * @param int                  $place_id radius_place term ID (>0 enables [cities] expansion).
 	 * @return mixed
 	 */
-	private static function render_value_for_deploy( $value, array $tokens, $seed ) {
+	private static function render_value_for_deploy( $value, array $tokens, $seed, $place_id = 0 ) {
 		if ( is_string( $value ) ) {
-			return Radius_Token_Engine::render( $value, $tokens, $seed );
+			$rendered = Radius_Token_Engine::render( $value, $tokens, $seed );
+			if ( $place_id > 0 && strpos( $rendered, '[cities' ) !== false ) {
+				$rendered = self::expand_cities_shortcode( $rendered, (int) $place_id );
+			}
+			return $rendered;
 		}
 		if ( is_array( $value ) ) {
 			$out = array();
 			foreach ( $value as $k => $v ) {
-				$out[ $k ] = self::render_value_for_deploy( $v, $tokens, $seed );
+				$out[ $k ] = self::render_value_for_deploy( $v, $tokens, $seed, $place_id );
 			}
 			return $out;
 		}
@@ -662,11 +673,12 @@ class Radius_Deploy_Service {
 	 *
 	 * @param int                  $landing_id  Landing post ID.
 	 * @param int                  $template_id Template post ID.
+	 * @param int                  $place_id    radius_place term ID (for [cities] expansion).
 	 * @param array<string,string> $tokens      Token map.
 	 * @param int                  $seed        Seed.
 	 * @return void
 	 */
-	private static function sync_elementor_document_to_landing( $landing_id, $template_id, array $tokens, $seed ) {
+	private static function sync_elementor_document_to_landing( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
 		\Elementor\Plugin::$instance->db->copy_elementor_meta( $template_id, $landing_id );
 
 		$document = \Elementor\Plugin::$instance->documents->get( $landing_id, false );
@@ -676,7 +688,7 @@ class Radius_Deploy_Service {
 
 		$elements = $document->get_elements_data();
 		if ( ! empty( $elements ) && is_array( $elements ) ) {
-			$elements = self::render_value_for_deploy( $elements, $tokens, $seed );
+			$elements = self::render_value_for_deploy( $elements, $tokens, $seed, (int) $place_id );
 			/**
 			 * Filter Elementor elements JSON after token replacement (before save + CSS).
 			 *
@@ -691,7 +703,7 @@ class Radius_Deploy_Service {
 
 		$page_settings = get_post_meta( $landing_id, \Elementor\Core\Base\Document::PAGE_META_KEY, true );
 		if ( is_array( $page_settings ) && $page_settings !== array() ) {
-			$page_settings = self::render_value_for_deploy( $page_settings, $tokens, $seed );
+			$page_settings = self::render_value_for_deploy( $page_settings, $tokens, $seed, (int) $place_id );
 			update_post_meta( $landing_id, \Elementor\Core\Base\Document::PAGE_META_KEY, $page_settings );
 		}
 
@@ -706,6 +718,47 @@ class Radius_Deploy_Service {
 				$css->update();
 			}
 		}
+	}
+
+	/**
+	 * Runtime fallback `[cities]` shortcode handler.
+	 *
+	 * Registered (via Radius_Plugin) only when no other plugin already owns the `cities`
+	 * shortcode — Magic Page wins when active. This guarantees deployed landings whose
+	 * Elementor JSON / page-builder data still contain a literal `[cities …]` (e.g. legacy
+	 * pages deployed before the Elementor-JSON expansion fix, or builders we don't walk
+	 * during deploy: Beaver Builder modules, Avada Fusion shortcodes, custom meta) keep
+	 * rendering correctly when Magic Page is later uninstalled.
+	 *
+	 * Place context comes from the rendering post's `_radius_place_id` meta, set by
+	 * `Radius_Deploy_Service::attach_meta()` on every `radius_landing` / `radius_service_area`.
+	 * Outside of those contexts the shortcode renders empty (deliberate: we do not guess
+	 * which place a generic page or feed should sort by).
+	 *
+	 * @param array<string,string>|string $atts Parsed shortcode atts (or '' when none).
+	 * @return string Rendered HTML or empty string.
+	 */
+	public static function shortcode_cities_runtime( $atts ) {
+		$post_id = (int) get_the_ID();
+		if ( $post_id <= 0 ) {
+			return '';
+		}
+		$place_id = (int) get_post_meta( $post_id, '_radius_place_id', true );
+		if ( $place_id <= 0 ) {
+			return '';
+		}
+		// Re-emit the shortcode as a string so we can delegate to the same expander used at deploy time.
+		$atts_str = '';
+		if ( is_array( $atts ) ) {
+			foreach ( $atts as $k => $v ) {
+				if ( is_int( $k ) ) {
+					$atts_str .= ' ' . (string) $v;
+				} else {
+					$atts_str .= ' ' . (string) $k . '="' . esc_attr( (string) $v ) . '"';
+				}
+			}
+		}
+		return self::expand_cities_shortcode( '[cities' . $atts_str . ']', $place_id );
 	}
 
 	/**
