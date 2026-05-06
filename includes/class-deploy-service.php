@@ -69,9 +69,13 @@ class Radius_Deploy_Service {
 				? self::compute_service_area_slug_base( $tokens )
 				: self::compute_landing_slug_base( $template, $tokens, $seed );
 
-			$existing = self::find_deployed( $template_id, $place_id, $target_pt );
+		$existing = self::find_deployed( $template_id, $place_id, $target_pt );
 
-			if ( $existing ) {
+		// Trash any extra copies (from crashed/restarted deploys) BEFORE computing
+		// unique_slug so the canonical post can reclaim the unprefixed base slug.
+		self::trash_extra_deployed( $template_id, $place_id, (int) $existing, $target_pt );
+
+		if ( $existing ) {
 				if ( ! $update ) {
 					++$out['skipped'];
 					continue;
@@ -336,6 +340,154 @@ class Radius_Deploy_Service {
 	 */
 	public static function find_landing( $template_id, $place_id ) {
 		return self::find_deployed( $template_id, $place_id, 'radius_landing' );
+	}
+
+	/**
+	 * Return all post IDs for a given template+place combination, excluding one canonical ID.
+	 *
+	 * @param int    $template_id  Template post ID.
+	 * @param int    $place_id     radius_place term ID.
+	 * @param string $post_type    radius_landing or radius_service_area.
+	 * @param int    $exclude_id   Post ID to exclude (the canonical; 0 to exclude none).
+	 * @return int[]
+	 */
+	private static function find_extra_deployed_ids( $template_id, $place_id, $post_type, $exclude_id = 0 ) {
+		$q = new WP_Query(
+			array(
+				'post_type'      => sanitize_key( (string) $post_type ),
+				'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'   => '_radius_template_id',
+						'value' => (string) (int) $template_id,
+					),
+					array(
+						'key'   => '_radius_place_id',
+						'value' => (string) (int) $place_id,
+					),
+				),
+			)
+		);
+
+		$exclude_id = (int) $exclude_id;
+		$extras     = array();
+		foreach ( (array) $q->posts as $pid ) {
+			$pid = (int) $pid;
+			if ( $pid !== $exclude_id ) {
+				$extras[] = $pid;
+			}
+		}
+		return $extras;
+	}
+
+	/**
+	 * Trash all deployed posts for a template+place except the canonical one.
+	 * Called before unique_slug so the canonical post can reclaim the base slug.
+	 *
+	 * @param int    $template_id  Template post ID.
+	 * @param int    $place_id     radius_place term ID.
+	 * @param int    $canonical_id Post ID to keep (0 = trash all matches).
+	 * @param string $post_type    radius_landing or radius_service_area.
+	 * @return int Number of posts trashed.
+	 */
+	private static function trash_extra_deployed( $template_id, $place_id, $canonical_id, $post_type ) {
+		$extras  = self::find_extra_deployed_ids( $template_id, $place_id, $post_type, $canonical_id );
+		$trashed = 0;
+		foreach ( $extras as $eid ) {
+			if ( wp_trash_post( $eid ) ) {
+				++$trashed;
+			}
+		}
+		return $trashed;
+	}
+
+	/**
+	 * Batch-deduplicate all deployed pages (radius_landing and/or radius_service_area).
+	 *
+	 * Groups posts by (_radius_template_id, _radius_place_id). When a group has
+	 * more than one post, the oldest (lowest post ID) is kept and the rest are trashed.
+	 *
+	 * @param string|null $post_type 'radius_landing', 'radius_service_area', or null for both.
+	 * @return array{scanned:int,kept:int,trashed:int,post_types:string[]}
+	 */
+	public static function deduplicate_deployed( $post_type = null ) {
+		$types = array( 'radius_landing', 'radius_service_area' );
+		if ( $post_type !== null ) {
+			$post_type = sanitize_key( (string) $post_type );
+			if ( in_array( $post_type, $types, true ) ) {
+				$types = array( $post_type );
+			}
+		}
+
+		$scanned = 0;
+		$trashed = 0;
+		$groups  = array();
+
+		foreach ( $types as $pt ) {
+			$offset = 0;
+			$chunk  = 200;
+
+			do {
+				$q = new WP_Query(
+					array(
+						'post_type'      => $pt,
+						'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
+						'posts_per_page' => $chunk,
+						'offset'         => $offset,
+						'fields'         => 'ids',
+						'orderby'        => 'ID',
+						'order'          => 'ASC',
+						'no_found_rows'  => true,
+					)
+				);
+
+				if ( ! $q->have_posts() ) {
+					break;
+				}
+
+				foreach ( (array) $q->posts as $pid ) {
+					$pid  = (int) $pid;
+					$tid  = (int) get_post_meta( $pid, '_radius_template_id', true );
+					$plid = (int) get_post_meta( $pid, '_radius_place_id', true );
+					if ( $tid <= 0 || $plid <= 0 ) {
+						continue;
+					}
+					++$scanned;
+					$key = $pt . ':' . $tid . ':' . $plid;
+					if ( ! isset( $groups[ $key ] ) ) {
+						$groups[ $key ] = array();
+					}
+					$groups[ $key ][] = $pid;
+				}
+
+				$offset += $chunk;
+			} while ( count( (array) $q->posts ) === $chunk );
+		}
+
+		foreach ( $groups as $ids ) {
+			if ( count( $ids ) <= 1 ) {
+				continue;
+			}
+			// Keep the oldest (first by ID, already ASC-sorted); trash the rest.
+			array_shift( $ids );
+			foreach ( $ids as $eid ) {
+				if ( wp_trash_post( $eid ) ) {
+					++$trashed;
+				}
+			}
+		}
+
+		return array(
+			'scanned' => $scanned,
+			'kept'    => $scanned - $trashed,
+			'trashed' => $trashed,
+			'types'   => $types,
+		);
 	}
 
 	/**
@@ -887,25 +1039,28 @@ class Radius_Deploy_Service {
 				$label_tpl  = (string) $atts['label'];
 				$with_links = in_array( $type, array( 'csv', 'ul' ), true );
 
-				// Filter by radius constraints and take the closest $count.
-				$items = array();
-				foreach ( $all_nearby as $p ) {
-					if ( $p['distance'] < $min_radius || $p['distance'] > $max_radius ) {
-						continue;
-					}
-					$label = str_replace( '%location%', esc_html( $p['name'] ), $label_tpl );
-					$link  = '';
-					if ( $with_links ) {
-						$link = self::get_deployed_permalink_for_place( $p['term_id'] );
-					}
-					$items[] = array(
-						'label' => $label,
-						'link'  => $link,
-					);
-					if ( count( $items ) >= $count ) {
-						break;
-					}
+			// Filter by radius constraints and take the closest $count.
+			// Only include places that have a deployed page so the list reflects
+			// actual site pages rather than all taxonomy entries.
+			$items = array();
+			foreach ( $all_nearby as $p ) {
+				if ( $p['distance'] < $min_radius || $p['distance'] > $max_radius ) {
+					continue;
 				}
+				$link = self::get_deployed_permalink_for_place( $p['term_id'] );
+				if ( $link === '' ) {
+					continue;
+				}
+				$label    = str_replace( '%location%', esc_html( $p['name'] ), $label_tpl );
+				$out_link = $with_links ? $link : '';
+				$items[]  = array(
+					'label' => $label,
+					'link'  => $out_link,
+				);
+				if ( count( $items ) >= $count ) {
+					break;
+				}
+			}
 
 				if ( empty( $items ) ) {
 					return '';

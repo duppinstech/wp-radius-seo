@@ -1928,9 +1928,23 @@ class Radius_Admin {
 						<?php endforeach; ?>
 					</ul>
 				</div>
-				<?php endif; ?>
+			<?php endif; ?>
+
+			<div class="radius-card" style="margin-top:1.5em;">
+				<?php self::dashboard_card_heading( 'dashicons-filter', __( 'Page Deduplication', 'radius' ) ); ?>
+				<div class="radius-card__text">
+					<p><?php esc_html_e( 'If a deployment was interrupted and restarted, duplicate landing or service-area pages may exist for the same place. Click below to scan and move extras to the Trash (oldest copy of each template+place pair is kept).', 'radius' ); ?></p>
+				</div>
+				<div class="radius-card__actions">
+					<button type="button" class="button button-secondary" id="radius-dedupe-landings-start" data-nonce="<?php echo esc_attr( wp_create_nonce( 'radius_dedupe_landings' ) ); ?>">
+						<span class="dashicons dashicons-filter" aria-hidden="true"></span>
+						<?php esc_html_e( 'Deduplicate landing &amp; service-area pages', 'radius' ); ?>
+					</button>
+					<p class="description" id="radius-dedupe-landings-status" role="status" aria-live="polite"></p>
+				</div>
 			</div>
-		<?php endif; /* migration tab */ ?>
+		</div>
+	<?php endif; /* migration tab */ ?>
 
 	<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
 				<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-deploy-close="1"></button>

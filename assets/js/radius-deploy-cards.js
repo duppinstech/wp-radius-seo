@@ -404,9 +404,61 @@
 		} );
 	}
 
+	function initDedupeLandingsButton() {
+		var btn = document.getElementById( 'radius-dedupe-landings-start' );
+		if ( ! btn ) {
+			return;
+		}
+		var statusEl = document.getElementById( 'radius-dedupe-landings-status' );
+		var ajaxurl  = ( window.radiusDeployMigration && window.radiusDeployMigration.ajaxurl )
+			? window.radiusDeployMigration.ajaxurl
+			: ( window.ajaxurl || '/wp-admin/admin-ajax.php' );
+
+		btn.addEventListener( 'click', function () {
+			var nonce = btn.getAttribute( 'data-nonce' ) || '';
+			if ( ! nonce ) {
+				return;
+			}
+			btn.disabled = true;
+			if ( statusEl ) {
+				statusEl.textContent = 'Scanning for duplicates…';
+			}
+			var body = new URLSearchParams();
+			body.set( 'action', 'radius_dedupe_landings' );
+			body.set( 'nonce', nonce );
+
+			fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } )
+				.then( function ( r ) { return r.json(); } )
+				.then( function ( res ) {
+					btn.disabled = false;
+					if ( ! res.success ) {
+						if ( statusEl ) {
+							statusEl.textContent = 'Error: ' + ( ( res.data && res.data.message ) ? res.data.message : 'Unknown error.' );
+						}
+						return;
+					}
+					var d = res.data;
+					if ( statusEl ) {
+						if ( d.trashed > 0 ) {
+							statusEl.textContent = 'Done. Trashed ' + d.trashed + ' duplicate page(s) out of ' + d.scanned + ' scanned. Reload to refresh counts.';
+						} else {
+							statusEl.textContent = 'No duplicates found (' + d.scanned + ' page(s) scanned).';
+						}
+					}
+				} )
+				.catch( function () {
+					btn.disabled = false;
+					if ( statusEl ) {
+						statusEl.textContent = 'Network error. Please try again.';
+					}
+				} );
+		} );
+	}
+
 	document.addEventListener( 'DOMContentLoaded', function () {
 		initDeployHelpModal();
 		initMigrationRerunButton();
+		initDedupeLandingsButton();
 		initChainedDeploy();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {

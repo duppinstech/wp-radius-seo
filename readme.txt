@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.43
+Stable tag: 1.6.44
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.44 =
+* **Fix: `[radius_cities]` only lists places with deployed pages.** Previously, every `radius_place` term with coordinates could appear in the cities list, including places imported into the library but never deployed as a page. The expander now always checks `get_deployed_permalink_for_place()` and skips any place with no published landing or service-area page — for all list types (ul, ult, csv, csvt).
+* **Fix: Duplicate deployed pages from interrupted deploys.** `deploy()` now calls `trash_extra_deployed()` before updating the canonical post, so any extra copies of a `(template, place)` pair that were created during a crashed/restarted batch are moved to Trash. This also lets the canonical post reclaim the clean base slug (e.g. `chicago-towing`) instead of being forced to `chicago-towing-1` by an orphan.
+* **New: Deduplicate Pages tool.** A "Deduplicate landing & service-area pages" button is added to Deploy → Migration tab. It scans all `radius_landing` and `radius_service_area` posts, groups by `(template_id, place_id)`, and moves all but the oldest to Trash. Also exposed as `Radius_Deploy_Service::deduplicate_deployed()` and the `radius_dedupe_landings` AJAX action for programmatic use.
 
 = 1.6.43 =
 * **Templates are now 100% Radius-native after migration.** During import, `[cities …]` (Magic Page shortcode) is renamed to `[radius_cities …]` inside all template content, Elementor JSON, and Radius meta — so templates carry zero MP shortcode names and remain self-contained after Magic Page is uninstalled. Deploy and runtime shortcode handling recognize both names for back-compat.
