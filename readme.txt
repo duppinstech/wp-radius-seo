@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.42
+Stable tag: 1.6.43
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 == Changelog ==
+
+= 1.6.43 =
+* **Templates are now 100% Radius-native after migration.** During import, `[cities …]` (Magic Page shortcode) is renamed to `[radius_cities …]` inside all template content, Elementor JSON, and Radius meta — so templates carry zero MP shortcode names and remain self-contained after Magic Page is uninstalled. Deploy and runtime shortcode handling recognize both names for back-compat.
+* **`[radius_cities]` registered as the canonical Radius shortcode.** `Radius_Plugin` now registers `[radius_cities]` unconditionally at `init/99`; the legacy `[cities]` alias is also registered only when no other plugin (e.g. Magic Page) has claimed it. The runtime handler is the same for both.
+* **Backfill helpers added.** `Radius_Legacy_Import_Service::rewrite_magic_page_cities_shortcode_in_template()` and `…_in_all_templates()` allow batch-renaming `[cities]` → `[radius_cities]` across already-imported templates without re-running the full migration.
 
 = 1.6.42 =
 * **Fix: `[cities]` shortcode now expands inside Elementor templates.** The shortcode lives in `_elementor_data` JSON (not `post_content`) on Elementor-built templates. The deploy pipeline now threads `$place_id` through `render_value_for_deploy`, which walks the entire Elementor element tree and expands `[cities …]` in every string node — including text-editor widget `editor` fields — at deploy time. Copied meta (Yoast, page settings) is also walked. A runtime fallback `add_shortcode('cities', ...)` registered at `init/99` handles any remaining legacy pages or page-builders not covered by the deploy walk; Magic Page keeps priority while active.

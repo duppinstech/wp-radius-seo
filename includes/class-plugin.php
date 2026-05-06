@@ -93,30 +93,37 @@ class Radius_Plugin {
 	}
 
 	/**
-	 * Register Radius's `[cities]` shortcode handler only when no other plugin has claimed it.
+	 * Register Radius's `[radius_cities]` shortcode (always) and the legacy `[cities]`
+	 * alias (only when no other plugin already owns it).
 	 *
-	 * Acts as a render-time fallback for builders we don't walk at deploy time
-	 * (Beaver Builder modules, Avada Fusion elements, custom meta) and for legacy
-	 * deployed pages that still contain a literal `[cities …]` because they were
-	 * built before the Elementor-JSON expansion fix. Magic Page (init/10) keeps
-	 * priority while it is active; this hook is registered on init/99.
+	 * `[radius_cities]` is the Radius-native canonical token that the legacy importer
+	 * rewrites templates to use, so Radius always owns it — no risk of conflict.
+	 *
+	 * `[cities]` is the original Magic Page shortcode name. We register a handler for
+	 * it only when nothing else has claimed it (Magic Page hooks at init/10; this hook
+	 * runs at init/99). That keeps Magic Page in charge while it is active and lets
+	 * Radius take over the moment Magic Page is uninstalled — covering deployed pages
+	 * whose builder data still contains the literal `[cities …]` because they were
+	 * deployed before the Elementor-JSON expansion fix landed.
 	 *
 	 * @return void
 	 */
 	public function maybe_register_cities_shortcode_fallback() {
 		/**
-		 * Disable the runtime `[cities]` fallback (e.g. when another plugin should
-		 * always handle the shortcode regardless of registration order).
+		 * Disable the runtime cities shortcode handlers (both `[radius_cities]` and the
+		 * `[cities]` alias). Use when another plugin should always own these shortcodes.
 		 *
 		 * @param bool $enabled Default true.
 		 */
 		if ( ! apply_filters( 'radius_register_cities_shortcode_fallback', true ) ) {
 			return;
 		}
-		if ( shortcode_exists( 'cities' ) ) {
-			return;
+		if ( ! shortcode_exists( 'radius_cities' ) ) {
+			add_shortcode( 'radius_cities', array( 'Radius_Deploy_Service', 'shortcode_cities_runtime' ) );
 		}
-		add_shortcode( 'cities', array( 'Radius_Deploy_Service', 'shortcode_cities_runtime' ) );
+		if ( ! shortcode_exists( 'cities' ) ) {
+			add_shortcode( 'cities', array( 'Radius_Deploy_Service', 'shortcode_cities_runtime' ) );
+		}
 	}
 
 	/**

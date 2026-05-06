@@ -619,6 +619,169 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Rename the Magic Page `[cities …]` shortcode to its Radius-native counterpart `[radius_cities …]`.
+	 *
+	 * This is the inverse of "still depends on Magic Page": the deploy pipeline already
+	 * expands either name into static HTML per-place, but visually leaving `[cities]` in
+	 * a migrated template makes the template look like it requires the legacy plugin.
+	 * Running this string callback during/after import yields templates that contain zero
+	 * Magic Page shortcode names, so a future redeploy works even after Magic Page is
+	 * uninstalled and its license is gone.
+	 *
+	 * Already-renamed `[radius_cities …]` is left untouched; an idempotent rewrite.
+	 *
+	 * @param string $text HTML / Elementor string fragment.
+	 * @return string
+	 */
+	public static function rewrite_magic_page_cities_shortcode_to_radius_shortcode( $text ) {
+		$text = (string) $text;
+		if ( $text === '' || stripos( $text, '[cities' ) === false ) {
+			return $text;
+		}
+		// `\b` after `cities` ensures we don't accidentally match `[cities_*]` if a future
+		// builder ever introduces such a sibling tag.
+		return (string) preg_replace( '/\[cities(\b[^\]]*)?\]/i', '[radius_cities$1]', $text );
+	}
+
+	/**
+	 * Backfill helper: rewrite the legacy `[cities …]` Magic Page shortcode to `[radius_cities …]`
+	 * across one radius_template's post fields and JSON meta (Elementor data / page settings /
+	 * Radius spintax / xfields / slot variations).
+	 *
+	 * Same scope as `normalize_imported_towing_migration_template_tokens`, so this is a safe,
+	 * idempotent re-run for already-imported templates.
+	 *
+	 * @param int $template_id radius_template post ID.
+	 * @return bool True when at least one rewrite was applied.
+	 */
+	public static function rewrite_magic_page_cities_shortcode_in_template( $template_id ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return false;
+		}
+		$post = get_post( $template_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return false;
+		}
+
+		$cb       = array( __CLASS__, 'rewrite_magic_page_cities_shortcode_to_radius_shortcode' );
+		$changed  = false;
+
+		$json_keys = apply_filters(
+			'radius_migration_template_json_meta_keys',
+			array( '_elementor_data', '_elementor_page_settings', '_radius_spintax_blocks', '_radius_xfields', '_radius_slot_variations' )
+		);
+		$page_settings_key = '_elementor_page_settings';
+
+		foreach ( $json_keys as $jk ) {
+			if ( ! is_string( $jk ) || $jk === '' ) {
+				continue;
+			}
+			$raw = get_post_meta( $template_id, $jk, true );
+			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			if ( $page_settings_key === $jk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$new = self::deep_map_strings_in_mixed( $decoded, $cb );
+				if ( $new !== $decoded ) {
+					update_post_meta( $template_id, $jk, $new );
+					$changed = true;
+				}
+				continue;
+			}
+			if ( is_string( $raw ) ) {
+				$decoded = json_decode( $raw, true );
+				if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+					$new = self::deep_map_strings_in_mixed( $decoded, $cb );
+					if ( $new !== $decoded ) {
+						$enc = wp_json_encode( $new );
+						if ( false !== $enc ) {
+							update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+							$changed = true;
+						}
+					}
+				} else {
+					$new_str = call_user_func( $cb, $raw );
+					if ( $new_str !== $raw ) {
+						update_post_meta( $template_id, $jk, $new_str );
+						$changed = true;
+					}
+				}
+				continue;
+			}
+			if ( is_array( $raw ) ) {
+				$new = self::deep_map_strings_in_mixed( $raw, $cb );
+				if ( $new !== $raw ) {
+					$enc = wp_json_encode( $new );
+					if ( false !== $enc ) {
+						update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+						$changed = true;
+					}
+				}
+			}
+		}
+
+		$title   = call_user_func( $cb, (string) $post->post_title );
+		$content = call_user_func( $cb, (string) $post->post_content );
+		$excerpt = call_user_func( $cb, (string) $post->post_excerpt );
+		if ( $title !== $post->post_title || $content !== $post->post_content || $excerpt !== $post->post_excerpt ) {
+			wp_update_post(
+				array(
+					'ID'           => $template_id,
+					'post_title'   => $title,
+					'post_content' => $content,
+					'post_excerpt' => $excerpt,
+				)
+			);
+			$changed = true;
+		}
+
+		if ( $changed ) {
+			clean_post_cache( $template_id );
+		}
+		return $changed;
+	}
+
+	/**
+	 * Sweep every radius_template and rewrite legacy `[cities …]` to `[radius_cities …]`.
+	 *
+	 * Safe to run repeatedly; the per-template helper is idempotent.
+	 *
+	 * @return array{scanned:int,changed:int,template_ids:int[]} Stats for the run.
+	 */
+	public static function rewrite_magic_page_cities_shortcode_in_all_templates() {
+		$ids = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'fields'         => 'ids',
+				'posts_per_page' => -1,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+			)
+		);
+		$scanned       = 0;
+		$changed       = 0;
+		$changed_ids   = array();
+		foreach ( (array) $ids as $tid ) {
+			++$scanned;
+			if ( self::rewrite_magic_page_cities_shortcode_in_template( (int) $tid ) ) {
+				++$changed;
+				$changed_ids[] = (int) $tid;
+			}
+		}
+		return array(
+			'scanned'      => $scanned,
+			'changed'      => $changed,
+			'template_ids' => $changed_ids,
+		);
+	}
+
+	/**
 	 * Magic Page exports `{spintax_towing-…}` with single outer braces; normalize to Radius `{{towing-…}}`.
 	 *
 	 * @param string $text HTML / Elementor string fragment.
@@ -2187,6 +2350,13 @@ class Radius_Legacy_Import_Service {
 		if ( $text === '' ) {
 			return '';
 		}
+		// Magic Page `[cities …]` → Radius-native `[radius_cities …]` so migrated templates
+		// carry no legacy MP shortcode names and stay self-contained when Magic Page is
+		// later uninstalled. Radius_Deploy_Service::expand_cities_shortcode and the runtime
+		// shortcode handler still recognize the bare `[cities]` form for back-compat, so
+		// templates already migrated before this rename keep deploying correctly until
+		// they are reprocessed.
+		$text = preg_replace( '/\[cities(\b[^\]]*)?\]/i', '[radius_cities$1]', $text );
 		// [xfield_something] → {{something}}
 		$text = preg_replace_callback(
 			'/\[xfield_([a-z0-9_-]+)\]/i',

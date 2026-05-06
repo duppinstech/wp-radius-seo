@@ -56,7 +56,7 @@ class Radius_Deploy_Service {
 			if ( empty( $tokens ) || empty( $tokens['place_name'] ) ) {
 				++$out['skipped'];
 				continue;
-		}
+			}
 
 		$seed    = $template_id * 100000 + $place_id;
 		$title   = self::compute_landing_title( $template, $tokens, $seed );
@@ -66,10 +66,10 @@ class Radius_Deploy_Service {
 		);
 
 		$slug_base = 'radius_service_area' === $target_pt
-			? self::compute_service_area_slug_base( $tokens )
-			: self::compute_landing_slug_base( $template, $tokens, $seed );
+				? self::compute_service_area_slug_base( $tokens )
+				: self::compute_landing_slug_base( $template, $tokens, $seed );
 
-		$existing = self::find_deployed( $template_id, $place_id, $target_pt );
+			$existing = self::find_deployed( $template_id, $place_id, $target_pt );
 
 			if ( $existing ) {
 				if ( ! $update ) {
@@ -653,7 +653,9 @@ class Radius_Deploy_Service {
 	private static function render_value_for_deploy( $value, array $tokens, $seed, $place_id = 0 ) {
 		if ( is_string( $value ) ) {
 			$rendered = Radius_Token_Engine::render( $value, $tokens, $seed );
-			if ( $place_id > 0 && strpos( $rendered, '[cities' ) !== false ) {
+			if ( $place_id > 0
+				&& ( strpos( $rendered, '[radius_cities' ) !== false || strpos( $rendered, '[cities' ) !== false )
+			) {
 				$rendered = self::expand_cities_shortcode( $rendered, (int) $place_id );
 			}
 			return $rendered;
@@ -721,14 +723,12 @@ class Radius_Deploy_Service {
 	}
 
 	/**
-	 * Runtime fallback `[cities]` shortcode handler.
+	 * Runtime `[radius_cities …]` / `[cities …]` shortcode handler.
 	 *
-	 * Registered (via Radius_Plugin) only when no other plugin already owns the `cities`
-	 * shortcode — Magic Page wins when active. This guarantees deployed landings whose
-	 * Elementor JSON / page-builder data still contain a literal `[cities …]` (e.g. legacy
-	 * pages deployed before the Elementor-JSON expansion fix, or builders we don't walk
-	 * during deploy: Beaver Builder modules, Avada Fusion shortcodes, custom meta) keep
-	 * rendering correctly when Magic Page is later uninstalled.
+	 * `[radius_cities]` is the Radius-native canonical name written into migrated templates;
+	 * `[cities]` is recognized for transitional back-compat when no other plugin (e.g. Magic
+	 * Page) already owns it — `Radius_Plugin::maybe_register_cities_shortcode_fallback()`
+	 * registers `[radius_cities]` unconditionally and `[cities]` only when free.
 	 *
 	 * Place context comes from the rendering post's `_radius_place_id` meta, set by
 	 * `Radius_Deploy_Service::attach_meta()` on every `radius_landing` / `radius_service_area`.
@@ -747,7 +747,7 @@ class Radius_Deploy_Service {
 		if ( $place_id <= 0 ) {
 			return '';
 		}
-		// Re-emit the shortcode as a string so we can delegate to the same expander used at deploy time.
+		// Re-emit a synthetic shortcode string so we can delegate to the same expander used at deploy time.
 		$atts_str = '';
 		if ( is_array( $atts ) ) {
 			foreach ( $atts as $k => $v ) {
@@ -758,17 +758,23 @@ class Radius_Deploy_Service {
 				}
 			}
 		}
-		return self::expand_cities_shortcode( '[cities' . $atts_str . ']', $place_id );
+		return self::expand_cities_shortcode( '[radius_cities' . $atts_str . ']', $place_id );
 	}
 
 	/**
-	 * Expand [cities ...] Magic Page shortcodes to static HTML at deploy time.
+	 * Expand `[radius_cities …]` (and the legacy `[cities …]` alias) to static HTML at deploy time.
+	 *
+	 * `[radius_cities]` is the canonical Radius shortcode written into templates by the
+	 * legacy importer (replacing the Magic Page `[cities]` token). The bare `[cities]`
+	 * form is still recognized as a transitional alias so templates that were imported
+	 * before the rename, or hand-edited content carried in from Magic Page, keep working
+	 * without manual cleanup.
 	 *
 	 * Scans all radius_place terms by Haversine distance from the current place and builds
 	 * the requested list type (ul / ult / csv / csvt).  Called after Radius_Token_Engine::render()
 	 * so the final content is shortcode-free before being written to the database.
 	 *
-	 * Supported [cities] attributes:
+	 * Supported attributes (identical for both names):
 	 *   count        (default 35)  – max number of cities to include.
 	 *   type         (default csv) – ul | ult | csv | csvt.
 	 *   max-radius   (miles)       – exclude places farther than this.
@@ -780,7 +786,7 @@ class Radius_Deploy_Service {
 	 * @return string
 	 */
 	private static function expand_cities_shortcode( $content, $place_id ) {
-		if ( strpos( $content, '[cities' ) === false ) {
+		if ( strpos( $content, '[cities' ) === false && strpos( $content, '[radius_cities' ) === false ) {
 			return $content;
 		}
 
@@ -790,7 +796,7 @@ class Radius_Deploy_Service {
 
 		if ( ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
 			// No coordinates for this place: remove the shortcode tags silently.
-			return (string) preg_replace( '/\[cities[^\]]*\]/', '', $content );
+			return (string) preg_replace( '/\[(?:radius_)?cities[^\]]*\]/', '', $content );
 		}
 
 		$plat = (float) $lat;
@@ -857,7 +863,7 @@ class Radius_Deploy_Service {
 		$all_nearby = $nearby_cache[ $place_id ];
 
 		return (string) preg_replace_callback(
-			'/\[cities([^\]]*)\]/',
+			'/\[(?:radius_)?cities([^\]]*)\]/',
 			function ( $matches ) use ( $all_nearby ) {
 				$parsed = function_exists( 'shortcode_parse_atts' )
 					? shortcode_parse_atts( $matches[1] )
