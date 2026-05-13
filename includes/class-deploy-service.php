@@ -349,6 +349,50 @@ class Radius_Deploy_Service {
 	}
 
 	/**
+	 * Move every deployed landing and service-area hub page for a library place to the Trash.
+	 *
+	 * @param int $place_id radius_place term ID.
+	 * @return int Number of posts trashed.
+	 */
+	public static function trash_deployed_posts_for_place( $place_id ) {
+		$place_id = (int) $place_id;
+		if ( $place_id <= 0 ) {
+			return 0;
+		}
+
+		$q = new WP_Query(
+			array(
+				'post_type'              => array( 'radius_landing', 'radius_service_area' ),
+				'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
+				'posts_per_page'         => -1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					array(
+						'key'   => '_radius_place_id',
+						'value' => (string) $place_id,
+					),
+				),
+			)
+		);
+
+		$trashed = 0;
+		foreach ( (array) $q->posts as $pid ) {
+			$pid = (int) $pid;
+			if ( $pid <= 0 ) {
+				continue;
+			}
+			if ( wp_trash_post( $pid ) ) {
+				++$trashed;
+			}
+		}
+
+		return $trashed;
+	}
+
+	/**
 	 * Return all post IDs for a given template+place combination, excluding one canonical ID.
 	 *
 	 * @param int    $template_id  Template post ID.

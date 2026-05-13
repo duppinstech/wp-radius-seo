@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.49
+Stable tag: 1.6.50
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -67,7 +67,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 * `radius_place_slug_blacklist_fragments` — replace the default slug substring list for “low value” place cleanup and deploy prefilter (array of lowercase strings matched against `radius_place` term slugs).
 * `radius_slug_blacklist_places_chunk_size` — max term IDs deleted per AJAX request when removing slug-pattern matches from the library (default 80, clamped 10–200).
+* `radius_slug_blacklist_trash_deployed_pages` — return false to delete slug-blacklist place terms without moving matching `radius_landing` / `radius_service_area` posts to the Trash first (default true).
 == Changelog ==
+
+= 1.6.50 =
+* **Slug pattern cleanup:** Removing blacklist-matched places now moves every deployed landing and service-area hub page for that place to the **Trash** before the term is deleted. Progress shows batch and cumulative page counts. Filter `radius_slug_blacklist_trash_deployed_pages` to disable.
 
 = 1.6.49 =
 * **Tokens:** `build_map()` now mirrors each token key between hyphen and underscore forms (e.g. `{{place-name}}` and `{{place_name}}` resolve the same) so templates are not sensitive to delimiter style.

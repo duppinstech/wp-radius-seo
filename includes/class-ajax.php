@@ -375,10 +375,24 @@ class Radius_Ajax {
 		$chunk  = (int) apply_filters( 'radius_slug_blacklist_places_chunk_size', 80 );
 		$chunk  = max( 10, min( 200, $chunk ) );
 		$ids    = Radius_Place_Taxonomy::get_place_term_ids_for_slug_blacklist_chunk( $chunk );
-		$deleted = 0;
+		$deleted      = 0;
+		$pages_trashed = 0;
 
 		foreach ( $ids as $tid ) {
-			$r = wp_delete_term( (int) $tid, $tax );
+			$tid = (int) $tid;
+			if ( $tid <= 0 ) {
+				continue;
+			}
+			/**
+			 * Whether to trash deployed `radius_landing` / `radius_service_area` posts before deleting a slug-blacklist place term.
+			 *
+			 * @param bool $trash Default true.
+			 * @param int  $tid   Term ID about to be removed.
+			 */
+			if ( apply_filters( 'radius_slug_blacklist_trash_deployed_pages', true, $tid ) ) {
+				$pages_trashed += Radius_Deploy_Service::trash_deployed_posts_for_place( $tid );
+			}
+			$r = wp_delete_term( $tid, $tax );
 			if ( ! is_wp_error( $r ) && $r ) {
 				++$deleted;
 			}
@@ -389,9 +403,10 @@ class Radius_Ajax {
 
 		wp_send_json_success(
 			array(
-				'deleted'   => $deleted,
-				'remaining' => $remaining,
-				'done'      => $done,
+				'deleted'        => $deleted,
+				'pages_trashed'  => $pages_trashed,
+				'remaining'      => $remaining,
+				'done'           => $done,
 			)
 		);
 	}

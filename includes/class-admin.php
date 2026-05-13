@@ -688,9 +688,9 @@ class Radius_Admin {
 						'dedupeDoneTpl'  => __( 'Duplicate cleanup finished. Removed {total} terms. Reloading…', 'radius' ),
 						'dedupeError'    => __( 'Could not remove a batch of duplicates. Try again.', 'radius' ),
 						'dedupeNetwork'  => __( 'Network error during duplicate cleanup. Try again.', 'radius' ),
-						'confirmSlugBlacklist' => __( 'Remove all places whose slug matches the low-value substring list? Landings may reference missing terms. This cannot be undone.', 'radius' ),
-						'slugBlacklistProgressTpl' => __( 'Last batch: {deleted} removed. Total removed: {total}. Remaining matches: {remaining}.', 'radius' ),
-						'slugBlacklistDoneTpl' => __( 'Slug pattern cleanup finished. Removed {total} terms. Reloading…', 'radius' ),
+						'confirmSlugBlacklist' => __( 'Remove all places whose slug matches the low-value substring list? For each place, every matching landing and service-area hub page will be moved to the Trash first, then the place term is deleted. This cannot be undone.', 'radius' ),
+						'slugBlacklistProgressTpl' => __( 'Last batch: {deleted} places removed, {pages} pages trashed. Total places: {total}. Total pages trashed: {pagesTotal}. Remaining slug matches: {remaining}.', 'radius' ),
+						'slugBlacklistDoneTpl' => __( 'Slug pattern cleanup finished. Removed {total} places; {pagesTotal} pages moved to Trash. Reloading…', 'radius' ),
 						'slugBlacklistError' => __( 'Could not remove a batch. Try again.', 'radius' ),
 						'slugBlacklistNetwork' => __( 'Network error during slug pattern cleanup. Try again.', 'radius' ),
 					),
@@ -1097,7 +1097,7 @@ class Radius_Admin {
 					<div class="radius-card radius-card--slug-pattern">
 						<h2><?php esc_html_e( 'Slug pattern matches', 'radius' ); ?></h2>
 						<div class="radius-card__text">
-							<p class="description"><?php esc_html_e( 'Substrings such as trailer, subdivision, or village in the slug. Deploy skips these too.', 'radius' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Substrings such as trailer, subdivision, or village in the slug. Deploy skips these too. Removing a place here also moves its deployed landing and service-area hub pages to the Trash.', 'radius' ); ?></p>
 							<p class="radius-card__stat">
 								<strong><?php echo esc_html( number_format_i18n( $slug_bl_count ) ); ?></strong>
 								<?php echo esc_html( _n( 'place', 'places', $slug_bl_count, 'radius' ) ); ?>
@@ -1110,7 +1110,7 @@ class Radius_Admin {
 						</div>
 						<?php if ( current_user_can( 'manage_options' ) ) : ?>
 							<div class="radius-card__actions">
-								<button type="button" class="button button-secondary" id="radius-slug-blacklist-places-start" title="<?php esc_attr_e( 'Deletes place terms whose slug matches the low-value substring list.', 'radius' ); ?>">
+								<button type="button" class="button button-secondary" id="radius-slug-blacklist-places-start" title="<?php esc_attr_e( 'Trashes deployed landings and hub pages for each place, then deletes the place term.', 'radius' ); ?>">
 									<?php esc_html_e( 'Remove matching', 'radius' ); ?>
 								</button>
 								<p class="description" id="radius-slug-blacklist-places-status" role="status" aria-live="polite"></p>

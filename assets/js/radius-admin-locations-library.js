@@ -244,6 +244,7 @@
 			}
 			btn.disabled = true;
 			var totalDeleted = 0;
+			var totalPagesTrashed = 0;
 			var interMs = typeof cfg.interRequestMs === 'number' ? cfg.interRequestMs : 250;
 
 			function fmt(tpl, map) {
@@ -287,18 +288,25 @@
 						}
 						var d = json.data || {};
 						var del = parseInt(d.deleted, 10) || 0;
+						var pages = parseInt(d.pages_trashed, 10) || 0;
 						var rem = parseInt(d.remaining, 10);
 						totalDeleted += del;
+						totalPagesTrashed += pages;
 						status.textContent = fmt(
 							tplOr(i18n.slugBlacklistProgressTpl, ''),
 							{
 								deleted: del,
+								pages: pages,
 								total: totalDeleted,
+								pagesTotal: totalPagesTrashed,
 								remaining: rem,
 							}
 						);
 						if (d.done || del === 0) {
-							status.textContent = fmt(tplOr(i18n.slugBlacklistDoneTpl, ''), { total: totalDeleted });
+							status.textContent = fmt(tplOr(i18n.slugBlacklistDoneTpl, ''), {
+								total: totalDeleted,
+								pagesTotal: totalPagesTrashed,
+							});
 							window.setTimeout(function () {
 								window.location.reload();
 							}, 800);
