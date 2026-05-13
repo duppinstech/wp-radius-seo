@@ -8,6 +8,7 @@
 	var ajaxurl = cfg.ajaxurl || '';
 	var nonce = cfg.nonce || '';
 	var dedupeNonce = cfg.dedupeNonce || '';
+	var slugBlacklistNonce = cfg.slugBlacklistNonce || '';
 	var i18n = cfg.i18n || {};
 
 	function sleep(ms) {
@@ -228,10 +229,96 @@
 		});
 	}
 
+	function bindSlugBlacklist() {
+		var btn = document.getElementById('radius-slug-blacklist-places-start');
+		var status = document.getElementById('radius-slug-blacklist-places-status');
+		if (!btn || !status || !ajaxurl || !slugBlacklistNonce) {
+			return;
+		}
+		if (btn.disabled) {
+			return;
+		}
+		btn.addEventListener('click', function () {
+			if (!window.confirm(i18n.confirmSlugBlacklist || '')) {
+				return;
+			}
+			btn.disabled = true;
+			var totalDeleted = 0;
+			var interMs = typeof cfg.interRequestMs === 'number' ? cfg.interRequestMs : 250;
+
+			function fmt(tpl, map) {
+				var out = tpl;
+				Object.keys(map).forEach(function (k) {
+					out = out.split('{' + k + '}').join(String(map[k]));
+				});
+				return out;
+			}
+
+			function tplOr(s, fallback) {
+				return s && String(s).length ? String(s) : fallback;
+			}
+
+			(function loop() {
+				var body = new URLSearchParams();
+				body.set('action', 'radius_slug_blacklist_places_batch');
+				body.set('nonce', slugBlacklistNonce);
+
+				fetch(ajaxurl, {
+					method: 'POST',
+					credentials: 'same-origin',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+					},
+					body: body.toString(),
+				})
+					.then(function (r) {
+						return r.json();
+					})
+					.then(function (json) {
+						if (!json || !json.success) {
+							var msg =
+								(json && json.data && json.data.message) ||
+								(json && json.data && json.data[0]) ||
+								i18n.slugBlacklistError ||
+								'Error';
+							status.textContent = String(msg);
+							btn.disabled = false;
+							return;
+						}
+						var d = json.data || {};
+						var del = parseInt(d.deleted, 10) || 0;
+						var rem = parseInt(d.remaining, 10);
+						totalDeleted += del;
+						status.textContent = fmt(
+							tplOr(i18n.slugBlacklistProgressTpl, ''),
+							{
+								deleted: del,
+								total: totalDeleted,
+								remaining: rem,
+							}
+						);
+						if (d.done || del === 0) {
+							status.textContent = fmt(tplOr(i18n.slugBlacklistDoneTpl, ''), { total: totalDeleted });
+							window.setTimeout(function () {
+								window.location.reload();
+							}, 800);
+							return;
+						}
+						sleep(interMs).then(loop);
+					})
+					.catch(function () {
+						status.textContent = i18n.slugBlacklistNetwork || '';
+						btn.disabled = false;
+					});
+			})();
+		});
+	}
+
 	document.addEventListener('DOMContentLoaded', function () {
 		bindBulkGuard();
 		bindSelectAll();
 		bindPurge();
 		bindDedupe();
+		bindSlugBlacklist();
 	});
 })();

@@ -258,7 +258,7 @@ class Radius_Form_Handlers {
 	 * @param int    $template_id      Template post ID.
 	 * @param bool   $continuing       True = resume from transient queue; false = start fresh (replaces queue).
 	 * @param string $target_post_type radius_landing or radius_service_area.
-	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array}
+	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array,prefilter?:array{removed_blacklist:int,removed_duplicate:int}}
 	 */
 	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing' ) {
 		$template_id = (int) $template_id;
@@ -308,7 +308,11 @@ class Radius_Form_Handlers {
 			'errors'  => array(),
 		);
 
-		$initial_total = 0;
+		$initial_total     = 0;
+		$deploy_prefilter  = array(
+			'removed_blacklist' => 0,
+			'removed_duplicate' => 0,
+		);
 
 		if ( $continuing ) {
 			$state = get_transient( $tkey );
@@ -331,6 +335,10 @@ class Radius_Form_Handlers {
 				$acc = Radius_Deploy_Service::merge_stats( $acc, $state['stats'] );
 			}
 			$initial_total = isset( $state['initial_total'] ) ? (int) $state['initial_total'] : count( $ids );
+			if ( isset( $state['prefilter'] ) && is_array( $state['prefilter'] ) ) {
+				$deploy_prefilter['removed_blacklist'] = (int) ( $state['prefilter']['removed_blacklist'] ?? 0 );
+				$deploy_prefilter['removed_duplicate'] = (int) ( $state['prefilter']['removed_duplicate'] ?? 0 );
+			}
 		} else {
 			delete_transient( $tkey );
 
@@ -355,7 +363,22 @@ class Radius_Form_Handlers {
 			}
 			$ids = array_map( 'intval', $ids );
 			$ids = array_values( array_unique( array_filter( $ids ) ) );
-			$initial_total = count( $ids );
+			$pref = Radius_Place_Taxonomy::filter_place_ids_for_deploy( $ids );
+			$ids  = $pref['ids'];
+			$deploy_prefilter['removed_blacklist'] = (int) $pref['removed_blacklist'];
+			$deploy_prefilter['removed_duplicate']  = (int) $pref['removed_duplicate'];
+			$initial_total                          = count( $ids );
+			if ( empty( $ids ) ) {
+				return array(
+					'success' => false,
+					'message' => sprintf(
+						/* translators: 1: places skipped for slug patterns, 2: skipped as duplicate names */
+						__( 'No places left to deploy after filtering: %1$d skipped for slug patterns, %2$d skipped as duplicate names (shortest slug kept per name).', 'radius' ),
+						$deploy_prefilter['removed_blacklist'],
+						$deploy_prefilter['removed_duplicate']
+					),
+				);
+			}
 		}
 
 		if ( empty( $ids ) ) {
@@ -386,10 +409,11 @@ class Radius_Form_Handlers {
 			set_transient(
 				$tkey,
 				array(
-					'template_id'   => $template_id,
-					'remaining'     => $remaining,
-					'stats'         => $acc,
-					'initial_total' => $initial_total,
+					'template_id'    => $template_id,
+					'remaining'      => $remaining,
+					'stats'          => $acc,
+					'initial_total'  => $initial_total,
+					'prefilter'      => $deploy_prefilter,
 				),
 				DAY_IN_SECONDS
 			);
@@ -401,6 +425,7 @@ class Radius_Form_Handlers {
 				'initial_total' => $initial_total,
 				'stats_total'   => $acc,
 				'stats_batch'   => $chunk_res,
+				'prefilter'     => $deploy_prefilter,
 			);
 		}
 
@@ -413,6 +438,7 @@ class Radius_Form_Handlers {
 			'initial_total' => $initial_total,
 			'stats_total'   => $acc,
 			'stats_batch'   => $chunk_res,
+			'prefilter'     => $deploy_prefilter,
 		);
 	}
 
@@ -453,6 +479,17 @@ class Radius_Form_Handlers {
 			if ( ! empty( $acc['errors'] ) ) {
 				$msg .= ' ' . implode( ' ', array_slice( $acc['errors'], 0, 2 ) );
 			}
+			$pf = isset( $result['prefilter'] ) && is_array( $result['prefilter'] ) ? $result['prefilter'] : array();
+			$rb = (int) ( $pf['removed_blacklist'] ?? 0 );
+			$rd = (int) ( $pf['removed_duplicate'] ?? 0 );
+			if ( $rb > 0 || $rd > 0 ) {
+				$msg .= ' ' . sprintf(
+					/* translators: 1: excluded by slug patterns, 2: excluded duplicate names */
+					__( 'Deploy queue excluded %1$d places for slug patterns and %2$d duplicate names before batching.', 'radius' ),
+					$rb,
+					$rd
+				);
+			}
 			self::redirect( 'radius-deploy', $msg );
 		}
 
@@ -468,6 +505,19 @@ class Radius_Form_Handlers {
 		);
 		if ( ! empty( $chunk_res['errors'] ) && is_array( $chunk_res['errors'] ) ) {
 			$msg .= ' ' . implode( ' ', array_slice( $chunk_res['errors'], 0, 2 ) );
+		}
+		if ( ! $continuing ) {
+			$pf = isset( $result['prefilter'] ) && is_array( $result['prefilter'] ) ? $result['prefilter'] : array();
+			$rb = (int) ( $pf['removed_blacklist'] ?? 0 );
+			$rd = (int) ( $pf['removed_duplicate'] ?? 0 );
+			if ( $rb > 0 || $rd > 0 ) {
+				$msg .= ' ' . sprintf(
+					/* translators: 1: excluded by slug patterns, 2: excluded duplicate names */
+					__( 'Deploy queue excluded %1$d places for slug patterns and %2$d duplicate names before batching.', 'radius' ),
+					$rb,
+					$rd
+				);
+			}
 		}
 		self::redirect( 'radius-deploy', $msg );
 	}

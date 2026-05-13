@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.44
+Stable tag: 1.6.45
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,7 +65,13 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_yoast_meta_skip_keys` — Yoast meta keys NOT copied from a legacy template (default `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`, `_yoast_wpseo_metadesc` because the migration sets those per service line).
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
+* `radius_place_slug_blacklist_fragments` — replace the default slug substring list for “low value” place cleanup and deploy prefilter (array of lowercase strings matched against `radius_place` term slugs).
+* `radius_slug_blacklist_places_chunk_size` — max term IDs deleted per AJAX request when removing slug-pattern matches from the library (default 80, clamped 10–200).
 == Changelog ==
+
+= 1.6.45 =
+* **Location library: low-value slug patterns card.** Counts places whose slug contains configured substrings (trailers, subdivisions, etc.), lists the default fragments, and offers a batched “Remove matching places” action (same AJAX pattern as duplicate cleanup). Filter `radius_place_slug_blacklist_fragments` to customize.
+* **Deploy prefilter:** When building the deploy queue, places matching the slug blacklist are excluded, and duplicate display names are collapsed so only the shortest slug per name is deployed (same keeper rule as library dedupe). Pre-flight stats show excluded counts when non-zero; finished deploy notices and non-JS batch redirects mention totals.
 
 = 1.6.44 =
 * **Fix: `[radius_cities]` only lists places with deployed pages.** Previously, every `radius_place` term with coordinates could appear in the cities list, including places imported into the library but never deployed as a page. The expander now always checks `get_deployed_permalink_for_place()` and skips any place with no published landing or service-area page — for all list types (ul, ult, csv, csvt).

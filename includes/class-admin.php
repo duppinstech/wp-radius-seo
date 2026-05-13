@@ -673,6 +673,7 @@ class Radius_Admin {
 					'ajaxurl'         => admin_url( 'admin-ajax.php' ),
 					'nonce'           => wp_create_nonce( 'radius_purge_places' ),
 					'dedupeNonce'     => wp_create_nonce( 'radius_dedupe_places' ),
+					'slugBlacklistNonce' => wp_create_nonce( 'radius_slug_blacklist_places' ),
 					'interRequestMs'  => (int) apply_filters( 'radius_purge_places_inter_request_ms', 250 ),
 					'i18n'            => array(
 						'confirmDelete'  => __( 'Delete the selected places? Landings may reference missing terms. This cannot be undone.', 'radius' ),
@@ -687,6 +688,11 @@ class Radius_Admin {
 						'dedupeDoneTpl'  => __( 'Duplicate cleanup finished. Removed {total} terms. Reloading…', 'radius' ),
 						'dedupeError'    => __( 'Could not remove a batch of duplicates. Try again.', 'radius' ),
 						'dedupeNetwork'  => __( 'Network error during duplicate cleanup. Try again.', 'radius' ),
+						'confirmSlugBlacklist' => __( 'Remove all places whose slug matches the low-value substring list? Landings may reference missing terms. This cannot be undone.', 'radius' ),
+						'slugBlacklistProgressTpl' => __( 'Last batch: {deleted} removed. Total removed: {total}. Remaining matches: {remaining}.', 'radius' ),
+						'slugBlacklistDoneTpl' => __( 'Slug pattern cleanup finished. Removed {total} terms. Reloading…', 'radius' ),
+						'slugBlacklistError' => __( 'Could not remove a batch. Try again.', 'radius' ),
+						'slugBlacklistNetwork' => __( 'Network error during slug pattern cleanup. Try again.', 'radius' ),
 					),
 				)
 			);
@@ -1029,6 +1035,7 @@ class Radius_Admin {
 		}
 
 		$dup_removable = Radius_Place_Taxonomy::count_place_duplicates_removable();
+		$slug_bl_count = Radius_Place_Taxonomy::count_places_matching_slug_blacklist();
 
 		$csv_url = admin_url( 'admin-post.php' );
 
@@ -1056,6 +1063,30 @@ class Radius_Admin {
 			<h1><?php esc_html_e( 'Location library', 'radius' ); ?></h1>
 			<p class="description"><?php esc_html_e( 'Import, export, and edit places. Large libraries are paged so the screen stays responsive.', 'radius' ); ?></p>
 			<p class="description"><?php esc_html_e( 'Storage: each place is a WordPress taxonomy term in radius_place — rows in wp_terms and wp_term_taxonomy, with coordinates and region in wp_termmeta (e.g. radius_lat, radius_lng, radius_region, radius_postal).', 'radius' ); ?></p>
+
+			<div class="radius-locations-slug-blacklist radius-card">
+				<?php self::dashboard_card_heading( 'dashicons-dismiss', __( 'Low-value slug patterns (Magic Page cleanup)', 'radius' ) ); ?>
+				<div class="radius-card__text">
+					<p><?php esc_html_e( 'Places whose slug contains certain substrings (e.g. trailer, subdivision, village) are counted here. Deploy also skips them, along with duplicate names (shortest slug kept).', 'radius' ); ?></p>
+					<p class="radius-card__stat">
+						<strong><?php echo esc_html( number_format_i18n( $slug_bl_count ) ); ?></strong>
+						<?php echo esc_html( _n( 'place matches slug patterns', 'places match slug patterns', $slug_bl_count, 'radius' ) ); ?>
+					</p>
+					<details class="radius-locations-slug-blacklist__details">
+						<summary><?php esc_html_e( 'Default slug fragments', 'radius' ); ?></summary>
+						<p class="description"><?php echo esc_html( implode( ', ', Radius_Place_Taxonomy::get_place_slug_blacklist_fragments() ) ); ?></p>
+						<p class="description"><?php esc_html_e( 'Developers can replace this list with the radius_place_slug_blacklist_fragments filter.', 'radius' ); ?></p>
+					</details>
+				</div>
+				<?php if ( current_user_can( 'manage_options' ) ) : ?>
+					<div class="radius-card__actions">
+						<button type="button" class="button button-secondary" id="radius-slug-blacklist-places-start" <?php disabled( $slug_bl_count < 1 ); ?> title="<?php esc_attr_e( 'Deletes place terms whose slug matches the low-value substring list.', 'radius' ); ?>">
+							<?php esc_html_e( 'Remove matching places', 'radius' ); ?>
+						</button>
+						<p class="description" id="radius-slug-blacklist-places-status" role="status" aria-live="polite"></p>
+					</div>
+				<?php endif; ?>
+			</div>
 
 			<div class="radius-cards radius-cards--locations-summary">
 				<div class="radius-card">
@@ -1333,7 +1364,7 @@ class Radius_Admin {
 	/**
 	 * Readiness stats for the summary bar (locations, service areas, places in scope).
 	 *
-	 * @return array{total_places:int,places_in_scope:int,skipped_no_coords:int,anchor_rows:int,has_anchors:bool,batch_size:int}
+	 * @return array{total_places:int,places_in_scope:int,skipped_no_coords:int,prefilter_blacklist:int,prefilter_duplicates:int,anchor_rows:int,has_anchors:bool,batch_size:int}
 	 */
 	private static function get_deploy_readiness_stats() {
 		$tax   = Radius_Place_Taxonomy::TAXONOMY;
@@ -1351,19 +1382,29 @@ class Radius_Admin {
 		$has     = $anchors !== array();
 		$scope   = 0;
 		$skipped = 0;
+		$pre_bl  = 0;
+		$pre_dup = 0;
 		if ( $has ) {
 			$geo     = Radius_Geo_Service::collect_place_ids_for_anchors( $anchors );
 			$scope   = is_array( $geo['ids'] ) ? count( $geo['ids'] ) : 0;
 			$skipped = isset( $geo['skipped_no_coords'] ) ? (int) $geo['skipped_no_coords'] : 0;
+			if ( $scope > 0 && is_array( $geo['ids'] ) ) {
+				$pref = Radius_Place_Taxonomy::filter_place_ids_for_deploy( array_map( 'intval', $geo['ids'] ) );
+				$pre_bl  = (int) $pref['removed_blacklist'];
+				$pre_dup = (int) $pref['removed_duplicate'];
+				$scope   = count( $pref['ids'] );
+			}
 		}
 		$batch = max( 1, min( 200, (int) Radius_Settings::get()['deploy_batch'] ) );
 		return array(
-			'total_places'       => (int) $total,
-			'places_in_scope'    => $scope,
-			'skipped_no_coords'  => $skipped,
-			'anchor_rows'        => count( $anchors ),
-			'has_anchors'        => $has,
-			'batch_size'         => $batch,
+			'total_places'           => (int) $total,
+			'places_in_scope'        => $scope,
+			'skipped_no_coords'      => $skipped,
+			'prefilter_blacklist'    => $pre_bl,
+			'prefilter_duplicates'   => $pre_dup,
+			'anchor_rows'            => count( $anchors ),
+			'has_anchors'            => $has,
+			'batch_size'             => $batch,
 		);
 	}
 
@@ -1515,6 +1556,16 @@ class Radius_Admin {
 						<span class="radius-deploy-summary__label"><?php esc_html_e( 'Places in deploy scope', 'radius' ); ?></span>
 						<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['places_in_scope'] ); ?></span>
 					</li>
+					<?php if ( (int) $stats['prefilter_blacklist'] > 0 || (int) $stats['prefilter_duplicates'] > 0 ) : ?>
+						<li class="radius-deploy-summary__stat radius-deploy-summary__stat--sub">
+							<span class="radius-deploy-summary__label"><?php esc_html_e( 'Excluded before deploy (slug patterns)', 'radius' ); ?></span>
+							<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['prefilter_blacklist'] ); ?></span>
+						</li>
+						<li class="radius-deploy-summary__stat radius-deploy-summary__stat--sub">
+							<span class="radius-deploy-summary__label"><?php esc_html_e( 'Excluded before deploy (duplicate names)', 'radius' ); ?></span>
+							<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['prefilter_duplicates'] ); ?></span>
+						</li>
+					<?php endif; ?>
 					<li class="radius-deploy-summary__stat">
 						<span class="radius-deploy-summary__label"><?php esc_html_e( 'Skipped (no lat/lng)', 'radius' ); ?></span>
 						<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['skipped_no_coords'] ); ?></span>
@@ -1956,6 +2007,7 @@ class Radius_Admin {
 						</header>
 						<div class="radius-deploy-help-modal__body">
 							<p><?php esc_html_e( 'Each landing template card deploys landings to every library place inside your service areas. The Service areas section uses the template chosen in Settings → General and publishes hub pages under your service area URL prefix with place-only slugs. Large libraries run in chained batches (batch size under Settings → General). Without JavaScript, use “Continue deployment” after each batch.', 'radius' ); ?></p>
+							<p><?php esc_html_e( 'Before the first batch, the deploy queue drops places whose slug contains configured “low value” substrings (trailers, subdivisions, etc., same list as Location library → slug cleanup) and collapses duplicate display names so only the shortest slug per name is deployed.', 'radius' ); ?></p>
 							<p><?php esc_html_e( 'Templates support {{place_name}} {{place_slug}} {{country}} {{region}} {{state}} {{zip}} {{lat}} {{lng}}, X-field keys, and spintax {option one|option two}. Elementor layouts are copied on deploy when enabled in Settings.', 'radius' ); ?></p>
 						</div>
 						<footer class="radius-deploy-help-modal__footer">

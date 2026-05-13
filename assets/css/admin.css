@@ -129,6 +129,21 @@
 	margin-bottom: 28px;
 }
 
+.radius-locations-slug-blacklist {
+	margin-bottom: 24px;
+	max-width: 960px;
+	padding-bottom: 4px;
+}
+
+.radius-locations-slug-blacklist__details {
+	margin-top: 10px;
+}
+
+.radius-locations-slug-blacklist__details summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
 .radius-locations-toolbar-wrap {
 	clear: both;
 	margin-top: 8px;
@@ -642,6 +657,12 @@
 	border-radius: 6px;
 	background: #fcfcfd;
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.radius-deploy-summary__stat--sub {
+	max-width: 200px;
+	background: #f6f7f7;
+	border-style: dashed;
 }
 
 .radius-deploy-summary__label {

@@ -354,4 +354,229 @@ class Radius_Place_Taxonomy {
 			'lng'        => (string) get_term_meta( $term_id, 'radius_lng', true ),
 		);
 	}
+
+	/**
+	 * Default slug substring list for “low value” Magic Page places (trailers, subdivisions, etc.).
+	 * A term matches if its slug contains any fragment as a substring.
+	 *
+	 * @return string[]
+	 */
+	public static function default_place_slug_blacklist_fragments() {
+		return array(
+			'meadows',
+			'trailer',
+			'mobile',
+			'manor',
+			'estates',
+			'village',
+			'subdivision',
+			'place',
+			'circle',
+			'acres',
+			'crossing',
+			'crossroads',
+			'highlands',
+			'drive',
+			'ridge',
+			'homestead',
+			'land',
+			'woods',
+			'oak',
+			'bend',
+			'garden',
+			'corner',
+			'terrace',
+			'villa',
+			'community',
+			'farm',
+			'hills',
+			'forest',
+			'addition',
+			'town-center',
+			'country-club',
+			'swamp',
+			'colonia',
+		);
+	}
+
+	/**
+	 * Active slug blacklist fragments (filter may replace the default list entirely).
+	 *
+	 * @return string[]
+	 */
+	public static function get_place_slug_blacklist_fragments() {
+		$defaults = self::default_place_slug_blacklist_fragments();
+		/**
+		 * Slug substrings that mark a place as low-value for deploy / bulk cleanup.
+		 *
+		 * @param string[] $defaults Lowercase fragments matched against term slugs.
+		 */
+		$filtered = apply_filters( 'radius_place_slug_blacklist_fragments', $defaults );
+		if ( ! is_array( $filtered ) || array() === $filtered ) {
+			return $defaults;
+		}
+		$out = array();
+		foreach ( $filtered as $f ) {
+			$f = strtolower( trim( (string) $f ) );
+			if ( $f !== '' ) {
+				$out[] = $f;
+			}
+		}
+		return array_values( array_unique( $out, SORT_STRING ) );
+	}
+
+	/**
+	 * Whether a place slug matches the blacklist (substring, case-insensitive via strtolower).
+	 *
+	 * @param string $slug Term slug.
+	 * @return bool
+	 */
+	public static function place_slug_matches_blacklist( $slug ) {
+		$slug = strtolower( (string) $slug );
+		if ( $slug === '' ) {
+			return false;
+		}
+		foreach ( self::get_place_slug_blacklist_fragments() as $frag ) {
+			if ( strpos( $slug, $frag ) !== false ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * How many radius_place terms have a slug matching the blacklist.
+	 *
+	 * @return int
+	 */
+	public static function count_places_matching_slug_blacklist() {
+		global $wpdb;
+		$frags = self::get_place_slug_blacklist_fragments();
+		if ( array() === $frags ) {
+			return 0;
+		}
+		$tax            = self::TAXONOMY;
+		$placeholders   = array();
+		$params         = array( $tax );
+		foreach ( $frags as $f ) {
+			$placeholders[] = 't.slug LIKE %s';
+			$params[]       = '%' . $wpdb->esc_like( $f ) . '%';
+		}
+		$sql = "SELECT COUNT(*) FROM {$wpdb->terms} AS t
+			INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			WHERE (" . implode( ' OR ', $placeholders ) . ')';
+		$sql = $wpdb->prepare( $sql, $params ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$n   = (int) $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $sql from $wpdb->prepare().
+		return max( 0, $n );
+	}
+
+	/**
+	 * Next chunk of radius_place term IDs whose slug matches the blacklist (lowest IDs first).
+	 *
+	 * @param int $limit Max IDs.
+	 * @return int[]
+	 */
+	public static function get_place_term_ids_for_slug_blacklist_chunk( $limit = 80 ) {
+		global $wpdb;
+		$frags = self::get_place_slug_blacklist_fragments();
+		if ( array() === $frags ) {
+			return array();
+		}
+		$tax          = self::TAXONOMY;
+		$limit        = max( 1, min( 200, (int) $limit ) );
+		$placeholders = array();
+		$params       = array( $tax );
+		foreach ( $frags as $f ) {
+			$placeholders[] = 't.slug LIKE %s';
+			$params[]       = '%' . $wpdb->esc_like( $f ) . '%';
+		}
+		$params[] = $limit;
+		$sql      = "SELECT t.term_id FROM {$wpdb->terms} AS t
+			INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			WHERE (" . implode( ' OR ', $placeholders ) . ')
+			ORDER BY t.term_id ASC
+			LIMIT %d';
+		$sql = $wpdb->prepare( $sql, $params ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$ids = $wpdb->get_col( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $sql from $wpdb->prepare().
+		return is_array( $ids ) ? array_map( 'absint', $ids ) : array();
+	}
+
+	/**
+	 * Remove blacklist slug matches, then collapse duplicate display names (same keeper rule as library dedupe).
+	 *
+	 * @param int[] $place_ids radius_place term IDs.
+	 * @return array{ids:int[],removed_blacklist:int,removed_duplicate:int}
+	 */
+	public static function filter_place_ids_for_deploy( array $place_ids ) {
+		$place_ids = array_values( array_unique( array_map( 'intval', array_filter( $place_ids ) ) ) );
+		$out       = array(
+			'ids'               => array(),
+			'removed_blacklist' => 0,
+			'removed_duplicate' => 0,
+		);
+		if ( array() === $place_ids ) {
+			return $out;
+		}
+		$terms = get_terms(
+			array(
+				'taxonomy'   => self::TAXONOMY,
+				'include'    => $place_ids,
+				'hide_empty' => false,
+				'orderby'    => 'include',
+			)
+		);
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			return $out;
+		}
+		$by_id = array();
+		foreach ( $terms as $t ) {
+			$by_id[ (int) $t->term_id ] = $t;
+		}
+		$after_bl = array();
+		foreach ( $place_ids as $pid ) {
+			if ( ! isset( $by_id[ $pid ] ) ) {
+				continue;
+			}
+			$slug = (string) $by_id[ $pid ]->slug;
+			if ( self::place_slug_matches_blacklist( $slug ) ) {
+				++$out['removed_blacklist'];
+				continue;
+			}
+			$after_bl[] = $pid;
+		}
+		if ( array() === $after_bl ) {
+			$out['ids'] = array();
+			return $out;
+		}
+		$name_groups = array();
+		foreach ( $after_bl as $pid ) {
+			$name = (string) $by_id[ $pid ]->name;
+			if ( ! isset( $name_groups[ $name ] ) ) {
+				$name_groups[ $name ] = array();
+			}
+			$name_groups[ $name ][] = $pid;
+		}
+		$final = array();
+		foreach ( $name_groups as $pids ) {
+			if ( count( $pids ) === 1 ) {
+				$final[] = $pids[0];
+				continue;
+			}
+			usort(
+				$pids,
+				static function ( $a, $b ) use ( $by_id ) {
+					$la = strlen( (string) $by_id[ $a ]->slug );
+					$lb = strlen( (string) $by_id[ $b ]->slug );
+					if ( $la !== $lb ) {
+						return $la <=> $lb;
+					}
+					return $a <=> $b;
+				}
+			);
+			$final[] = $pids[0];
+			$out['removed_duplicate'] += count( $pids ) - 1;
+		}
+		$out['ids'] = array_values( array_unique( $final ) );
+		return $out;
+	}
 }
