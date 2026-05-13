@@ -32,6 +32,7 @@ class Radius_Form_Handlers {
 		add_action( 'admin_post_radius_places_bulk', array( __CLASS__, 'handle_places_bulk' ) );
 		add_action( 'admin_post_radius_save_settings', array( __CLASS__, 'handle_settings' ) );
 		add_action( 'admin_post_radius_magic_page_cleanup_options', array( __CLASS__, 'handle_magic_page_cleanup_options' ) );
+		add_action( 'admin_post_radius_migration_mark_places', array( __CLASS__, 'handle_migration_mark_places' ) );
 	}
 
 	/**
@@ -62,6 +63,39 @@ class Radius_Form_Handlers {
 			(int) $res['deleted']
 		);
 		self::redirect( 'radius-settings', $msg, array( 'tab' => 'database' ) );
+	}
+
+	/**
+	 * Record the migration “places” step complete when auto-detection is wrong (e.g. extra manual places).
+	 *
+	 * @return void
+	 */
+	public static function handle_migration_mark_places() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
+		}
+		self::bail_if_locked();
+		check_admin_referer( 'radius_migration_mark_places', 'radius_migration_mark_places_nonce' );
+
+		if ( ! class_exists( 'Radius_Migration_Wizard' ) ) {
+			self::redirect(
+				'radius-import',
+				__( 'Migration is not available on this site.', 'radius' ),
+				array( 'tab' => 'migration' )
+			);
+			return;
+		}
+
+		Radius_Migration_Wizard::record_step_done(
+			'places',
+			__( 'Locations step marked complete manually (Import → Magic Page migration).', 'radius' ),
+			array( 'source' => 'manual' )
+		);
+		self::redirect(
+			'radius-import',
+			__( 'Locations migration step saved as complete.', 'radius' ),
+			array( 'tab' => 'migration' )
+		);
 	}
 
 	/**
@@ -630,6 +664,13 @@ class Radius_Form_Handlers {
 			(int) $res['skipped'],
 			(int) ( $res['skipped_existing'] ?? 0 )
 		);
+		if ( ! empty( $res['skipped_slug_blacklist'] ) ) {
+			$msg .= ' ' . sprintf(
+				/* translators: %d: legacy terms skipped because slug matched the low-value substring list */
+				__( 'Skipped (slug pattern list): %d.', 'radius' ),
+				(int) $res['skipped_slug_blacklist']
+			);
+		}
 		if ( ! empty( $res['errors'] ) ) {
 			$msg .= ' ' . implode( ' ', $res['errors'] );
 		}

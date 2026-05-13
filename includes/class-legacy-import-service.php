@@ -1722,6 +1722,66 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * How many legacy location terms would remain after the same filters as deploy / library cleanup:
+	 * exclude slug-blacklist matches, then keep one term per display name (shortest slug, then lowest term_id).
+	 *
+	 * Used to compare the Radius place library to Magic Page when duplicates or low-value slugs were removed in Radius.
+	 *
+	 * @return int|null The expected count, or null if the database query failed.
+	 */
+	public static function legacy_place_effective_term_count_for_migration() {
+		if ( ! self::detect_legacy_places() ) {
+			return 0;
+		}
+
+		$tax   = self::legacy_location_taxonomy();
+		$frags = Radius_Place_Taxonomy::get_place_slug_blacklist_fragments();
+		global $wpdb;
+		$t  = $wpdb->terms;
+		$tt = $wpdb->term_taxonomy;
+
+		$blacklist_sql_outer = '1=1';
+		$blacklist_sql_inner = '1=1';
+		$params_outer        = array();
+		$params_inner        = array();
+
+		if ( ! empty( $frags ) ) {
+			$parts_o = array();
+			$parts_i = array();
+			foreach ( $frags as $f ) {
+				$parts_o[] = 't.slug LIKE %s';
+				$params_o[] = '%' . $wpdb->esc_like( $f ) . '%';
+				$parts_i[] = 't2.slug LIKE %s';
+				$params_i[] = '%' . $wpdb->esc_like( $f ) . '%';
+			}
+			$blacklist_sql_outer = 'NOT (' . implode( ' OR ', $parts_o ) . ')';
+			$blacklist_sql_inner = 'NOT (' . implode( ' OR ', $parts_i ) . ')';
+		}
+
+		$sql = "SELECT COUNT(*) FROM {$t} AS t
+			INNER JOIN {$tt} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+			WHERE {$blacklist_sql_outer}
+			AND t.term_id = (
+				SELECT t2.term_id FROM {$t} AS t2
+				INNER JOIN {$tt} AS tt2 ON t2.term_id = tt2.term_id AND tt2.taxonomy = %s
+				WHERE t2.name = t.name AND {$blacklist_sql_inner}
+				ORDER BY CHAR_LENGTH(t2.slug) ASC, t2.term_id ASC
+				LIMIT 1
+			)";
+
+		$params = array_merge( array( $tax ), $params_outer, array( $tax ), $params_inner );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic fragment count; placeholders match $params.
+		$sql = $wpdb->prepare( $sql, $params );
+		$n   = $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		if ( '' !== $wpdb->last_error ) {
+			return null;
+		}
+
+		return (int) $n;
+	}
+
+	/**
 	 * Copy legacy blueprint posts into radius_template (draft first).
 	 *
 	 * @return array{imported:int,skipped:int,errors:string[]}
@@ -1867,17 +1927,18 @@ class Radius_Legacy_Import_Service {
 	 * @param int      $offset      Legacy term offset (stable ordering by term_id), or cumulative progress when using cursor.
 	 * @param int|null $total_known Total legacy terms if already counted (skips a DB count per batch).
 	 * @param array<string,mixed> $options Optional: skip_existing (bool), slug_lookup_chunk (int), cursor_term_id (int) — when set, fetch batch via term_id cursor (AJAX); omit for OFFSET pagination (legacy form).
-	 * @return array{imported:int,updated:int,skipped:int,skipped_existing:int,errors:string[],has_more:bool,next_offset:int,total_legacy?:int,next_cursor_term_id?:int}
+	 * @return array{imported:int,updated:int,skipped:int,skipped_existing:int,skipped_slug_blacklist:int,errors:string[],has_more:bool,next_offset:int,total_legacy?:int,next_cursor_term_id?:int}
 	 */
 	public static function import_places( $limit = 50, $offset = 0, $total_known = null, array $options = array() ) {
 		$out = array(
-			'imported'           => 0,
-			'updated'            => 0,
-			'skipped'            => 0,
-			'skipped_existing'   => 0,
-			'errors'             => array(),
-			'has_more'           => false,
-			'next_offset'        => (int) $offset,
+			'imported'                => 0,
+			'updated'                 => 0,
+			'skipped'                 => 0,
+			'skipped_existing'        => 0,
+			'skipped_slug_blacklist'  => 0,
+			'errors'                  => array(),
+			'has_more'                => false,
+			'next_offset'             => (int) $offset,
 		);
 
 		if ( ! self::detect_legacy_places() ) {
@@ -2006,8 +2067,16 @@ class Radius_Legacy_Import_Service {
 
 		try {
 
+		$skip_slug_blacklist = (bool) apply_filters( 'radius_legacy_import_skip_slug_blacklist', true );
+
 		foreach ( $terms as $term ) {
 			$slug = $term->slug;
+
+			if ( $skip_slug_blacklist && Radius_Place_Taxonomy::place_slug_matches_blacklist( (string) $slug ) ) {
+				++$out['skipped_slug_blacklist'];
+				continue;
+			}
+
 			$existing = isset( $lf_by_slug[ $slug ] ) ? $lf_by_slug[ $slug ] : null;
 
 			if ( $existing && ! is_wp_error( $existing ) && $skip_existing ) {

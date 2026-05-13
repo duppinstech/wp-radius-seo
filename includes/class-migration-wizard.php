@@ -18,6 +18,9 @@ final class Radius_Migration_Wizard {
 	public const OPTION_STEPS     = 'radius_migration_wizard_steps_done';
 	public const OPTION_ACTIVITY  = 'radius_migration_activity_log';
 
+	/** @var array<string,mixed>|null */
+	private static $place_count_snapshot_cache = null;
+
 	/**
 	 * @return void
 	 */
@@ -177,34 +180,24 @@ final class Radius_Migration_Wizard {
 	/**
 	 * True when the Radius place library count matches the legacy location taxonomy (if it still has terms).
 	 *
+	 * When Magic Page terms still exist, compares to the **effective** legacy count: same rules as deploy
+	 * (slug blacklist, then one keeper per duplicate display name). Falls back to raw legacy count if that
+	 * query cannot be computed.
+	 *
 	 * @return bool
 	 */
 	public static function infer_places_counts_match() {
-		$legacy_tax = Radius_Legacy_Import_Service::detect_legacy_places();
-		$legacy_n   = 0;
-		if ( $legacy_tax ) {
-			$legacy_n = (int) Radius_Legacy_Import_Service::legacy_place_term_count();
-		}
-		$radius_n = wp_count_terms(
-			array(
-				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
-				'hide_empty' => false,
-			)
-		);
-		if ( is_wp_error( $radius_n ) ) {
-			return false;
-		}
-		$radius_n = (int) $radius_n;
-		if ( $legacy_tax && $legacy_n > 0 ) {
-			return $radius_n === $legacy_n;
-		}
-		return $radius_n > 0;
+		return ! empty( self::place_count_snapshot()['counts_match'] );
 	}
 
 	/**
-	 * @return array{legacy:int,radius:int,legacy_taxonomy:bool}
+	 * @return array{legacy:int,legacy_effective:int,radius:int,legacy_taxonomy:bool,counts_match:bool}
 	 */
 	public static function place_count_snapshot() {
+		if ( null !== self::$place_count_snapshot_cache ) {
+			return self::$place_count_snapshot_cache;
+		}
+
 		$legacy_tax = Radius_Legacy_Import_Service::detect_legacy_places();
 		$legacy_n   = 0;
 		if ( $legacy_tax ) {
@@ -221,11 +214,36 @@ final class Radius_Migration_Wizard {
 		} else {
 			$radius_n = (int) $radius_n;
 		}
-		return array(
+
+		$legacy_effective = 0;
+		if ( $legacy_tax && $legacy_n > 0 ) {
+			$eff = Radius_Legacy_Import_Service::legacy_place_effective_term_count_for_migration();
+			$base_eff          = ( null === $eff ) ? $legacy_n : (int) $eff;
+			/**
+			 * Expected Radius place count for migration parity (after applying slug blacklist + duplicate-name collapse to the legacy taxonomy).
+			 *
+			 * @param int $base_eff Count from SQL when available; falls back to raw legacy count if the query failed.
+			 * @param int $legacy_n Raw legacy term count.
+			 */
+			$legacy_effective = (int) apply_filters( 'radius_migration_places_expected_count', $base_eff, $legacy_n );
+		}
+
+		$counts_match = false;
+		if ( $legacy_tax && $legacy_n > 0 ) {
+			$counts_match = ( $radius_n === $legacy_effective );
+		} else {
+			$counts_match = $radius_n > 0;
+		}
+
+		self::$place_count_snapshot_cache = array(
 			'legacy'            => $legacy_n,
+			'legacy_effective'  => $legacy_effective,
 			'radius'            => $radius_n,
 			'legacy_taxonomy'   => (bool) $legacy_tax,
+			'counts_match'      => $counts_match,
 		);
+
+		return self::$place_count_snapshot_cache;
 	}
 
 	/**
@@ -345,7 +363,8 @@ final class Radius_Migration_Wizard {
 	 */
 	public static function build_steps_status() {
 		$rec = self::get_recorded_steps();
-		$inf_places       = self::infer_places_counts_match();
+		$place_snap       = self::place_count_snapshot();
+		$inf_places       = ! empty( $place_snap['counts_match'] );
 		$inf_templates    = self::infer_templates_ready();
 		$inf_rep          = self::infer_replacers_filled();
 		$inf_anc          = self::infer_anchors_configured();
@@ -356,7 +375,7 @@ final class Radius_Migration_Wizard {
 
 		return array(
 			'places'    => array(
-				'done'      => $inf_places,
+				'done'      => ! empty( $rec['places'] ) || $inf_places,
 				'recorded'  => ! empty( $rec['places'] ),
 				'inferred'  => $inf_places,
 			),
@@ -863,9 +882,10 @@ final class Radius_Migration_Wizard {
 			'locations_url'    => admin_url( 'admin.php?page=radius-locations' ),
 			'legacy_places'    => Radius_Legacy_Import_Service::detect_legacy_places(),
 			'legacy_tpl'       => Radius_Legacy_Import_Service::detect_legacy_templates(),
-			'places_legacy_count' => $counts['legacy'],
-			'places_radius_count' => $counts['radius'],
-			'places_counts_match' => self::infer_places_counts_match(),
+			'places_legacy_count'           => $counts['legacy'],
+			'places_legacy_effective_count' => $counts['legacy_effective'],
+			'places_radius_count'           => $counts['radius'],
+			'places_counts_match'           => ! empty( $counts['counts_match'] ),
 			'service_area_template_id'    => $sa_tpl,
 			'deploy_landing_template_ids' => self::landing_template_ids_ordered(),
 			'deploy_batch_nonce'          => wp_create_nonce( 'radius_deploy_batch' ),

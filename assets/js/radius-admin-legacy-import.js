@@ -291,6 +291,9 @@
 					'{skipped_existing}': String(
 						d.skipped_existing != null ? d.skipped_existing : 0
 					),
+					'{skipped_slug_blacklist}': String(
+						d.skipped_slug_blacklist != null ? d.skipped_slug_blacklist : 0
+					),
 				});
 
 				if (log) {

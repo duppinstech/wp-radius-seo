@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.50
+Stable tag: 1.6.51
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -68,7 +68,13 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_slug_blacklist_fragments` — replace the default slug substring list for “low value” place cleanup and deploy prefilter (array of lowercase strings matched against `radius_place` term slugs).
 * `radius_slug_blacklist_places_chunk_size` — max term IDs deleted per AJAX request when removing slug-pattern matches from the library (default 80, clamped 10–200).
 * `radius_slug_blacklist_trash_deployed_pages` — return false to delete slug-blacklist place terms without moving matching `radius_landing` / `radius_service_area` posts to the Trash first (default true).
+* `radius_migration_places_expected_count` — filter the **adjusted** legacy location count used for migration wizard parity (after slug blacklist + duplicate-name collapse on the Magic Page taxonomy; second arg is raw legacy count).
+* `radius_legacy_import_skip_slug_blacklist` — return false to import legacy location terms whose slug matches the low-value substring list (default true: skip so re-import does not recreate cleaned-up places).
 == Changelog ==
+
+= 1.6.51 =
+* **Migration wizard — locations step:** Compares the Radius library to an **adjusted** Magic Page count (same rules as deploy: slug-pattern exclusions, then one keeper per duplicate display name) instead of raw legacy term totals, so dedupe / slug cleanup no longer blocks the wizard. The step also counts as done when **manually** marked complete (same as other steps). Import → Magic Page migration shows the three counts and an optional override button.
+* **Legacy place import:** Skips legacy terms whose slug matches the configured substring blacklist by default (filter `radius_legacy_import_skip_slug_blacklist`); batch stats include the skip count.
 
 = 1.6.50 =
 * **Slug pattern cleanup:** Removing blacklist-matched places now moves every deployed landing and service-area hub page for that place to the **Trash** before the term is deleted. Progress shows batch and cumulative page counts. Filter `radius_slug_blacklist_trash_deployed_pages` to disable.

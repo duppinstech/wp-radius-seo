@@ -260,7 +260,7 @@ class Radius_Admin {
 					'done'             => __( 'Legacy place import finished.', 'radius' ),
 					'stopped'          => __( 'Import stopped.', 'radius' ),
 					'errorPrefix'      => __( 'Error:', 'radius' ),
-					'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}.', 'radius' ),
+					'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}, skipped slug patterns: {skipped_slug_blacklist}.', 'radius' ),
 					'progressFmt'      => __( 'Overall: {pct}% of legacy terms ({done} / {total}).', 'radius' ),
 					'overallLabel'     => __( 'Overall progress (all legacy terms)', 'radius' ),
 					'batchLabel'       => __( 'Current batch (this request)', 'radius' ),
@@ -299,7 +299,7 @@ class Radius_Admin {
 					'errorPrefix'               => __( 'Error:', 'radius' ),
 					'requestFailed'             => __( 'Request failed.', 'radius' ),
 					'title'                     => __( 'Magic Page → Radius migration', 'radius' ),
-					'intro'                     => __( 'This assistant imports legacy locations (matching the Magic Page location count), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
+					'intro'                     => __( 'This assistant imports legacy locations (count matches Magic Page after the same slug-pattern and duplicate-name rules as deploy), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
 					'runThisStep'               => __( 'Run this step when you click Start', 'radius' ),
 					'completed'                 => __( 'Completed', 'radius' ),
 					'incomplete'                => __( 'Incomplete', 'radius' ),
@@ -314,7 +314,7 @@ class Radius_Admin {
 					'confirmDeleteMagicPage'    => __( 'Delete the Magic Page plugin files from this site?', 'radius' ),
 					'stepDeployAreas'           => __( 'Deploy service area pages (queued batches)', 'radius' ),
 					'stepDeployLandings'        => __( 'Deploy landing pages for all service templates', 'radius' ),
-					'placesCountMismatch'       => __( 'The place library does not match the legacy location count. Finish importing on the Locations screen, then try again.', 'radius' ),
+					'placesCountMismatch'       => __( 'The place library count does not match the adjusted Magic Page location count (raw legacy terms minus slug-pattern matches, then one per duplicate name). Finish importing on the Locations screen, or use “Mark location step complete” on Import → Magic Page migration if you intentionally differ.', 'radius' ),
 					'deployFailed'              => __( 'Deploy failed.', 'radius' ),
 					'deployBadResponse'         => __( 'Unexpected response from deploy.', 'radius' ),
 					'deployMissingServiceAreaTemplate' => __( 'Set the service area template under Radius → Settings → General, save, then run deployment again.', 'radius' ),
@@ -553,7 +553,7 @@ class Radius_Admin {
 							'done'             => __( 'Legacy place import finished.', 'radius' ),
 							'stopped'          => __( 'Import stopped.', 'radius' ),
 							'errorPrefix'      => __( 'Error:', 'radius' ),
-							'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}.', 'radius' ),
+							'batchFmt'         => __( 'Batch at offset {offset} — new: {new}, updated: {updated}, skipped: {skipped}, already in library: {skipped_existing}, skipped slug patterns: {skipped_slug_blacklist}.', 'radius' ),
 							'progressFmt'      => __( 'Overall: {pct}% of legacy terms ({done} / {total}).', 'radius' ),
 							'overallLabel'     => __( 'Overall progress (all legacy terms)', 'radius' ),
 							'batchLabel'       => __( 'Current batch (this request)', 'radius' ),
@@ -595,7 +595,7 @@ class Radius_Admin {
 							'errorPrefix'                      => __( 'Error:', 'radius' ),
 							'requestFailed'                    => __( 'Request failed.', 'radius' ),
 							'title'                            => __( 'Magic Page → Radius migration', 'radius' ),
-							'intro'                            => __( 'This assistant imports legacy locations (matching the Magic Page location count), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
+							'intro'                            => __( 'This assistant imports legacy locations (count matches Magic Page after the same slug-pattern and duplicate-name rules as deploy), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
 							'runThisStep'                      => __( 'Run this step when you click Start', 'radius' ),
 							'completed'                        => __( 'Completed', 'radius' ),
 							'incomplete'                       => __( 'Incomplete', 'radius' ),
@@ -610,7 +610,7 @@ class Radius_Admin {
 							'confirmDeleteMagicPage'           => __( 'Delete the Magic Page plugin files from this site?', 'radius' ),
 							'stepDeployAreas'                 => __( 'Deploy service area pages (queued batches)', 'radius' ),
 							'stepDeployLandings'              => __( 'Deploy landing pages for all service templates', 'radius' ),
-							'placesCountMismatch'              => __( 'The place library does not match the legacy location count. Finish importing on the Locations screen, then try again.', 'radius' ),
+							'placesCountMismatch'              => __( 'The place library count does not match the adjusted Magic Page location count (raw legacy terms minus slug-pattern matches, then one per duplicate name). Finish importing on the Locations screen, or use “Mark location step complete” on Import → Magic Page migration if you intentionally differ.', 'radius' ),
 							'deployFailed'                     => __( 'Deploy failed.', 'radius' ),
 							'deployBadResponse'                => __( 'Unexpected response from deploy.', 'radius' ),
 							'deployMissingServiceAreaTemplate' => __( 'Set the service area template under Radius → Settings → General, save, then run deployment again.', 'radius' ),
@@ -2052,6 +2052,15 @@ class Radius_Admin {
 		$mp_active        = Radius_Legacy_Import_Service::is_magic_page_plugin_active();
 		$migration_steps  = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::build_steps_status() : array();
 		$migration_log      = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_activity_log() : array();
+		$place_count_snap   = class_exists( 'Radius_Migration_Wizard' )
+			? Radius_Migration_Wizard::place_count_snapshot()
+			: array(
+				'legacy'            => 0,
+				'legacy_effective'  => 0,
+				'radius'            => 0,
+				'legacy_taxonomy'   => false,
+				'counts_match'      => false,
+			);
 		?>
 		<div class="wrap radius-admin">
 			<h1><?php esc_html_e( 'Import / export', 'radius' ); ?></h1>
@@ -2293,7 +2302,38 @@ Fast roadside help in {{region}}
 
 					<hr class="radius-tab-hr" />
 					<h3><?php esc_html_e( 'Step 1 — Locations', 'radius' ); ?></h3>
-					<p class="description"><?php esc_html_e( 'Copies legacy “location” taxonomy terms into the Radius place library (same tool as the Locations tab).', 'radius' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Copies legacy “location” taxonomy terms into the Radius place library (same tool as the Locations tab). Re-import skips legacy rows whose slug matches the same low-value substring list used for deploy and library cleanup (filter radius_legacy_import_skip_slug_blacklist).', 'radius' ); ?></p>
+					<?php if ( $legacy_pl && class_exists( 'Radius_Migration_Wizard' ) ) : ?>
+						<p class="description"><?php
+							printf(
+								/* translators: 1: raw Magic Page term count 2: adjusted expected count 3: radius_place count */
+								esc_html__( 'Migration wizard comparison — Magic Page (raw): %1$s. Adjusted expected (slug patterns removed, then one per duplicate name): %2$s. Radius library: %3$s.', 'radius' ),
+								number_format_i18n( (int) $place_count_snap['legacy'] ),
+								number_format_i18n( (int) $place_count_snap['legacy_effective'] ),
+								number_format_i18n( (int) $place_count_snap['radius'] )
+							);
+							?></p>
+						<?php if ( ! empty( $place_count_snap['counts_match'] ) ) : ?>
+							<p class="description"><?php esc_html_e( 'These numbers satisfy the wizard’s locations step (library matches the adjusted Magic Page count).', 'radius' ); ?></p>
+						<?php else : ?>
+							<p class="description"><?php esc_html_e( 'When the middle number equals the Radius library count, the wizard treats the locations step as complete even if the raw Magic Page total is higher.', 'radius' ); ?></p>
+						<?php endif; ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block" style="margin:10px 0;">
+							<input type="hidden" name="action" value="radius_migration_mark_places" />
+							<?php wp_nonce_field( 'radius_migration_mark_places', 'radius_migration_mark_places_nonce' ); ?>
+							<?php
+							submit_button(
+								__( 'Mark locations migration step complete (override)', 'radius' ),
+								'secondary',
+								'submit',
+								false,
+								array(
+									'onclick' => 'return window.confirm(' . wp_json_encode( __( 'Only use this if the Radius library is already correct and you need to continue the migration wizard without matching counts.', 'radius' ) ) . ');',
+								)
+							);
+							?>
+						</form>
+					<?php endif; ?>
 					<?php if ( $legacy_pl ) : ?>
 						<p>
 							<label>
