@@ -280,6 +280,38 @@ class Radius_Template_Tokens {
 			$tokens['location_code'] = (string) $hub['location_code'];
 		}
 
-		return $tokens;
+		return self::merge_token_key_dash_underscore_aliases( $tokens );
+	}
+
+	/**
+	 * Duplicate token keys so `{{place_name}}` and `{{place-name}}` (and other underscore/hyphen pairs) resolve the same.
+	 * Original keys win when both forms already exist.
+	 *
+	 * @param array<string,string> $tokens Token map.
+	 * @return array<string,string>
+	 */
+	public static function merge_token_key_dash_underscore_aliases( array $tokens ) {
+		$extra = array();
+		foreach ( $tokens as $key => $value ) {
+			$key = (string) $key;
+			if ( $key === '' ) {
+				continue;
+			}
+			$scalar = is_scalar( $value ) ? (string) $value : '';
+			if ( strpos( $key, '_' ) !== false ) {
+				$alt = str_replace( '_', '-', $key );
+				if ( $alt !== $key && ! array_key_exists( $alt, $tokens ) && ! array_key_exists( $alt, $extra ) ) {
+					$extra[ $alt ] = $scalar;
+				}
+			}
+			if ( strpos( $key, '-' ) !== false ) {
+				$alt = str_replace( '-', '_', $key );
+				if ( $alt !== $key && ! array_key_exists( $alt, $tokens ) && ! array_key_exists( $alt, $extra ) ) {
+					$extra[ $alt ] = $scalar;
+				}
+			}
+		}
+
+		return $tokens + $extra;
 	}
 }

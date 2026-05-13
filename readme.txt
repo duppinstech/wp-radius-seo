@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.48
+Stable tag: 1.6.49
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -68,6 +68,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_slug_blacklist_fragments` — replace the default slug substring list for “low value” place cleanup and deploy prefilter (array of lowercase strings matched against `radius_place` term slugs).
 * `radius_slug_blacklist_places_chunk_size` — max term IDs deleted per AJAX request when removing slug-pattern matches from the library (default 80, clamped 10–200).
 == Changelog ==
+
+= 1.6.49 =
+* **Tokens:** `build_map()` now mirrors each token key between hyphen and underscore forms (e.g. `{{place-name}}` and `{{place_name}}` resolve the same) so templates are not sensitive to delimiter style.
+* **Deploy:** Counts unknown `{{token}}` placeholders stripped from title, body, slug pattern, copied meta, and Elementor JSON; finished deploy shows a soft “Note: N … removed” message (AJAX and non-JS). Existing behavior unchanged: unresolved doubles are still removed from output.
 
 = 1.6.48 =
 * **Slug blacklist:** Removed default fragment `forest` (e.g. false match on Wake Forest and similar real place names).

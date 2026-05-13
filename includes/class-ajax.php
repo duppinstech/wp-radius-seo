@@ -231,6 +231,19 @@ class Radius_Ajax {
 					$rd
 				);
 			}
+			$ph = (int) ( $acc['placeholders_removed'] ?? 0 );
+			if ( $ph > 0 ) {
+				$payload['done_message'] .= ' ' . sprintf(
+					/* translators: %d: count of {{token}} placeholders removed from output */
+					_n(
+						'Note: %d unknown {{token}} placeholder was removed from titles or content (no matching replacer).',
+						'Note: %d unknown {{token}} placeholders were removed from titles or content (no matching replacers).',
+						$ph,
+						'radius'
+					),
+					$ph
+				);
+			}
 		}
 
 		wp_send_json_success( $payload );

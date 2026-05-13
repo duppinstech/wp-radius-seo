@@ -20,7 +20,7 @@ class Radius_Deploy_Service {
 	 * @param int   $template_id Template post ID.
 	 * @param int[] $place_ids   radius_place term IDs.
 	 * @param array $args        { update_existing: bool, target_post_type?: 'radius_landing'|'radius_service_area' }
-	 * @return array{created:int,updated:int,skipped:int,errors:string[]}
+	 * @return array{created:int,updated:int,skipped:int,placeholders_removed:int,errors:string[]}
 	 */
 	public static function deploy( $template_id, array $place_ids, array $args = array() ) {
 		$template_id = (int) $template_id;
@@ -31,10 +31,11 @@ class Radius_Deploy_Service {
 		}
 
 		$out = array(
-			'created' => 0,
-			'updated' => 0,
-			'skipped' => 0,
-			'errors'  => array(),
+			'created'               => 0,
+			'updated'               => 0,
+			'skipped'               => 0,
+			'placeholders_removed'  => 0,
+			'errors'                => array(),
 		);
 
 		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'radius_template' ) {
@@ -58,24 +59,25 @@ class Radius_Deploy_Service {
 				continue;
 			}
 
-		$seed    = $template_id * 100000 + $place_id;
-		$title   = self::compute_landing_title( $template, $tokens, $seed );
-		$content = self::expand_cities_shortcode(
-			Radius_Token_Engine::render( $template->post_content, $tokens, $seed ),
-			$place_id
-		);
+			$seed       = $template_id * 100000 + $place_id;
+			$ph_landing = 0;
+			$title      = self::compute_landing_title( $template, $tokens, $seed, false, $ph_landing );
+			$content    = self::expand_cities_shortcode(
+				Radius_Token_Engine::render( $template->post_content, $tokens, $seed, false, true, $ph_landing ),
+				$place_id
+			);
 
-		$slug_base = 'radius_service_area' === $target_pt
+			$slug_base = 'radius_service_area' === $target_pt
 				? self::compute_service_area_slug_base( $tokens )
-				: self::compute_landing_slug_base( $template, $tokens, $seed );
+				: self::compute_landing_slug_base( $template, $tokens, $seed, false, $ph_landing );
 
-		$existing = self::find_deployed( $template_id, $place_id, $target_pt );
+			$existing = self::find_deployed( $template_id, $place_id, $target_pt );
 
-		// Trash any extra copies (from crashed/restarted deploys) BEFORE computing
-		// unique_slug so the canonical post can reclaim the unprefixed base slug.
-		self::trash_extra_deployed( $template_id, $place_id, (int) $existing, $target_pt );
+			// Trash any extra copies (from crashed/restarted deploys) BEFORE computing
+			// unique_slug so the canonical post can reclaim the unprefixed base slug.
+			self::trash_extra_deployed( $template_id, $place_id, (int) $existing, $target_pt );
 
-		if ( $existing ) {
+			if ( $existing ) {
 				if ( ! $update ) {
 					++$out['skipped'];
 					continue;
@@ -94,11 +96,12 @@ class Radius_Deploy_Service {
 					continue;
 				}
 				self::attach_meta( (int) $existing, $template_id, $place_id );
-				$err = self::sync_deployed_landing( (int) $existing, $template_id, $place_id, $tokens, $seed );
+				$err = self::sync_deployed_landing( (int) $existing, $template_id, $place_id, $tokens, $seed, $ph_landing );
 				if ( $err !== '' ) {
 					$out['errors'][] = $err;
 				}
 				wp_set_object_terms( (int) $existing, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
+				$out['placeholders_removed'] += $ph_landing;
 				++$out['updated'];
 				continue;
 			}
@@ -120,11 +123,12 @@ class Radius_Deploy_Service {
 			}
 
 			self::attach_meta( (int) $post_id, $template_id, $place_id );
-			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $place_id, $tokens, $seed );
+			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $place_id, $tokens, $seed, $ph_landing );
 			if ( $err !== '' ) {
 				$out['errors'][] = $err;
 			}
 			wp_set_object_terms( (int) $post_id, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
+			$out['placeholders_removed'] += $ph_landing;
 			++$out['created'];
 		}
 
@@ -279,7 +283,7 @@ class Radius_Deploy_Service {
 	/**
 	 * Accumulate deploy() results for multi-batch runs.
 	 *
-	 * @param array $acc   Running totals { created, updated, skipped, errors }.
+	 * @param array $acc   Running totals { created, updated, skipped, placeholders_removed, errors }.
 	 * @param array $batch Result from deploy().
 	 * @return array
 	 */
@@ -287,6 +291,8 @@ class Radius_Deploy_Service {
 		$acc['created'] += isset( $batch['created'] ) ? (int) $batch['created'] : 0;
 		$acc['updated'] += isset( $batch['updated'] ) ? (int) $batch['updated'] : 0;
 		$acc['skipped'] += isset( $batch['skipped'] ) ? (int) $batch['skipped'] : 0;
+		$acc['placeholders_removed'] = ( isset( $acc['placeholders_removed'] ) ? (int) $acc['placeholders_removed'] : 0 )
+			+ ( isset( $batch['placeholders_removed'] ) ? (int) $batch['placeholders_removed'] : 0 );
 		if ( ! empty( $batch['errors'] ) && is_array( $batch['errors'] ) ) {
 			$acc['errors'] = array_merge( $acc['errors'], $batch['errors'] );
 		}
@@ -507,9 +513,11 @@ class Radius_Deploy_Service {
 	 * @param WP_Post              $template Template post.
 	 * @param array<string,string> $tokens   Full token map.
 	 * @param int                  $seed     Seed.
+	 * @param bool                 $spintax_random When true, spintax picks vary per call.
+	 * @param int|null             $placeholder_removed Optional pass-by-reference; incremented for each `{{token}}` removed (no map entry) when stripping.
 	 * @return string
 	 */
-	private static function compute_landing_title( $template, array $tokens, $seed, $spintax_random = false ) {
+	private static function compute_landing_title( $template, array $tokens, $seed, $spintax_random = false, &$placeholder_removed = null ) {
 		$pattern = get_post_meta( $template->ID, '_radius_landing_title_pattern', true );
 		$pattern = is_string( $pattern ) ? trim( $pattern ) : '';
 		/**
@@ -520,9 +528,9 @@ class Radius_Deploy_Service {
 		 */
 		$pattern = (string) apply_filters( 'radius_landing_title_pattern', $pattern, (int) $template->ID );
 		if ( $pattern !== '' ) {
-			return Radius_Token_Engine::render( $pattern, $tokens, $seed, (bool) $spintax_random );
+			return Radius_Token_Engine::render( $pattern, $tokens, $seed, (bool) $spintax_random, true, $placeholder_removed );
 		}
-		return Radius_Token_Engine::render( $template->post_title, $tokens, $seed, (bool) $spintax_random );
+		return Radius_Token_Engine::render( $template->post_title, $tokens, $seed, (bool) $spintax_random, true, $placeholder_removed );
 	}
 
 	/**
@@ -556,9 +564,10 @@ class Radius_Deploy_Service {
 	 * @param WP_Post              $template Template post.
 	 * @param array<string,string> $tokens   Full token map.
 	 * @param int                  $seed     Seed.
+	 * @param int|null             $placeholder_removed Optional. Incremented for unresolved `{{token}}` stripped from the pattern render.
 	 * @return string Sanitized slug base (not guaranteed unique).
 	 */
-	private static function compute_landing_slug_base( $template, array $tokens, $seed, $spintax_random = false ) {
+	private static function compute_landing_slug_base( $template, array $tokens, $seed, $spintax_random = false, &$placeholder_removed = null ) {
 		$pattern = get_post_meta( $template->ID, '_radius_landing_slug_pattern', true );
 		$pattern = is_string( $pattern ) ? trim( $pattern ) : '';
 		/**
@@ -571,7 +580,7 @@ class Radius_Deploy_Service {
 		if ( $pattern === '' ) {
 			$pattern = '{{template_slug}}-{{place_slug}}';
 		}
-		$raw = Radius_Token_Engine::render( $pattern, $tokens, $seed, (bool) $spintax_random );
+		$raw = Radius_Token_Engine::render( $pattern, $tokens, $seed, (bool) $spintax_random, true, $placeholder_removed );
 		$s   = sanitize_title( $raw );
 		if ( $s === '' ) {
 			$s = sanitize_title( ( isset( $tokens['place_slug'] ) ? $tokens['place_slug'] : '' ) . '-' . $template->post_name );
@@ -589,17 +598,18 @@ class Radius_Deploy_Service {
 	 * @param int                  $template_id radius_template post ID.
 	 * @param array<string,string> $tokens      Token map.
 	 * @param int                  $seed        Spintax seed.
+	 * @param int|null             $placeholder_removed Optional. Passed through to meta / Elementor string renders.
 	 * @return string Empty on success, short error message on failure.
 	 */
-	private static function sync_deployed_landing( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
-		self::copy_selected_template_meta( $landing_id, $template_id, (int) $place_id, $tokens, $seed );
+	private static function sync_deployed_landing( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null ) {
+		self::copy_selected_template_meta( $landing_id, $template_id, (int) $place_id, $tokens, $seed, $placeholder_removed );
 
 		$elementor_ok = false;
 		if ( ! empty( Radius_Settings::get()['enable_elementor'] )
 			&& class_exists( '\Elementor\Plugin' )
 			&& get_post_meta( $template_id, '_elementor_edit_mode', true ) === 'builder' ) {
 			try {
-				self::sync_elementor_document_to_landing( $landing_id, $template_id, (int) $place_id, $tokens, $seed );
+				self::sync_elementor_document_to_landing( $landing_id, $template_id, (int) $place_id, $tokens, $seed, $placeholder_removed );
 				$elementor_ok = true;
 			} catch ( \Throwable $e ) {
 				return sprintf(
@@ -722,7 +732,7 @@ class Radius_Deploy_Service {
 	 * @param int                  $seed        Seed.
 	 * @return void
 	 */
-	private static function copy_selected_template_meta( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
+	private static function copy_selected_template_meta( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null ) {
 		$keys = self::collect_deploy_meta_keys_to_copy( (int) $template_id );
 		if ( empty( $keys ) ) {
 			return;
@@ -741,7 +751,7 @@ class Radius_Deploy_Service {
 			if ( false === $val ) {
 				continue;
 			}
-			$rendered = self::render_value_for_deploy( $val, $tokens, $seed, (int) $place_id );
+			$rendered = self::render_value_for_deploy( $val, $tokens, $seed, (int) $place_id, $placeholder_removed );
 			update_post_meta( $landing_id, $key, $rendered );
 		}
 	}
@@ -800,11 +810,12 @@ class Radius_Deploy_Service {
 	 * @param array<string,string> $tokens   Token map.
 	 * @param int                  $seed     Seed for deterministic spintax/random picks.
 	 * @param int                  $place_id radius_place term ID (>0 enables [cities] expansion).
+	 * @param int|null             $placeholder_removed Optional. Incremented for each unresolved `{{token}}` stripped from string values.
 	 * @return mixed
 	 */
-	private static function render_value_for_deploy( $value, array $tokens, $seed, $place_id = 0 ) {
+	private static function render_value_for_deploy( $value, array $tokens, $seed, $place_id = 0, &$placeholder_removed = null ) {
 		if ( is_string( $value ) ) {
-			$rendered = Radius_Token_Engine::render( $value, $tokens, $seed );
+			$rendered = Radius_Token_Engine::render( $value, $tokens, $seed, false, true, $placeholder_removed );
 			if ( $place_id > 0
 				&& ( strpos( $rendered, '[radius_cities' ) !== false || strpos( $rendered, '[cities' ) !== false )
 			) {
@@ -815,7 +826,7 @@ class Radius_Deploy_Service {
 		if ( is_array( $value ) ) {
 			$out = array();
 			foreach ( $value as $k => $v ) {
-				$out[ $k ] = self::render_value_for_deploy( $v, $tokens, $seed, $place_id );
+				$out[ $k ] = self::render_value_for_deploy( $v, $tokens, $seed, $place_id, $placeholder_removed );
 			}
 			return $out;
 		}
@@ -832,7 +843,7 @@ class Radius_Deploy_Service {
 	 * @param int                  $seed        Seed.
 	 * @return void
 	 */
-	private static function sync_elementor_document_to_landing( $landing_id, $template_id, $place_id, array $tokens, $seed ) {
+	private static function sync_elementor_document_to_landing( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null ) {
 		\Elementor\Plugin::$instance->db->copy_elementor_meta( $template_id, $landing_id );
 
 		$document = \Elementor\Plugin::$instance->documents->get( $landing_id, false );
@@ -842,7 +853,7 @@ class Radius_Deploy_Service {
 
 		$elements = $document->get_elements_data();
 		if ( ! empty( $elements ) && is_array( $elements ) ) {
-			$elements = self::render_value_for_deploy( $elements, $tokens, $seed, (int) $place_id );
+			$elements = self::render_value_for_deploy( $elements, $tokens, $seed, (int) $place_id, $placeholder_removed );
 			/**
 			 * Filter Elementor elements JSON after token replacement (before save + CSS).
 			 *
@@ -857,7 +868,7 @@ class Radius_Deploy_Service {
 
 		$page_settings = get_post_meta( $landing_id, \Elementor\Core\Base\Document::PAGE_META_KEY, true );
 		if ( is_array( $page_settings ) && $page_settings !== array() ) {
-			$page_settings = self::render_value_for_deploy( $page_settings, $tokens, $seed, (int) $place_id );
+			$page_settings = self::render_value_for_deploy( $page_settings, $tokens, $seed, (int) $place_id, $placeholder_removed );
 			update_post_meta( $landing_id, \Elementor\Core\Base\Document::PAGE_META_KEY, $page_settings );
 		}
 

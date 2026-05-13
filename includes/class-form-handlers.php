@@ -302,10 +302,11 @@ class Radius_Form_Handlers {
 		$tkey    = self::deploy_queue_transient_key( $user_id, $template_id, $target_post_type );
 
 		$acc = array(
-			'created' => 0,
-			'updated' => 0,
-			'skipped' => 0,
-			'errors'  => array(),
+			'created'               => 0,
+			'updated'               => 0,
+			'skipped'               => 0,
+			'placeholders_removed'  => 0,
+			'errors'                => array(),
 		);
 
 		$initial_total     = 0;
@@ -490,6 +491,19 @@ class Radius_Form_Handlers {
 					$rd
 				);
 			}
+			$ph = (int) ( $acc['placeholders_removed'] ?? 0 );
+			if ( $ph > 0 ) {
+				$msg .= ' ' . sprintf(
+					/* translators: %d: count of {{token}} placeholders removed from output */
+					_n(
+						'Note: %d unknown {{token}} placeholder was removed from titles or content (no matching replacer).',
+						'Note: %d unknown {{token}} placeholders were removed from titles or content (no matching replacers).',
+						$ph,
+						'radius'
+					),
+					$ph
+				);
+			}
 			self::redirect( 'radius-deploy', $msg );
 		}
 
@@ -518,6 +532,20 @@ class Radius_Form_Handlers {
 					$rd
 				);
 			}
+		}
+		$tot = isset( $result['stats_total'] ) && is_array( $result['stats_total'] ) ? $result['stats_total'] : array();
+		$ph  = (int) ( $tot['placeholders_removed'] ?? 0 );
+		if ( $ph > 0 ) {
+			$msg .= ' ' . sprintf(
+				/* translators: %d: count of {{token}} placeholders removed from output */
+				_n(
+					'Note: %d unknown {{token}} placeholder was removed from titles or content (no matching replacer).',
+					'Note: %d unknown {{token}} placeholders were removed from titles or content (no matching replacers).',
+					$ph,
+					'radius'
+				),
+				$ph
+			);
 		}
 		self::redirect( 'radius-deploy', $msg );
 	}

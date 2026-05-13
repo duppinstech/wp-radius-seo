@@ -25,9 +25,10 @@ class Radius_Token_Engine {
 	 * @param int                  $seed   Hash seed for spintax picks (e.g. landing ID).
 	 * @param bool                 $spintax_random Random spintax branches per call (dynamic output).
 	 * @param bool                 $strip_unresolved When true, remove leftover `{{token}}` with no map entry and collapse empty `<p></p>` (final HTML). False while composing nested values in `Radius_Template_Tokens::build_map()`.
+	 * @param int|null             $placeholder_removed_count Optional. When non-null and $strip_unresolved is true, incremented by the number of `{{token}}` placeholders removed (no map entry).
 	 * @return string
 	 */
-	public static function render( $text, array $tokens, $seed = 0, $spintax_random = false, $strip_unresolved = true ) {
+	public static function render( $text, array $tokens, $seed = 0, $spintax_random = false, $strip_unresolved = true, &$placeholder_removed_count = null ) {
 		if ( ! is_string( $text ) || $text === '' ) {
 			return '';
 		}
@@ -36,10 +37,27 @@ class Radius_Token_Engine {
 		$text = self::expand_spintax( $text, $seed, (bool) $spintax_random );
 		$text = self::replace_placeholders( $text, $tokens );
 		if ( $strip_unresolved ) {
+			if ( null !== $placeholder_removed_count ) {
+				$placeholder_removed_count += self::count_double_brace_placeholders( $text );
+			}
 			$text = self::strip_unresolved_placeholders( $text );
 			$text = self::collapse_empty_paragraphs( $text );
 		}
 		return $text;
+	}
+
+	/**
+	 * Count `{{token}}` placeholders in text (same pattern as strip_unresolved_placeholders).
+	 *
+	 * @param string $text HTML or plain text.
+	 * @return int
+	 */
+	public static function count_double_brace_placeholders( $text ) {
+		if ( ! is_string( $text ) || strpos( $text, '{{' ) === false ) {
+			return 0;
+		}
+		$n = preg_match_all( '/\{\{[a-zA-Z0-9_.-]+\}\}/', $text, $m );
+		return ( false === $n ) ? 0 : $n;
 	}
 
 	/**
