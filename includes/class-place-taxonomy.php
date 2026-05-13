@@ -388,7 +388,6 @@ class Radius_Place_Taxonomy {
 			'villa',
 			'community',
 			'farm',
-			'forest',
 			'addition',
 			'town-center',
 			'country-club',
