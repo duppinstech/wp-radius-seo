@@ -1064,30 +1064,6 @@ class Radius_Admin {
 			<p class="description"><?php esc_html_e( 'Import, export, and edit places. Large libraries are paged so the screen stays responsive.', 'radius' ); ?></p>
 			<p class="description"><?php esc_html_e( 'Storage: each place is a WordPress taxonomy term in radius_place — rows in wp_terms and wp_term_taxonomy, with coordinates and region in wp_termmeta (e.g. radius_lat, radius_lng, radius_region, radius_postal).', 'radius' ); ?></p>
 
-			<div class="radius-locations-slug-blacklist radius-card">
-				<?php self::dashboard_card_heading( 'dashicons-dismiss', __( 'Low-value slug patterns (Magic Page cleanup)', 'radius' ) ); ?>
-				<div class="radius-card__text">
-					<p><?php esc_html_e( 'Places whose slug contains certain substrings (e.g. trailer, subdivision, village) are counted here. Deploy also skips them, along with duplicate names (shortest slug kept).', 'radius' ); ?></p>
-					<p class="radius-card__stat">
-						<strong><?php echo esc_html( number_format_i18n( $slug_bl_count ) ); ?></strong>
-						<?php echo esc_html( _n( 'place matches slug patterns', 'places match slug patterns', $slug_bl_count, 'radius' ) ); ?>
-					</p>
-					<details class="radius-locations-slug-blacklist__details">
-						<summary><?php esc_html_e( 'Default slug fragments', 'radius' ); ?></summary>
-						<p class="description"><?php echo esc_html( implode( ', ', Radius_Place_Taxonomy::get_place_slug_blacklist_fragments() ) ); ?></p>
-						<p class="description"><?php esc_html_e( 'Developers can replace this list with the radius_place_slug_blacklist_fragments filter.', 'radius' ); ?></p>
-					</details>
-				</div>
-				<?php if ( current_user_can( 'manage_options' ) ) : ?>
-					<div class="radius-card__actions">
-						<button type="button" class="button button-secondary" id="radius-slug-blacklist-places-start" <?php disabled( $slug_bl_count < 1 ); ?> title="<?php esc_attr_e( 'Deletes place terms whose slug matches the low-value substring list.', 'radius' ); ?>">
-							<?php esc_html_e( 'Remove matching places', 'radius' ); ?>
-						</button>
-						<p class="description" id="radius-slug-blacklist-places-status" role="status" aria-live="polite"></p>
-					</div>
-				<?php endif; ?>
-			</div>
-
 			<div class="radius-cards radius-cards--locations-summary">
 				<div class="radius-card">
 					<h2><?php esc_html_e( 'Places on file', 'radius' ); ?></h2>
@@ -1117,6 +1093,31 @@ class Radius_Admin {
 						</div>
 					<?php endif; ?>
 				</div>
+				<?php if ( $slug_bl_count > 0 ) : ?>
+					<div class="radius-card radius-card--slug-pattern">
+						<h2><?php esc_html_e( 'Slug pattern matches', 'radius' ); ?></h2>
+						<div class="radius-card__text">
+							<p class="description"><?php esc_html_e( 'Substrings such as trailer, subdivision, or village in the slug. Deploy skips these too.', 'radius' ); ?></p>
+							<p class="radius-card__stat">
+								<strong><?php echo esc_html( number_format_i18n( $slug_bl_count ) ); ?></strong>
+								<?php echo esc_html( _n( 'place', 'places', $slug_bl_count, 'radius' ) ); ?>
+							</p>
+							<details class="radius-card--slug-pattern__details">
+								<summary><?php esc_html_e( 'Fragment list', 'radius' ); ?></summary>
+								<p class="description"><?php echo esc_html( implode( ', ', Radius_Place_Taxonomy::get_place_slug_blacklist_fragments() ) ); ?></p>
+								<p class="description"><?php esc_html_e( 'Replace via the radius_place_slug_blacklist_fragments filter.', 'radius' ); ?></p>
+							</details>
+						</div>
+						<?php if ( current_user_can( 'manage_options' ) ) : ?>
+							<div class="radius-card__actions">
+								<button type="button" class="button button-secondary" id="radius-slug-blacklist-places-start" title="<?php esc_attr_e( 'Deletes place terms whose slug matches the low-value substring list.', 'radius' ); ?>">
+									<?php esc_html_e( 'Remove matching', 'radius' ); ?>
+								</button>
+								<p class="description" id="radius-slug-blacklist-places-status" role="status" aria-live="polite"></p>
+							</div>
+						<?php endif; ?>
+					</div>
+				<?php endif; ?>
 				<div class="radius-card">
 					<h2><?php esc_html_e( 'Export', 'radius' ); ?></h2>
 					<div class="radius-card__text">

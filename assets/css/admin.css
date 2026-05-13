@@ -129,17 +129,15 @@
 	margin-bottom: 28px;
 }
 
-.radius-locations-slug-blacklist {
-	margin-bottom: 24px;
-	max-width: 960px;
-	padding-bottom: 4px;
+.radius-card--slug-pattern .radius-card__stat {
+	margin-top: 4px;
 }
 
-.radius-locations-slug-blacklist__details {
-	margin-top: 10px;
+.radius-card--slug-pattern__details {
+	margin-top: 8px;
 }
 
-.radius-locations-slug-blacklist__details summary {
+.radius-card--slug-pattern__details summary {
 	cursor: pointer;
 	font-weight: 600;
 }
