@@ -24,6 +24,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_purge_places_batch', array( __CLASS__, 'purge_places_batch' ) );
 		add_action( 'wp_ajax_radius_dedupe_places_batch', array( __CLASS__, 'dedupe_places_batch' ) );
 		add_action( 'wp_ajax_radius_slug_blacklist_places_batch', array( __CLASS__, 'slug_blacklist_places_batch' ) );
+		add_action( 'wp_ajax_radius_repair_numbered_slug_places_batch', array( __CLASS__, 'repair_numbered_slug_places_batch' ) );
 		add_action( 'wp_ajax_radius_migration_import_templates', array( __CLASS__, 'migration_import_templates' ) );
 		add_action( 'wp_ajax_radius_migration_clone_variants', array( __CLASS__, 'migration_clone_variants' ) );
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
@@ -346,6 +347,73 @@ class Radius_Ajax {
 				'deleted'   => $deleted,
 				'remaining' => $remaining,
 				'done'      => $done,
+			)
+		);
+	}
+
+	/**
+	 * Rename orphan numbered place slugs (foo-2 → foo when foo is missing).
+	 *
+	 * @return void
+	 */
+	public static function repair_numbered_slug_places_batch() {
+		check_ajax_referer( 'radius_repair_numbered_slug_places', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 120 );
+		}
+
+		$cursor = isset( $_POST['cursor_term_id'] ) ? absint( wp_unslash( $_POST['cursor_term_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$chunk  = (int) apply_filters( 'radius_repair_numbered_slug_places_chunk_size', 40 );
+		$chunk  = max( 5, min( 80, $chunk ) );
+
+		$batch   = Radius_Place_Taxonomy::get_place_numbered_slug_repairs_chunk( $chunk, $cursor );
+		$repaired = 0;
+		$skipped  = 0;
+
+		foreach ( $batch['repairs'] as $repair ) {
+			if ( ! is_array( $repair ) ) {
+				continue;
+			}
+			$tid = isset( $repair['term_id'] ) ? (int) $repair['term_id'] : 0;
+			$new = isset( $repair['new_slug'] ) ? (string) $repair['new_slug'] : '';
+			$res = Radius_Place_Taxonomy::repair_place_term_slug( $tid, $new );
+			if ( ! empty( $res['success'] ) ) {
+				++$repaired;
+			} else {
+				++$skipped;
+			}
+		}
+
+		$remaining   = Radius_Place_Taxonomy::count_repairable_orphan_numbered_place_slugs();
+		$scan_done   = empty( $batch['scan_has_more'] );
+		$next_cursor = (int) $batch['next_cursor_term_id'];
+
+		if ( $scan_done && $remaining > 0 && ( $repaired > 0 || $skipped > 0 ) ) {
+			$next_cursor = 0;
+		}
+
+		$done = $remaining <= 0;
+		if ( $scan_done && $repaired === 0 && $skipped === 0 ) {
+			$done = true;
+		}
+
+		wp_send_json_success(
+			array(
+				'repaired'            => $repaired,
+				'skipped'             => $skipped,
+				'remaining'           => $remaining,
+				'next_cursor_term_id' => $next_cursor,
+				'done'                => $done,
 			)
 		);
 	}

@@ -576,4 +576,319 @@ class Radius_Place_Taxonomy {
 		$out['ids'] = array_values( array_unique( $final ) );
 		return $out;
 	}
+
+	/**
+	 * Parse a WordPress-style numeric slug suffix (e.g. city-2 → base city, suffix 2).
+	 *
+	 * Ignores slugs like route-66 when 66 exceeds the configured max suffix (default 99).
+	 *
+	 * @param string $slug Term slug.
+	 * @return array{base:string,suffix:int}|null
+	 */
+	public static function parse_numbered_place_slug( $slug ) {
+		$slug = (string) $slug;
+		if ( $slug === '' ) {
+			return null;
+		}
+		$max_suffix = (int) apply_filters( 'radius_place_numbered_slug_suffix_max', 99 );
+		$max_suffix = max( 2, min( 999, $max_suffix ) );
+		if ( ! preg_match( '/^(.+)-(\d+)$/', $slug, $m ) ) {
+			return null;
+		}
+		$suffix = (int) $m[2];
+		if ( $suffix < 2 || $suffix > $max_suffix ) {
+			return null;
+		}
+		$base = (string) $m[1];
+		if ( $base === '' ) {
+			return null;
+		}
+		return array(
+			'base'   => $base,
+			'suffix' => $suffix,
+		);
+	}
+
+	/**
+	 * Whether a radius_place term already uses this slug.
+	 *
+	 * @param string $slug Sanitized slug.
+	 * @return bool
+	 */
+	public static function place_slug_exists( $slug ) {
+		$slug = sanitize_title( (string) $slug );
+		if ( $slug === '' ) {
+			return false;
+		}
+		$term = get_term_by( 'slug', $slug, self::TAXONOMY );
+		return $term && ! is_wp_error( $term );
+	}
+
+	/**
+	 * Group orphan numbered slugs: no term with slug exactly $base; value is lowest suffix + term_id.
+	 *
+	 * @return array<string,array{suffix:int,term_id:int}>
+	 */
+	private static function collect_orphan_numbered_slug_groups() {
+		global $wpdb;
+		$tax  = self::TAXONOMY;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT t.term_id, t.slug FROM {$wpdb->terms} AS t
+				INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+				WHERE t.slug LIKE %s",
+				$tax,
+				'%' . $wpdb->esc_like( '-' ) . '%'
+			)
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$exact_bases   = array();
+		$orphan_groups = array();
+
+		foreach ( $rows as $row ) {
+			$slug = (string) $row->slug;
+			$tid  = (int) $row->term_id;
+			$parsed = self::parse_numbered_place_slug( $slug );
+			if ( null === $parsed ) {
+				$exact_bases[ $slug ] = true;
+				continue;
+			}
+			$base = $parsed['base'];
+			if ( ! isset( $orphan_groups[ $base ] ) || $parsed['suffix'] < $orphan_groups[ $base ]['suffix'] ) {
+				$orphan_groups[ $base ] = array(
+					'suffix'   => $parsed['suffix'],
+					'term_id'  => $tid,
+				);
+			}
+		}
+
+		$out = array();
+		foreach ( $orphan_groups as $base => $info ) {
+			if ( empty( $exact_bases[ $base ] ) ) {
+				$out[ $base ] = $info;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * How many places can be renamed from foo-2 (etc.) back to foo when foo is missing.
+	 *
+	 * @return int
+	 */
+	public static function count_repairable_orphan_numbered_place_slugs() {
+		return count( self::collect_orphan_numbered_slug_groups() );
+	}
+
+	/**
+	 * Next repairs: lowest suffix orphan per base (foo-2 before foo-3), batched by term_id cursor.
+	 *
+	 * @param int $limit           Max repairs to return.
+	 * @param int $after_term_id   Scan terms with term_id greater than this.
+	 * @return array{repairs:array<int,array{term_id:int,old_slug:string,new_slug:string}>,next_cursor_term_id:int,scan_has_more:bool}
+	 */
+	public static function get_place_numbered_slug_repairs_chunk( $limit = 40, $after_term_id = 0 ) {
+		$limit = max( 1, min( 80, (int) $limit ) );
+		$scan  = (int) apply_filters( 'radius_repair_numbered_slug_scan_batch', 250 );
+		$scan  = max( 50, min( 500, $scan ) );
+
+		global $wpdb;
+		$tax    = self::TAXONOMY;
+		$cursor = max( 0, (int) $after_term_id );
+		$repairs = array();
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT t.term_id, t.slug FROM {$wpdb->terms} AS t
+				INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+				WHERE t.term_id > %d AND t.slug LIKE %s
+				ORDER BY t.term_id ASC
+				LIMIT %d",
+				$tax,
+				$cursor,
+				'%' . $wpdb->esc_like( '-' ) . '%',
+				$scan
+			)
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		if ( ! is_array( $rows ) ) {
+			$rows = array();
+		}
+
+		$scan_has_more = count( $rows ) >= $scan;
+
+		foreach ( $rows as $row ) {
+			$cursor = (int) $row->term_id;
+			$parsed = self::parse_numbered_place_slug( (string) $row->slug );
+			if ( null === $parsed ) {
+				continue;
+			}
+			if ( self::place_slug_exists( $parsed['base'] ) ) {
+				continue;
+			}
+			$keeper = self::get_lowest_orphan_numbered_place_for_base( $parsed['base'] );
+			if ( ! $keeper || (int) $keeper->term_id !== (int) $row->term_id ) {
+				continue;
+			}
+			$repairs[] = array(
+				'term_id'  => (int) $row->term_id,
+				'old_slug' => (string) $row->slug,
+				'new_slug' => $parsed['base'],
+			);
+			if ( count( $repairs ) >= $limit ) {
+				break;
+			}
+		}
+
+		return array(
+			'repairs'               => $repairs,
+			'next_cursor_term_id'     => $cursor,
+			'scan_has_more'           => $scan_has_more,
+		);
+	}
+
+	/**
+	 * Lowest-suffix numbered term for a base when no exact base slug exists.
+	 *
+	 * @param string $base_slug Sanitized base slug.
+	 * @return object|null Row with term_id and slug.
+	 */
+	public static function get_lowest_orphan_numbered_place_for_base( $base_slug ) {
+		$base_slug = sanitize_title( (string) $base_slug );
+		if ( $base_slug === '' || self::place_slug_exists( $base_slug ) ) {
+			return null;
+		}
+
+		global $wpdb;
+		$tax  = self::TAXONOMY;
+		$like = $wpdb->esc_like( $base_slug ) . '-%';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT t.term_id, t.slug FROM {$wpdb->terms} AS t
+				INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+				WHERE t.slug LIKE %s",
+				$tax,
+				$like
+			)
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		if ( ! is_array( $rows ) || empty( $rows ) ) {
+			return null;
+		}
+
+		$best        = null;
+		$best_suffix = PHP_INT_MAX;
+		foreach ( $rows as $row ) {
+			$parsed = self::parse_numbered_place_slug( (string) $row->slug );
+			if ( null === $parsed || $parsed['base'] !== $base_slug ) {
+				continue;
+			}
+			if ( $parsed['suffix'] < $best_suffix ) {
+				$best_suffix = $parsed['suffix'];
+				$best        = $row;
+			}
+		}
+
+		return $best;
+	}
+
+	/**
+	 * Rename one place term slug (e.g. spring-meadows-2 → spring-meadows).
+	 *
+	 * @param int    $term_id  radius_place term ID.
+	 * @param string $new_slug Target slug (sanitized).
+	 * @return array{success:bool,term_id?:int,old_slug?:string,new_slug?:string,error?:string}
+	 */
+	public static function repair_place_term_slug( $term_id, $new_slug ) {
+		$term_id  = (int) $term_id;
+		$new_slug = sanitize_title( (string) $new_slug );
+		if ( $term_id <= 0 || $new_slug === '' ) {
+			return array(
+				'success' => false,
+				'error'   => 'invalid',
+			);
+		}
+
+		$term = get_term( $term_id, self::TAXONOMY );
+		if ( ! $term || is_wp_error( $term ) ) {
+			return array(
+				'success' => false,
+				'error'   => 'missing_term',
+			);
+		}
+
+		$old_slug = (string) $term->slug;
+		if ( $old_slug === $new_slug ) {
+			return array(
+				'success'  => true,
+				'term_id'  => $term_id,
+				'old_slug' => $old_slug,
+				'new_slug' => $new_slug,
+			);
+		}
+
+		if ( self::place_slug_exists( $new_slug ) ) {
+			return array(
+				'success' => false,
+				'error'   => 'slug_taken',
+				'old_slug' => $old_slug,
+			);
+		}
+
+		$parsed = self::parse_numbered_place_slug( $old_slug );
+		if ( null === $parsed || $parsed['base'] !== $new_slug ) {
+			return array(
+				'success' => false,
+				'error'   => 'not_orphan_numbered',
+				'old_slug' => $old_slug,
+			);
+		}
+
+		$keeper = self::get_lowest_orphan_numbered_place_for_base( $new_slug );
+		if ( ! $keeper || (int) $keeper->term_id !== $term_id ) {
+			return array(
+				'success' => false,
+				'error'   => 'not_lowest_suffix',
+				'old_slug' => $old_slug,
+			);
+		}
+
+		$upd = wp_update_term(
+			$term_id,
+			self::TAXONOMY,
+			array(
+				'slug' => $new_slug,
+			)
+		);
+
+		if ( is_wp_error( $upd ) ) {
+			return array(
+				'success' => false,
+				'error'   => $upd->get_error_code() ? $upd->get_error_code() : 'update_failed',
+				'old_slug' => $old_slug,
+			);
+		}
+
+		/**
+		 * After a numbered slug is restored to its base (e.g. city-2 → city).
+		 *
+		 * @param int    $term_id  radius_place term ID.
+		 * @param string $old_slug Previous slug.
+		 * @param string $new_slug New slug.
+		 */
+		do_action( 'radius_place_numbered_slug_repaired', $term_id, $old_slug, $new_slug );
+
+		return array(
+			'success'  => true,
+			'term_id'  => $term_id,
+			'old_slug' => $old_slug,
+			'new_slug' => $new_slug,
+		);
+	}
 }

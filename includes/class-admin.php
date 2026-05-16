@@ -672,8 +672,9 @@ class Radius_Admin {
 				array(
 					'ajaxurl'         => admin_url( 'admin-ajax.php' ),
 					'nonce'           => wp_create_nonce( 'radius_purge_places' ),
-					'dedupeNonce'     => wp_create_nonce( 'radius_dedupe_places' ),
-					'slugBlacklistNonce' => wp_create_nonce( 'radius_slug_blacklist_places' ),
+					'dedupeNonce'          => wp_create_nonce( 'radius_dedupe_places' ),
+					'slugBlacklistNonce'   => wp_create_nonce( 'radius_slug_blacklist_places' ),
+					'repairSlugNonce'      => wp_create_nonce( 'radius_repair_numbered_slug_places' ),
 					'interRequestMs'  => (int) apply_filters( 'radius_purge_places_inter_request_ms', 250 ),
 					'i18n'            => array(
 						'confirmDelete'  => __( 'Delete the selected places? Landings may reference missing terms. This cannot be undone.', 'radius' ),
@@ -693,6 +694,11 @@ class Radius_Admin {
 						'slugBlacklistDoneTpl' => __( 'Slug pattern cleanup finished. Removed {total} places; {pagesTotal} pages moved to Trash. Reloading…', 'radius' ),
 						'slugBlacklistError' => __( 'Could not remove a batch. Try again.', 'radius' ),
 						'slugBlacklistNetwork' => __( 'Network error during slug pattern cleanup. Try again.', 'radius' ),
+						'confirmRepairSlugs'   => __( 'Restore base slugs for places that only exist as -2, -3, etc.? The lowest number per missing base is renamed (e.g. city-2 → city). Landings keep the same place term ID; redeploy or flush permalinks if URLs look wrong.', 'radius' ),
+						'repairSlugsProgressTpl' => __( 'Last batch: {repaired} restored, {skipped} skipped. Total restored: {total}. Still repairable: {remaining}.', 'radius' ),
+						'repairSlugsDoneTpl'   => __( 'Base slug restore finished. Renamed {total} places. Reloading…', 'radius' ),
+						'repairSlugsError'     => __( 'Could not restore a batch of slugs. Try again.', 'radius' ),
+						'repairSlugsNetwork'   => __( 'Network error during slug restore. Try again.', 'radius' ),
 					),
 				)
 			);
@@ -1034,8 +1040,9 @@ class Radius_Admin {
 			$total_all = $total;
 		}
 
-		$dup_removable = Radius_Place_Taxonomy::count_place_duplicates_removable();
-		$slug_bl_count = Radius_Place_Taxonomy::count_places_matching_slug_blacklist();
+		$dup_removable           = Radius_Place_Taxonomy::count_place_duplicates_removable();
+		$slug_bl_count           = Radius_Place_Taxonomy::count_places_matching_slug_blacklist();
+		$orphan_numbered_slugs   = Radius_Place_Taxonomy::count_repairable_orphan_numbered_place_slugs();
 
 		$csv_url = admin_url( 'admin-post.php' );
 
@@ -1093,6 +1100,26 @@ class Radius_Admin {
 						</div>
 					<?php endif; ?>
 				</div>
+				<?php if ( $orphan_numbered_slugs > 0 ) : ?>
+					<div class="radius-card radius-card--orphan-slugs">
+						<h2><?php esc_html_e( 'Orphan numbered slugs', 'radius' ); ?></h2>
+						<div class="radius-card__text">
+							<p class="description"><?php esc_html_e( 'Places whose slug ends in -2, -3, etc. while the base slug (without the number) is missing — often after slug-pattern cleanup removed the shorter slug first. Duplicate cleanup keeps the shortest slug per name and would not delete the base in favor of -2.', 'radius' ); ?></p>
+							<p class="radius-card__stat">
+								<strong><?php echo esc_html( number_format_i18n( $orphan_numbered_slugs ) ); ?></strong>
+								<?php echo esc_html( _n( 'slug can be restored', 'slugs can be restored', $orphan_numbered_slugs, 'radius' ) ); ?>
+							</p>
+						</div>
+						<?php if ( current_user_can( 'manage_options' ) ) : ?>
+							<div class="radius-card__actions">
+								<button type="button" class="button button-secondary" id="radius-repair-numbered-slugs-start" title="<?php esc_attr_e( 'Renames the lowest suffix per base (e.g. city-2 → city) when city is missing.', 'radius' ); ?>">
+									<?php esc_html_e( 'Restore base slugs', 'radius' ); ?>
+								</button>
+								<p class="description" id="radius-repair-numbered-slugs-status" role="status" aria-live="polite"></p>
+							</div>
+						<?php endif; ?>
+					</div>
+				<?php endif; ?>
 				<?php if ( $slug_bl_count > 0 ) : ?>
 					<div class="radius-card radius-card--slug-pattern">
 						<h2><?php esc_html_e( 'Slug pattern matches', 'radius' ); ?></h2>

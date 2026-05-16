@@ -9,6 +9,7 @@
 	var nonce = cfg.nonce || '';
 	var dedupeNonce = cfg.dedupeNonce || '';
 	var slugBlacklistNonce = cfg.slugBlacklistNonce || '';
+	var repairSlugNonce = cfg.repairSlugNonce || '';
 	var i18n = cfg.i18n || {};
 
 	function sleep(ms) {
@@ -322,11 +323,100 @@
 		});
 	}
 
+	function bindRepairNumberedSlugs() {
+		var btn = document.getElementById('radius-repair-numbered-slugs-start');
+		var status = document.getElementById('radius-repair-numbered-slugs-status');
+		if (!btn || !status || !ajaxurl || !repairSlugNonce) {
+			return;
+		}
+		btn.addEventListener('click', function () {
+			if (!window.confirm(i18n.confirmRepairSlugs || '')) {
+				return;
+			}
+			btn.disabled = true;
+			var totalRepaired = 0;
+			var cursor = 0;
+			var interMs = typeof cfg.interRequestMs === 'number' ? cfg.interRequestMs : 250;
+
+			function fmt(tpl, map) {
+				var out = tpl;
+				Object.keys(map).forEach(function (k) {
+					out = out.split('{' + k + '}').join(String(map[k]));
+				});
+				return out;
+			}
+
+			function tplOr(s, fallback) {
+				return s && String(s).length ? String(s) : fallback;
+			}
+
+			(function loop() {
+				var body = new URLSearchParams();
+				body.set('action', 'radius_repair_numbered_slug_places_batch');
+				body.set('nonce', repairSlugNonce);
+				body.set('cursor_term_id', String(cursor));
+
+				fetch(ajaxurl, {
+					method: 'POST',
+					credentials: 'same-origin',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+					},
+					body: body.toString(),
+				})
+					.then(function (r) {
+						return r.json();
+					})
+					.then(function (json) {
+						if (!json || !json.success) {
+							var msg =
+								(json && json.data && json.data.message) ||
+								(json && json.data && json.data[0]) ||
+								i18n.repairSlugsError ||
+								'Error';
+							status.textContent = String(msg);
+							btn.disabled = false;
+							return;
+						}
+						var d = json.data || {};
+						var rep = parseInt(d.repaired, 10) || 0;
+						var rem = parseInt(d.remaining, 10);
+						totalRepaired += rep;
+						cursor = parseInt(d.next_cursor_term_id, 10) || 0;
+						status.textContent = fmt(
+							tplOr(i18n.repairSlugsProgressTpl, ''),
+							{
+								repaired: rep,
+								skipped: parseInt(d.skipped, 10) || 0,
+								total: totalRepaired,
+								remaining: rem,
+							}
+						);
+						if (d.done) {
+							status.textContent = fmt(tplOr(i18n.repairSlugsDoneTpl, ''), {
+								total: totalRepaired,
+							});
+							window.setTimeout(function () {
+								window.location.reload();
+							}, 800);
+							return;
+						}
+						sleep(interMs).then(loop);
+					})
+					.catch(function () {
+						status.textContent = i18n.repairSlugsNetwork || '';
+						btn.disabled = false;
+					});
+			})();
+		});
+	}
+
 	document.addEventListener('DOMContentLoaded', function () {
 		bindBulkGuard();
 		bindSelectAll();
 		bindPurge();
 		bindDedupe();
+		bindRepairNumberedSlugs();
 		bindSlugBlacklist();
 	});
 })();
