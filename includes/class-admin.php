@@ -254,7 +254,10 @@ class Radius_Admin {
 				'batchSize'         => $batch_size,
 				'interBatchDelayMs' => max( 0, $inter_ms ),
 				'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
+				'deltaMode'         => ! empty( $radius_settings['legacy_import_delta_mode'] ) ? 1 : 0,
 				'i18n'              => array(
+					'progressDeltaFmt' => __( 'Overall: {pct}% of locations needing work ({done} / {total}). {all} in Magic Page total.', 'radius' ),
+					'queuePrepareFmt'  => __( 'Scanning libraries… {remaining} location(s) need import or sync (of {all} legacy).', 'radius' ),
 					'start'            => __( 'Run legacy place import (all batches)', 'radius' ),
 					'running'          => __( 'Importing…', 'radius' ),
 					'done'             => __( 'Legacy place import finished.', 'radius' ),
@@ -547,7 +550,10 @@ class Radius_Admin {
 						'batchSize'         => $batch_size,
 						'interBatchDelayMs' => max( 0, $inter_ms ),
 						'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
+						'deltaMode'         => ! empty( $radius_settings['legacy_import_delta_mode'] ) ? 1 : 0,
 						'i18n'              => array(
+							'progressDeltaFmt' => __( 'Overall: {pct}% of locations needing work ({done} / {total}). {all} in Magic Page total.', 'radius' ),
+							'queuePrepareFmt'  => __( 'Scanning libraries… {remaining} location(s) need import or sync (of {all} legacy).', 'radius' ),
 							'start'            => __( 'Run legacy place import (all batches)', 'radius' ),
 							'running'          => __( 'Importing…', 'radius' ),
 							'done'             => __( 'Legacy place import finished.', 'radius' ),
@@ -2765,6 +2771,11 @@ Fast roadside help in {{region}}
 									<?php esc_html_e( 'Skip library matches (same slug) instead of updating them on each batch.', 'radius' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Turn on when most locations are already imported — avoids heavy wp_update_term / meta writes and long queries. Turn off to re-sync names and meta from the legacy taxonomy.', 'radius' ); ?></p>
+								<label>
+									<input type="checkbox" name="legacy_import_delta_mode" value="1" <?php checked( ! empty( $s['legacy_import_delta_mode'] ) ); ?> />
+									<?php esc_html_e( 'Delta import (only missing or out-of-sync locations).', 'radius' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'When enabled with “skip existing”, the importer scans once, then only processes locations that are missing or whose slug, legacy link, or coordinates differ. Turn off for a full pass over every legacy term. Deploy steps are unchanged.', 'radius' ); ?></p>
 								<p>
 									<label for="legacy_import_inter_batch_ms"><?php esc_html_e( 'Pause between AJAX batches (ms)', 'radius' ); ?></label>
 									<input name="legacy_import_inter_batch_ms" id="legacy_import_inter_batch_ms" type="number" min="0" max="30000" step="100" value="<?php echo esc_attr( (string) (int) ( isset( $s['legacy_import_inter_batch_ms'] ) ? $s['legacy_import_inter_batch_ms'] : 1200 ) ); ?>" />

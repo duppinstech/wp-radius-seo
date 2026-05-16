@@ -128,6 +128,22 @@ class Radius_Ajax {
 			$options['cursor_term_id'] = absint( wp_unslash( $_POST['cursor_term_id'] ) );
 		}
 
+		$prepare_post = isset( $_POST['prepare_queue'] ) ? sanitize_text_field( wp_unslash( $_POST['prepare_queue'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( '1' === $prepare_post ) {
+			$options['prepare_queue'] = true;
+			if ( function_exists( 'set_time_limit' ) ) {
+				// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- One-time delta queue scan.
+				@set_time_limit( 300 );
+			}
+		}
+
+		$delta_post = isset( $_POST['delta_mode'] ) ? sanitize_text_field( wp_unslash( $_POST['delta_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( '1' === $delta_post ) {
+			$options['delta_mode'] = true;
+		} elseif ( '0' === $delta_post ) {
+			$options['delta_mode'] = false;
+		}
+
 		$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
 
 		if ( ! isset( $res['total_legacy'] ) ) {

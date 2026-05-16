@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.56
+Stable tag: 1.6.57
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -71,11 +71,16 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_migration_places_expected_count` — filter the **adjusted** legacy location count used for migration wizard parity (after slug blacklist + duplicate-name collapse on the Magic Page taxonomy; second arg is raw legacy count).
 * `radius_legacy_import_skip_slug_blacklist` — return false to import legacy location terms whose slug matches the low-value substring list (default true: skip so re-import does not recreate cleaned-up places).
 * `radius_legacy_import_skip_numbered_slugs` — return false to import legacy `-1` … `-9` collision slugs even when the base slug exists (default true: skip or remap to base).
+* `radius_legacy_import_delta_mode` — return false to scan and batch every legacy term instead of building a work queue of missing/out-of-sync places only (default true when “skip existing” is on).
+* `radius_legacy_import_delta_scan_chunk` — legacy terms per chunk when building the delta work queue (default 250).
 * `radius_place_numbered_slug_suffix_max` — highest numeric suffix treated as a WordPress duplicate slug when restoring missing bases (default 9).
 * `radius_repair_numbered_slug_places_chunk_size` — places renamed per AJAX batch for “Restore base slugs” (default 40).
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.57 =
+* **Legacy place import — delta mode (default).** Scans Magic Page vs Radius once, then only imports or syncs locations that are missing or out of date (slug, legacy link, lat/lng). Re-runs process tens of rows instead of thousands when the library is mostly complete. Full legacy pass still available by disabling delta import or “skip existing”. Deploy landing/service-area steps remain full redeploys.
 
 = 1.6.56 =
 * **Legacy place import:** Skips `-1` … `-9` collision slugs when the base slug exists in Magic Page or Radius; otherwise imports under the **base** slug (e.g. `portland-2` → `portland`). Slug-pattern blacklist now matches **hyphen segments** (fixes cities like Portland excluded by the `land` fragment). Service-area anchor migration can create or link missing anchor places from legacy locations.

@@ -15,6 +15,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Radius_Legacy_Import_Service {
 
+	/** @var string Option key: legacy term IDs still needing import/sync. */
+	const LEGACY_IMPORT_WORK_QUEUE_OPTION = 'radius_legacy_import_work_queue';
+
 	/**
 	 * Post type slug used by common legacy mass-page plugins (filterable).
 	 *
@@ -1946,6 +1949,419 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Whether legacy import should only process places that are missing or out of sync (delta mode).
+	 *
+	 * Disabled when "skip existing" is off (full re-sync of every legacy row).
+	 *
+	 * @param array<string,mixed> $options Batch options.
+	 * @return bool
+	 */
+	public static function legacy_import_delta_enabled( array $options = array() ) {
+		$settings = Radius_Settings::get();
+		$skip_existing = array_key_exists( 'skip_existing', $options )
+			? (bool) $options['skip_existing']
+			: ! empty( $settings['legacy_import_skip_existing'] );
+		if ( ! $skip_existing ) {
+			return false;
+		}
+		if ( array_key_exists( 'delta_mode', $options ) ) {
+			return (bool) $options['delta_mode'];
+		}
+		return (bool) apply_filters(
+			'radius_legacy_import_delta_mode',
+			! empty( $settings['legacy_import_delta_mode'] )
+		);
+	}
+
+	/**
+	 * @return void
+	 */
+	public static function clear_legacy_import_work_queue() {
+		delete_option( self::LEGACY_IMPORT_WORK_QUEUE_OPTION );
+	}
+
+	/**
+	 * @return int[]
+	 */
+	public static function get_legacy_import_work_queue() {
+		$q = get_option( self::LEGACY_IMPORT_WORK_QUEUE_OPTION, array() );
+		if ( ! is_array( $q ) ) {
+			return array();
+		}
+		return array_values( array_filter( array_map( 'absint', $q ) ) );
+	}
+
+	/**
+	 * Scan legacy locations and return term IDs that still need import or meta sync.
+	 *
+	 * @return int[]
+	 */
+	public static function build_legacy_import_work_queue() {
+		if ( ! self::detect_legacy_places() ) {
+			return array();
+		}
+		$tax   = self::legacy_location_taxonomy();
+		$index = self::build_radius_place_slug_index();
+		$pending = array();
+		$cursor  = 0;
+		$scan    = (int) apply_filters( 'radius_legacy_import_delta_scan_chunk', 250 );
+		$scan    = max( 50, min( 500, $scan ) );
+
+		while ( true ) {
+			$batch = self::get_legacy_terms_after_term_id( $tax, $scan, $cursor );
+			if ( is_wp_error( $batch ) || empty( $batch ) ) {
+				break;
+			}
+			foreach ( $batch as $term ) {
+				$cursor = max( $cursor, (int) $term->term_id );
+				if ( self::legacy_term_needs_import_action( $term, $index ) ) {
+					$pending[] = (int) $term->term_id;
+				}
+			}
+		}
+
+		return $pending;
+	}
+
+	/**
+	 * @param \WP_Term              $legacy_term Legacy location term.
+	 * @param array<string,array<string,mixed>> $index_by_slug From build_radius_place_slug_index().
+	 * @return bool
+	 */
+	private static function legacy_term_needs_import_action( $legacy_term, array $index_by_slug ) {
+		$resolved = self::resolve_legacy_place_import_slug( $legacy_term );
+		if ( ! empty( $resolved['skip'] ) || empty( $resolved['slug'] ) ) {
+			return false;
+		}
+		$slug = (string) $resolved['slug'];
+		if ( (bool) apply_filters( 'radius_legacy_import_skip_slug_blacklist', true )
+			&& Radius_Place_Taxonomy::place_slug_matches_blacklist( $slug ) ) {
+			return false;
+		}
+		if ( ! isset( $index_by_slug[ $slug ] ) ) {
+			return true;
+		}
+		return ! self::radius_place_row_synced_with_legacy( $index_by_slug[ $slug ], $legacy_term, $slug );
+	}
+
+	/**
+	 * @return array<string,array{term_id:int,slug:string,lat:string,lng:string,imported_from:int}>
+	 */
+	private static function build_radius_place_slug_index() {
+		$terms = get_terms(
+			array(
+				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
+				'hide_empty' => false,
+				'number'     => 0,
+			)
+		);
+		$index = array();
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return $index;
+		}
+		foreach ( $terms as $t ) {
+			$tid = (int) $t->term_id;
+			$index[ (string) $t->slug ] = array(
+				'term_id'       => $tid,
+				'slug'          => (string) $t->slug,
+				'lat'           => self::normalize_import_coord(
+					get_term_meta( $tid, Radius_Data_Registry::TERM_META_LAT, true )
+				),
+				'lng'           => self::normalize_import_coord(
+					get_term_meta( $tid, Radius_Data_Registry::TERM_META_LNG, true )
+				),
+				'imported_from' => (int) get_term_meta( $tid, Radius_Data_Registry::META_IMPORTED_FROM_TERM, true ),
+			);
+		}
+		return $index;
+	}
+
+	/**
+	 * @param mixed $value Raw coordinate.
+	 * @return string
+	 */
+	private static function normalize_import_coord( $value ) {
+		if ( $value === '' || $value === false || $value === null ) {
+			return '';
+		}
+		if ( ! is_numeric( $value ) ) {
+			return '';
+		}
+		return number_format( (float) $value, 5, '.', '' );
+	}
+
+	/**
+	 * @param array{term_id:int,slug:string,lat:string,lng:string,imported_from:int} $row           Indexed radius row.
+	 * @param \WP_Term                                                               $legacy_term   Legacy term.
+	 * @param string                                                                 $target_slug   Resolved Radius slug.
+	 * @return bool
+	 */
+	private static function radius_place_row_synced_with_legacy( array $row, $legacy_term, $target_slug ) {
+		if ( (string) $row['slug'] !== (string) $target_slug ) {
+			return false;
+		}
+		if ( (int) $row['imported_from'] !== (int) $legacy_term->term_id ) {
+			return false;
+		}
+		$legacy_lat = self::normalize_import_coord( get_term_meta( (int) $legacy_term->term_id, 'lat', true ) );
+		$legacy_lng = self::normalize_import_coord( get_term_meta( (int) $legacy_term->term_id, 'lon', true ) );
+		if ( $legacy_lat === '' && $legacy_lng === '' ) {
+			return true;
+		}
+		if ( $legacy_lat !== '' && $legacy_lat !== (string) $row['lat'] ) {
+			return false;
+		}
+		if ( $legacy_lng !== '' && $legacy_lng !== (string) $row['lng'] ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Delta import: build a work queue once, then process only legacy terms that need action.
+	 *
+	 * @param int                   $limit       Batch size.
+	 * @param int                   $offset      Offset into the work queue.
+	 * @param int|null              $total_known Unused.
+	 * @param array<string,mixed>   $options     prepare_queue, skip_existing, etc.
+	 * @return array<string,mixed>
+	 */
+	private static function import_places_delta( $limit, $offset, $total_known, array $options ) {
+		$out = array(
+			'imported'                => 0,
+			'updated'                 => 0,
+			'skipped'                 => 0,
+			'skipped_existing'        => 0,
+			'skipped_slug_blacklist'  => 0,
+			'skipped_numbered_suffix' => 0,
+			'skipped_unchanged'       => 0,
+			'errors'                  => array(),
+			'has_more'                => false,
+			'next_offset'             => max( 0, (int) $offset ),
+			'delta_mode'              => true,
+			'queue_prepared'          => false,
+		);
+
+		$lim = max( 1, (int) $limit );
+		$off = max( 0, (int) $offset );
+
+		if ( ! empty( $options['prepare_queue'] ) || 0 === $off ) {
+			$queue = self::build_legacy_import_work_queue();
+			update_option( self::LEGACY_IMPORT_WORK_QUEUE_OPTION, $queue, false );
+			$out['queue_prepared'] = true;
+		}
+
+		$queue            = self::get_legacy_import_work_queue();
+		$total_work       = count( $queue );
+		$out['total_legacy']      = $total_work;
+		$out['total_legacy_all']  = self::legacy_place_term_count();
+		$out['queue_total']       = $total_work;
+
+		if ( 0 === $total_work ) {
+			$out['has_more']    = false;
+			$out['next_offset'] = $total_work;
+			return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+		}
+
+		$slice = array_slice( $queue, $off, $lim );
+		if ( array() === $slice ) {
+			$out['has_more']    = false;
+			$out['next_offset'] = $off;
+			return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+		}
+
+		$tax = self::legacy_location_taxonomy();
+		$terms = get_terms(
+			array(
+				'taxonomy'   => $tax,
+				'include'    => $slice,
+				'hide_empty' => false,
+				'orderby'    => 'term_id',
+				'order'      => 'ASC',
+				'number'     => 0,
+			)
+		);
+		if ( is_wp_error( $terms ) ) {
+			$out['errors'][] = $terms->get_error_message();
+			return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+		}
+		if ( ! is_array( $terms ) ) {
+			$terms = array();
+		}
+
+		self::process_legacy_place_import_batch( $terms, $out, $options );
+
+		$out['next_offset'] = $off + count( $slice );
+		$out['has_more']    = $out['next_offset'] < $total_work;
+
+		return apply_filters( 'radius_legacy_import_places_batch_result', $out, $options );
+	}
+
+	/**
+	 * Import or update a batch of legacy location terms into radius_place.
+	 *
+	 * @param array<int,\WP_Term>   $terms   Legacy terms for this batch.
+	 * @param array<string,mixed>  $out     Batch stats (by reference).
+	 * @param array<string,mixed>  $options skip_existing, slug_lookup_chunk, etc.
+	 * @return void
+	 */
+	private static function process_legacy_place_import_batch( array $terms, array &$out, array $options ) {
+		$settings = Radius_Settings::get();
+		$skip_existing = array_key_exists( 'skip_existing', $options )
+			? (bool) $options['skip_existing']
+			: ! empty( $settings['legacy_import_skip_existing'] );
+		$slug_chunk = isset( $options['slug_lookup_chunk'] )
+			? max( 5, min( 50, (int) $options['slug_lookup_chunk'] ) )
+			: (int) apply_filters( 'radius_legacy_import_slug_lookup_chunk', 25 );
+
+		$lf_tax = Radius_Place_Taxonomy::TAXONOMY;
+		$slugs  = wp_list_pluck( $terms, 'slug' );
+		foreach ( $terms as $term ) {
+			$resolved = self::resolve_legacy_place_import_slug( $term );
+			if ( empty( $resolved['skip'] ) && ! empty( $resolved['slug'] ) ) {
+				$slugs[] = (string) $resolved['slug'];
+			}
+		}
+		$slugs = array_filter( array_unique( array_map( 'strval', $slugs ) ) );
+
+		$lf_by_slug = array();
+		if ( ! empty( $slugs ) ) {
+			$slug_list = array_values( $slugs );
+			$chunks    = array_chunk( $slug_list, $slug_chunk );
+			foreach ( $chunks as $chunk ) {
+				if ( empty( $chunk ) ) {
+					continue;
+				}
+				$existing_batch = get_terms(
+					array(
+						'taxonomy'   => $lf_tax,
+						'hide_empty' => false,
+						'slug'       => $chunk,
+						'number'     => 0,
+					)
+				);
+				if ( ! is_wp_error( $existing_batch ) && is_array( $existing_batch ) ) {
+					foreach ( $existing_batch as $ex ) {
+						$lf_by_slug[ $ex->slug ] = $ex;
+					}
+				}
+			}
+		}
+
+		$defer = function_exists( 'wp_defer_term_counting' );
+		if ( $defer ) {
+			wp_defer_term_counting( true );
+		}
+		$suspend_cache = function_exists( 'wp_suspend_cache_addition' );
+		if ( $suspend_cache ) {
+			wp_suspend_cache_addition( true );
+		}
+
+		try {
+			$skip_slug_blacklist = (bool) apply_filters( 'radius_legacy_import_skip_slug_blacklist', true );
+
+			foreach ( $terms as $term ) {
+				$resolved = self::resolve_legacy_place_import_slug( $term );
+				if ( ! empty( $resolved['skip'] ) ) {
+					++$out['skipped_numbered_suffix'];
+					continue;
+				}
+				$slug = (string) $resolved['slug'];
+				if ( $slug === '' ) {
+					++$out['skipped'];
+					continue;
+				}
+
+				if ( $skip_slug_blacklist && Radius_Place_Taxonomy::place_slug_matches_blacklist( $slug ) ) {
+					++$out['skipped_slug_blacklist'];
+					continue;
+				}
+
+				$existing = isset( $lf_by_slug[ $slug ] ) ? $lf_by_slug[ $slug ] : null;
+
+				if ( $existing && ! is_wp_error( $existing ) && $skip_existing ) {
+					$row = array(
+						'term_id'       => (int) $existing->term_id,
+						'slug'          => (string) $existing->slug,
+						'lat'           => self::normalize_import_coord(
+							get_term_meta( (int) $existing->term_id, Radius_Data_Registry::TERM_META_LAT, true )
+						),
+						'lng'           => self::normalize_import_coord(
+							get_term_meta( (int) $existing->term_id, Radius_Data_Registry::TERM_META_LNG, true )
+						),
+						'imported_from' => (int) get_term_meta(
+							(int) $existing->term_id,
+							Radius_Data_Registry::META_IMPORTED_FROM_TERM,
+							true
+						),
+					);
+					if ( self::radius_place_row_synced_with_legacy( $row, $term, $slug ) ) {
+						++$out['skipped_unchanged'];
+						continue;
+					}
+				}
+
+				if ( $existing && ! is_wp_error( $existing ) ) {
+					$tid = (int) $existing->term_id;
+					$upd = wp_update_term(
+						$tid,
+						Radius_Place_Taxonomy::TAXONOMY,
+						array(
+							'name' => $term->name,
+							'slug' => $slug,
+						)
+					);
+					if ( is_wp_error( $upd ) ) {
+						++$out['skipped'];
+						continue;
+					}
+					self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
+					update_term_meta( $tid, Radius_Data_Registry::META_IMPORTED_FROM_TERM, (int) $term->term_id );
+					++$out['updated'];
+					continue;
+				}
+
+				$ins = wp_insert_term(
+					$term->name,
+					Radius_Place_Taxonomy::TAXONOMY,
+					array(
+						'slug' => $slug,
+					)
+				);
+
+				if ( is_wp_error( $ins ) ) {
+					if ( 'term_exists' === $ins->get_error_code() ) {
+						$data = $ins->get_error_data();
+						$tid  = is_array( $data ) && isset( $data['term_id'] ) ? (int) $data['term_id'] : (int) $data;
+						if ( $tid > 0 ) {
+							self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
+							update_term_meta( $tid, Radius_Data_Registry::META_IMPORTED_FROM_TERM, (int) $term->term_id );
+							++$out['updated'];
+						} else {
+							++$out['skipped'];
+						}
+						continue;
+					}
+					++$out['skipped'];
+					continue;
+				}
+
+				$tid = (int) $ins['term_id'];
+				self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
+				update_term_meta( $tid, Radius_Data_Registry::META_IMPORTED_FROM_TERM, (int) $term->term_id );
+				++$out['imported'];
+			}
+		} finally {
+			if ( $suspend_cache ) {
+				wp_suspend_cache_addition( false );
+			}
+			if ( $defer ) {
+				wp_defer_term_counting( false );
+			}
+		}
+	}
+
+	/**
 	 * Fetch the next legacy taxonomy batch using term_id > cursor (fast) instead of SQL OFFSET (slow for deep pages).
 	 *
 	 * @param string $taxonomy Legacy taxonomy slug.
@@ -2019,6 +2435,7 @@ class Radius_Legacy_Import_Service {
 			'skipped_existing'        => 0,
 			'skipped_slug_blacklist'  => 0,
 			'skipped_numbered_suffix' => 0,
+			'skipped_unchanged'       => 0,
 			'errors'                  => array(),
 			'has_more'                => false,
 			'next_offset'             => (int) $offset,
@@ -2027,6 +2444,10 @@ class Radius_Legacy_Import_Service {
 		if ( ! self::detect_legacy_places() ) {
 			$out['errors'][] = __( 'No legacy location taxonomy found.', 'radius' );
 			return $out;
+		}
+
+		if ( self::legacy_import_delta_enabled( $options ) ) {
+			return self::import_places_delta( $limit, $offset, $total_known, $options );
 		}
 
 		$settings = Radius_Settings::get();
@@ -2111,136 +2532,7 @@ class Radius_Legacy_Import_Service {
 			$out['next_cursor_term_id'] = $max_tid;
 		}
 
-		$lf_tax = Radius_Place_Taxonomy::TAXONOMY;
-		$slugs  = wp_list_pluck( $terms, 'slug' );
-		foreach ( $terms as $term ) {
-			$resolved = self::resolve_legacy_place_import_slug( $term );
-			if ( empty( $resolved['skip'] ) && ! empty( $resolved['slug'] ) ) {
-				$slugs[] = (string) $resolved['slug'];
-			}
-		}
-		$slugs  = array_filter( array_unique( array_map( 'strval', $slugs ) ) );
-
-		$lf_by_slug = array();
-		if ( ! empty( $slugs ) ) {
-			$slug_list = array_values( $slugs );
-			$chunks    = array_chunk( $slug_list, $slug_chunk );
-			foreach ( $chunks as $chunk ) {
-				if ( empty( $chunk ) ) {
-					continue;
-				}
-				$existing_batch = get_terms(
-					array(
-						'taxonomy'   => $lf_tax,
-						'hide_empty' => false,
-						'slug'       => $chunk,
-						'number'     => 0,
-					)
-				);
-				if ( ! is_wp_error( $existing_batch ) && is_array( $existing_batch ) ) {
-					foreach ( $existing_batch as $ex ) {
-						$lf_by_slug[ $ex->slug ] = $ex;
-					}
-				}
-			}
-		}
-
-		$defer = function_exists( 'wp_defer_term_counting' );
-		if ( $defer ) {
-			wp_defer_term_counting( true );
-		}
-		$suspend_cache = function_exists( 'wp_suspend_cache_addition' );
-		if ( $suspend_cache ) {
-			wp_suspend_cache_addition( true );
-		}
-
-		try {
-
-		$skip_slug_blacklist = (bool) apply_filters( 'radius_legacy_import_skip_slug_blacklist', true );
-
-		foreach ( $terms as $term ) {
-			$resolved = self::resolve_legacy_place_import_slug( $term );
-			if ( ! empty( $resolved['skip'] ) ) {
-				++$out['skipped_numbered_suffix'];
-				continue;
-			}
-			$slug = (string) $resolved['slug'];
-			if ( $slug === '' ) {
-				++$out['skipped'];
-				continue;
-			}
-
-			if ( $skip_slug_blacklist && Radius_Place_Taxonomy::place_slug_matches_blacklist( $slug ) ) {
-				++$out['skipped_slug_blacklist'];
-				continue;
-			}
-
-			$existing = isset( $lf_by_slug[ $slug ] ) ? $lf_by_slug[ $slug ] : null;
-
-			if ( $existing && ! is_wp_error( $existing ) && $skip_existing ) {
-				++$out['skipped_existing'];
-				continue;
-			}
-
-			if ( $existing && ! is_wp_error( $existing ) ) {
-				$tid = (int) $existing->term_id;
-				$upd = wp_update_term(
-					$tid,
-					Radius_Place_Taxonomy::TAXONOMY,
-					array(
-						'name' => $term->name,
-						'slug' => $slug,
-					)
-				);
-				if ( is_wp_error( $upd ) ) {
-					++$out['skipped'];
-					continue;
-				}
-				self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
-				update_term_meta( $tid, '_radius_imported_from_term', (int) $term->term_id );
-				++$out['updated'];
-				continue;
-			}
-
-			$ins = wp_insert_term(
-				$term->name,
-				Radius_Place_Taxonomy::TAXONOMY,
-				array(
-					'slug' => $slug,
-				)
-			);
-
-			if ( is_wp_error( $ins ) ) {
-				if ( 'term_exists' === $ins->get_error_code() ) {
-					$data = $ins->get_error_data();
-					$tid  = is_array( $data ) && isset( $data['term_id'] ) ? (int) $data['term_id'] : (int) $data;
-					if ( $tid > 0 ) {
-						self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
-						update_term_meta( $tid, '_radius_imported_from_term', (int) $term->term_id );
-						++$out['updated'];
-					} else {
-						++$out['skipped'];
-					}
-					continue;
-				}
-				++$out['skipped'];
-				continue;
-			}
-
-			$tid = (int) $ins['term_id'];
-			self::copy_legacy_term_meta_to_radius_place( (int) $term->term_id, $tid );
-			update_term_meta( $tid, '_radius_imported_from_term', (int) $term->term_id );
-			++$out['imported'];
-		}
-
-		} finally {
-			if ( $suspend_cache ) {
-				wp_suspend_cache_addition( false );
-			}
-			if ( $defer ) {
-				wp_defer_term_counting( false );
-			}
-		}
+		self::process_legacy_place_import_batch( $terms, $out, $options );
 
 		$out['total_legacy'] = $total_legacy;
 

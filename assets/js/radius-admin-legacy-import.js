@@ -195,6 +195,11 @@
 		var offset = 0;
 		var cursorTermId = 0;
 		var totalLegacy = 0;
+		var totalLegacyAll = 0;
+		var useDelta =
+			cfg.deltaMode === true ||
+			cfg.deltaMode === 1 ||
+			cfg.deltaMode === '1';
 		var interBatchMs =
 			typeof cfg.interBatchDelayMs === 'number' && cfg.interBatchDelayMs >= 0
 				? cfg.interBatchDelayMs
@@ -213,11 +218,19 @@
 				fd.append('action', 'radius_legacy_places_batch');
 				fd.append('nonce', cfg.nonce);
 				fd.append('offset', String(offset));
-				fd.append('cursor_term_id', String(cursorTermId));
+				if (!useDelta) {
+					fd.append('cursor_term_id', String(cursorTermId));
+				}
 				if (totalLegacy > 0) {
 					fd.append('total_legacy', String(totalLegacy));
 				}
 				fd.append('skip_existing', getSkipExisting());
+				if (useDelta) {
+					fd.append('delta_mode', '1');
+					if (offset === 0) {
+						fd.append('prepare_queue', '1');
+					}
+				}
 
 				if (batchCap) {
 					batchCap.textContent = replaceAll(i18n.batchWorkingFmt || '', {
@@ -278,7 +291,22 @@
 				}
 
 				var d = j.data;
-				totalLegacy = d.total_legacy || totalLegacy;
+				if (d.total_legacy_all != null) {
+					totalLegacyAll = d.total_legacy_all;
+				}
+				if (d.queue_total != null) {
+					totalLegacy = d.queue_total;
+				} else if (d.total_legacy != null) {
+					totalLegacy = d.total_legacy;
+				}
+				if (d.queue_prepared && line && i18n.queuePrepareFmt) {
+					line.textContent = replaceAll(i18n.queuePrepareFmt, {
+						'{remaining}': String(totalLegacy),
+						'{all}': String(
+							totalLegacyAll || d.total_legacy_all || totalLegacy
+						),
+					});
+				}
 
 				sumImported += d.imported != null ? d.imported : 0;
 				sumUpdated += d.updated != null ? d.updated : 0;
@@ -315,20 +343,26 @@
 						? Math.min(100, Math.round((done / totalLegacy) * 100))
 						: 0;
 				setProgressBar(overall, totalLegacy > 0 ? pct : 0);
+				var progressTpl =
+					useDelta && i18n.progressDeltaFmt
+						? i18n.progressDeltaFmt
+						: i18n.progressFmt || '';
 				if (overallCap && totalLegacy > 0) {
-					overallCap.textContent = replaceAll(i18n.progressFmt || '', {
+					overallCap.textContent = replaceAll(progressTpl, {
 						'{pct}': String(pct),
 						'{done}': String(Math.min(done, totalLegacy)),
 						'{total}': String(totalLegacy),
+						'{all}': String(totalLegacyAll || totalLegacy),
 					});
 				} else if (overallCap) {
 					overallCap.textContent = i18n.waitingTotalFmt || '';
 				}
-				if (line && totalLegacy > 0) {
-					line.textContent = replaceAll(i18n.progressFmt || '', {
+				if (line && totalLegacy > 0 && !d.queue_prepared) {
+					line.textContent = replaceAll(progressTpl, {
 						'{pct}': String(pct),
 						'{done}': String(Math.min(done, totalLegacy)),
 						'{total}': String(totalLegacy),
+						'{all}': String(totalLegacyAll || totalLegacy),
 					});
 				}
 				if (typeof window.radiusLegacyImportOnOverall === 'function') {
@@ -408,7 +442,11 @@
 				}
 				offset = nextOff;
 
-				if (d.next_cursor_term_id != null && d.next_cursor_term_id !== '') {
+				if (
+					!useDelta &&
+					d.next_cursor_term_id != null &&
+					d.next_cursor_term_id !== ''
+				) {
 					cursorTermId = parseInt(d.next_cursor_term_id, 10);
 					if (isNaN(cursorTermId)) {
 						cursorTermId = 0;

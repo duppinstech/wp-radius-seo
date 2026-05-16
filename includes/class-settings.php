@@ -104,6 +104,7 @@ class Radius_Settings {
 			'deploy_batch'                    => 25,
 			'legacy_import_size'              => 25,
 			'legacy_import_skip_existing'     => 1,
+			'legacy_import_delta_mode'        => 1,
 			'legacy_import_inter_batch_ms'    => 1200,
 			'enable_elementor'                => 1,
 			'service_anchors'                 => array(),
@@ -400,6 +401,9 @@ class Radius_Settings {
 		}
 		if ( isset( $input['legacy_import_skip_existing'] ) ) {
 			$out['legacy_import_skip_existing'] = ! empty( $input['legacy_import_skip_existing'] ) ? 1 : 0;
+		}
+		if ( isset( $input['legacy_import_delta_mode'] ) ) {
+			$out['legacy_import_delta_mode'] = ! empty( $input['legacy_import_delta_mode'] ) ? 1 : 0;
 		}
 		if ( isset( $input['legacy_import_inter_batch_ms'] ) ) {
 			$out['legacy_import_inter_batch_ms'] = max( 0, min( 30000, absint( $input['legacy_import_inter_batch_ms'] ) ) );
