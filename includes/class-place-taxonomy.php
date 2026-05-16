@@ -677,30 +677,108 @@ class Radius_Place_Taxonomy {
 	}
 
 	/**
-	 * How many places can be renamed from foo-2 (etc.) back to foo when foo is missing.
+	 * Whether slug repair should match Magic Page legacy location terms before renaming orphans.
 	 *
-	 * @return int
+	 * @return bool
 	 */
-	public static function count_repairable_orphan_numbered_place_slugs() {
-		return count( self::collect_orphan_numbered_slug_groups() );
+	public static function place_slug_repair_uses_legacy_precheck() {
+		return class_exists( 'Radius_Legacy_Import_Service' )
+			&& Radius_Legacy_Import_Service::legacy_place_repair_precheck_available();
 	}
 
 	/**
-	 * Next repairs: lowest suffix orphan per base (foo-2 before foo-3), batched by term_id cursor.
+	 * How many repair actions are queued (legacy sync, legacy base import, or slug rename).
 	 *
-	 * @param int $limit           Max repairs to return.
-	 * @param int $after_term_id   Scan terms with term_id greater than this.
-	 * @return array{repairs:array<int,array{term_id:int,old_slug:string,new_slug:string}>,next_cursor_term_id:int,scan_has_more:bool}
+	 * @return int
 	 */
-	public static function get_place_numbered_slug_repairs_chunk( $limit = 40, $after_term_id = 0 ) {
-		$limit = max( 1, min( 80, (int) $limit ) );
-		$scan  = (int) apply_filters( 'radius_repair_numbered_slug_scan_batch', 250 );
-		$scan  = max( 50, min( 500, $scan ) );
+	public static function count_repairable_place_slug_actions() {
+		if ( ! self::place_slug_repair_uses_legacy_precheck() ) {
+			return count( self::collect_orphan_numbered_slug_groups() );
+		}
+
+		$n             = 0;
+		$bases_import  = array();
+		$orphans       = self::collect_orphan_numbered_slug_groups();
+
+		foreach ( $orphans as $base => $info ) {
+			unset( $info );
+			if ( Radius_Legacy_Import_Service::get_legacy_location_term_by_slug( $base ) ) {
+				if ( empty( $bases_import[ $base ] ) ) {
+					++$n;
+					$bases_import[ $base ] = true;
+				}
+			} else {
+				++$n;
+			}
+		}
 
 		global $wpdb;
-		$tax    = self::TAXONOMY;
-		$cursor = max( 0, (int) $after_term_id );
-		$repairs = array();
+		$tax  = self::TAXONOMY;
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT t.slug FROM {$wpdb->terms} AS t
+				INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
+				WHERE t.slug LIKE %s",
+				$tax,
+				'%' . $wpdb->esc_like( '-' ) . '%'
+			)
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+		if ( is_array( $rows ) ) {
+			foreach ( $rows as $slug ) {
+				if ( Radius_Legacy_Import_Service::get_legacy_location_term_by_slug( (string) $slug ) ) {
+					++$n;
+				}
+			}
+		}
+
+		return $n;
+	}
+
+	/**
+	 * @return int
+	 */
+	public static function count_repairable_orphan_numbered_place_slugs() {
+		return self::count_repairable_place_slug_actions();
+	}
+
+	/**
+	 * Next slug repair actions (legacy pre-check when available, else orphan rename only).
+	 *
+	 * @param int $limit           Max repairs to return.
+	 * @param int $after_term_id   Scan radius_place terms with term_id greater than this.
+	 * @return array{repairs:array<int,array<string,mixed>>,next_cursor_term_id:int,scan_has_more:bool,uses_legacy:bool}
+	 */
+	public static function get_place_numbered_slug_repairs_chunk( $limit = 40, $after_term_id = 0 ) {
+		$limit      = max( 1, min( 80, (int) $limit ) );
+		$scan       = (int) apply_filters( 'radius_repair_numbered_slug_scan_batch', 250 );
+		$scan       = max( 50, min( 500, $scan ) );
+		$use_legacy = self::place_slug_repair_uses_legacy_precheck();
+
+		global $wpdb;
+		$tax         = self::TAXONOMY;
+		$cursor      = max( 0, (int) $after_term_id );
+		$repairs     = array();
+		$bases_queued = array();
+
+		if ( 0 === $cursor && $use_legacy ) {
+			foreach ( self::collect_orphan_numbered_slug_groups() as $base => $info ) {
+				if ( count( $repairs ) >= $limit ) {
+					break;
+				}
+				if ( ! Radius_Legacy_Import_Service::get_legacy_location_term_by_slug( $base ) ) {
+					continue;
+				}
+				if ( self::place_slug_exists( $base ) ) {
+					continue;
+				}
+				$repairs[] = array(
+					'action'    => 'legacy_import_base',
+					'base_slug' => $base,
+				);
+				$bases_queued[ $base ] = true;
+			}
+		}
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -724,32 +802,114 @@ class Radius_Place_Taxonomy {
 
 		foreach ( $rows as $row ) {
 			$cursor = (int) $row->term_id;
-			$parsed = self::parse_numbered_place_slug( (string) $row->slug );
+			$slug   = (string) $row->slug;
+			if ( count( $repairs ) >= $limit ) {
+				break;
+			}
+
+			if ( $use_legacy ) {
+				$legacy = Radius_Legacy_Import_Service::get_legacy_location_term_by_slug( $slug );
+				if ( $legacy ) {
+					$repairs[] = array(
+						'action'         => 'legacy_sync',
+						'term_id'        => (int) $row->term_id,
+						'legacy_term_id' => (int) $legacy->term_id,
+						'old_slug'       => $slug,
+					);
+					continue;
+				}
+			}
+
+			$parsed = self::parse_numbered_place_slug( $slug );
 			if ( null === $parsed ) {
 				continue;
 			}
 			if ( self::place_slug_exists( $parsed['base'] ) ) {
 				continue;
 			}
+
+			if ( $use_legacy && ! empty( $bases_queued[ $parsed['base'] ] ) ) {
+				continue;
+			}
+
+			if ( $use_legacy && Radius_Legacy_Import_Service::get_legacy_location_term_by_slug( $parsed['base'] ) ) {
+				$repairs[] = array(
+					'action'    => 'legacy_import_base',
+					'base_slug' => $parsed['base'],
+				);
+				$bases_queued[ $parsed['base'] ] = true;
+				continue;
+			}
+
 			$keeper = self::get_lowest_orphan_numbered_place_for_base( $parsed['base'] );
 			if ( ! $keeper || (int) $keeper->term_id !== (int) $row->term_id ) {
 				continue;
 			}
 			$repairs[] = array(
+				'action'   => 'slug_rename',
 				'term_id'  => (int) $row->term_id,
-				'old_slug' => (string) $row->slug,
+				'old_slug' => $slug,
 				'new_slug' => $parsed['base'],
 			);
-			if ( count( $repairs ) >= $limit ) {
-				break;
-			}
 		}
 
 		return array(
-			'repairs'               => $repairs,
-			'next_cursor_term_id'     => $cursor,
-			'scan_has_more'           => $scan_has_more,
+			'repairs'             => $repairs,
+			'next_cursor_term_id' => $cursor,
+			'scan_has_more'       => $scan_has_more,
+			'uses_legacy'         => $use_legacy,
 		);
+	}
+
+	/**
+	 * Apply one repair action from get_place_numbered_slug_repairs_chunk().
+	 *
+	 * @param array<string,mixed> $repair Repair descriptor.
+	 * @return array{success:bool,action?:string,term_id?:int,old_slug?:string,new_slug?:string,error?:string}
+	 */
+	public static function apply_place_slug_repair( array $repair ) {
+		$action = isset( $repair['action'] ) ? sanitize_key( (string) $repair['action'] ) : 'slug_rename';
+
+		if ( 'legacy_import_base' === $action ) {
+			$base = isset( $repair['base_slug'] ) ? (string) $repair['base_slug'] : '';
+			$res  = Radius_Legacy_Import_Service::ensure_radius_place_for_legacy_base_slug( $base );
+			if ( ! empty( $res['success'] ) ) {
+				return array_merge(
+					$res,
+					array(
+						'success' => true,
+						'action'  => 'legacy_import_base',
+					)
+				);
+			}
+			return array_merge(
+				$res,
+				array(
+					'success' => false,
+					'action'  => 'legacy_import_base',
+				)
+			);
+		}
+
+		if ( 'legacy_sync' === $action ) {
+			$tid = isset( $repair['term_id'] ) ? (int) $repair['term_id'] : 0;
+			$lid = isset( $repair['legacy_term_id'] ) ? (int) $repair['legacy_term_id'] : 0;
+			$ok  = Radius_Legacy_Import_Service::sync_radius_place_from_legacy_term( $tid, $lid );
+			return array(
+				'success'  => $ok,
+				'action'   => 'legacy_sync',
+				'term_id'  => $tid,
+				'old_slug' => isset( $repair['old_slug'] ) ? (string) $repair['old_slug'] : '',
+			);
+		}
+
+		$tid = isset( $repair['term_id'] ) ? (int) $repair['term_id'] : 0;
+		$new = isset( $repair['new_slug'] ) ? (string) $repair['new_slug'] : '';
+		$res = self::repair_place_term_slug( $tid, $new );
+		if ( ! empty( $res['success'] ) ) {
+			$res['action'] = 'slug_rename';
+		}
+		return $res;
 	}
 
 	/**

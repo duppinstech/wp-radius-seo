@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.52
+Stable tag: 1.6.53
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -72,7 +72,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_import_skip_slug_blacklist` — return false to import legacy location terms whose slug matches the low-value substring list (default true: skip so re-import does not recreate cleaned-up places).
 * `radius_place_numbered_slug_suffix_max` — highest numeric suffix treated as a WordPress duplicate slug when restoring orphans (default 99).
 * `radius_repair_numbered_slug_places_chunk_size` — places renamed per AJAX batch for “Restore base slugs” (default 40).
+* `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 == Changelog ==
+
+= 1.6.53 =
+* **Restore base slugs:** When the Magic Page legacy location taxonomy is present, repair **syncs each Radius place from the matching legacy term by slug** (lat, lng, ZIP, region) so `-2` / `-3` rows can stay separate when coordinates differ. **Re-imports missing base slugs** from legacy instead of renaming the lowest suffix. Falls back to rename-only when legacy locations are unavailable.
 
 = 1.6.52 =
 * **Location library: restore orphan numbered slugs.** New card and batched **Restore base slugs** when places only exist as `name-2` / `name-3` but not `name` (common after slug-pattern cleanup removed the shorter slug). Renames the lowest suffix per missing base; duplicate-name cleanup still applies separately.

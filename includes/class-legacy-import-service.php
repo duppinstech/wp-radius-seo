@@ -4072,6 +4072,182 @@ class Radius_Legacy_Import_Service {
 		return '';
 	}
 
+	/**
+	 * Whether place slug repair should consult Magic Page legacy location terms first.
+	 *
+	 * Requires the legacy location taxonomy and at least one term. Filter may require the plugin to be active.
+	 *
+	 * @return bool
+	 */
+	public static function legacy_place_repair_precheck_available() {
+		if ( ! self::detect_legacy_places() ) {
+			return false;
+		}
+		if ( self::legacy_place_term_count() < 1 ) {
+			return false;
+		}
+		return (bool) apply_filters(
+			'radius_place_repair_use_legacy_locations',
+			true
+		);
+	}
+
+	/**
+	 * Legacy location term by slug, or null.
+	 *
+	 * @param string $slug Term slug.
+	 * @return WP_Term|null
+	 */
+	public static function get_legacy_location_term_by_slug( $slug ) {
+		if ( ! self::detect_legacy_places() ) {
+			return null;
+		}
+		$slug = sanitize_title( (string) $slug );
+		if ( $slug === '' ) {
+			return null;
+		}
+		$term = get_term_by( 'slug', $slug, self::legacy_location_taxonomy() );
+		if ( ! $term || is_wp_error( $term ) ) {
+			return null;
+		}
+		return $term;
+	}
+
+	/**
+	 * Resolve imported radius_place term ID from a legacy location term ID (import bridge, slug, or zip).
+	 *
+	 * @param int                  $legacy_term_id Legacy taxonomy term ID.
+	 * @param array<string,mixed> $row            Optional row context (slug).
+	 * @return int
+	 */
+	public static function find_radius_place_id_for_legacy_term( $legacy_term_id, array $row = array() ) {
+		return self::map_legacy_location_term_to_radius_place_id( $legacy_term_id, $row );
+	}
+
+	/**
+	 * Copy legacy location meta onto an existing radius_place term and set the import bridge.
+	 *
+	 * @param int  $radius_term_id radius_place term ID.
+	 * @param int  $legacy_term_id Legacy location term ID.
+	 * @param bool $update_name    Whether to overwrite the Radius display name from legacy.
+	 * @return bool
+	 */
+	public static function sync_radius_place_from_legacy_term( $radius_term_id, $legacy_term_id, $update_name = true ) {
+		$radius_term_id = (int) $radius_term_id;
+		$legacy_term_id = (int) $legacy_term_id;
+		if ( $radius_term_id <= 0 || $legacy_term_id <= 0 ) {
+			return false;
+		}
+		$legacy = get_term( $legacy_term_id, self::legacy_location_taxonomy() );
+		if ( ! $legacy || is_wp_error( $legacy ) ) {
+			return false;
+		}
+		if ( $update_name ) {
+			wp_update_term(
+				$radius_term_id,
+				Radius_Place_Taxonomy::TAXONOMY,
+				array(
+					'name' => $legacy->name,
+				)
+			);
+		}
+		self::copy_legacy_term_meta_to_radius_place( $legacy_term_id, $radius_term_id );
+		update_term_meta( $radius_term_id, Radius_Data_Registry::META_IMPORTED_FROM_TERM, $legacy_term_id );
+		return true;
+	}
+
+	/**
+	 * Create or refresh the radius_place row for a legacy location slug (e.g. restore missing base slug).
+	 *
+	 * @param string $base_slug Sanitized base slug (no -2 suffix).
+	 * @return array{success:bool,term_id?:int,action?:string,error?:string}
+	 */
+	public static function ensure_radius_place_for_legacy_base_slug( $base_slug ) {
+		$base_slug = sanitize_title( (string) $base_slug );
+		if ( $base_slug === '' ) {
+			return array(
+				'success' => false,
+				'error'   => 'invalid_slug',
+			);
+		}
+		if ( ! self::legacy_place_repair_precheck_available() ) {
+			return array(
+				'success' => false,
+				'error'   => 'no_legacy',
+			);
+		}
+
+		$legacy = self::get_legacy_location_term_by_slug( $base_slug );
+		if ( ! $legacy ) {
+			return array(
+				'success' => false,
+				'error'   => 'legacy_missing',
+			);
+		}
+
+		$legacy_id = (int) $legacy->term_id;
+		$existing  = self::find_radius_place_id_for_legacy_term( $legacy_id );
+		if ( $existing > 0 ) {
+			$term = get_term( $existing, Radius_Place_Taxonomy::TAXONOMY );
+			if ( $term && ! is_wp_error( $term ) && (string) $term->slug !== $base_slug ) {
+				if ( ! Radius_Place_Taxonomy::place_slug_exists( $base_slug ) ) {
+					wp_update_term(
+						$existing,
+						Radius_Place_Taxonomy::TAXONOMY,
+						array(
+							'slug' => $base_slug,
+							'name' => $legacy->name,
+						)
+					);
+				}
+			}
+			self::sync_radius_place_from_legacy_term( $existing, $legacy_id );
+			return array(
+				'success' => true,
+				'term_id' => $existing,
+				'action'  => 'synced_existing',
+			);
+		}
+
+		if ( Radius_Place_Taxonomy::place_slug_exists( $base_slug ) ) {
+			$by_slug = get_term_by( 'slug', $base_slug, Radius_Place_Taxonomy::TAXONOMY );
+			if ( $by_slug && ! is_wp_error( $by_slug ) ) {
+				self::sync_radius_place_from_legacy_term( (int) $by_slug->term_id, $legacy_id );
+				return array(
+					'success' => true,
+					'term_id' => (int) $by_slug->term_id,
+					'action'  => 'linked_by_slug',
+				);
+			}
+			return array(
+				'success' => false,
+				'error'   => 'slug_taken',
+			);
+		}
+
+		$ins = wp_insert_term(
+			$legacy->name,
+			Radius_Place_Taxonomy::TAXONOMY,
+			array(
+				'slug' => $base_slug,
+			)
+		);
+		if ( is_wp_error( $ins ) ) {
+			return array(
+				'success' => false,
+				'error'   => $ins->get_error_code() ? $ins->get_error_code() : 'insert_failed',
+			);
+		}
+		$tid = (int) $ins['term_id'];
+		self::sync_radius_place_from_legacy_term( $tid, $legacy_id );
+
+		return array(
+			'success' => true,
+			'term_id' => $tid,
+			'action'  => 'created',
+		);
+	}
+
 	private static function map_legacy_location_term_to_radius_place_id( $legacy_term_id, array $row = array() ) {
 		$legacy_term_id = (int) $legacy_term_id;
 		if ( $legacy_term_id <= 0 ) {

@@ -387,6 +387,9 @@
 							tplOr(i18n.repairSlugsProgressTpl, ''),
 							{
 								repaired: rep,
+								legacySync: parseInt(d.legacy_synced, 10) || 0,
+								legacyImport: parseInt(d.legacy_imported, 10) || 0,
+								renamed: parseInt(d.slug_renamed, 10) || 0,
 								skipped: parseInt(d.skipped, 10) || 0,
 								total: totalRepaired,
 								remaining: rem,
