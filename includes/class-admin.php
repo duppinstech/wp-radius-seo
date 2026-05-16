@@ -694,8 +694,8 @@ class Radius_Admin {
 						'slugBlacklistDoneTpl' => __( 'Slug pattern cleanup finished. Removed {total} places; {pagesTotal} pages moved to Trash. Reloading…', 'radius' ),
 						'slugBlacklistError' => __( 'Could not remove a batch. Try again.', 'radius' ),
 						'slugBlacklistNetwork' => __( 'Network error during slug pattern cleanup. Try again.', 'radius' ),
-						'confirmRepairSlugs'   => __( 'Run place slug repair? When Magic Page legacy locations exist, each Radius place is matched by slug and coordinates are copied from legacy; missing base slugs are re-imported. Otherwise the lowest -2, -3 suffix is renamed to the base. Landings keep the same term IDs.', 'radius' ),
-						'repairSlugsProgressTpl' => __( 'Last batch: {repaired} OK ({legacySync} synced from legacy, {legacyImport} bases imported, {renamed} renamed), {skipped} skipped. Total OK: {total}. Remaining: {remaining}.', 'radius' ),
+						'confirmRepairSlugs'   => __( 'Restore missing base slugs? For each -1 … -9 slug whose base is absent: import from Magic Page legacy when available, otherwise rename the lowest suffix to the base. Rows where the base already exists are skipped (use Remove duplicates for those).', 'radius' ),
+						'repairSlugsProgressTpl' => __( 'Batch: {repaired} fixed ({legacyImport} imported from legacy, {renamed} renamed), {skipped} skipped. Total fixed: {total}. Missing bases left: {remaining}.', 'radius' ),
 						'repairSlugsDoneTpl'   => __( 'Base slug restore finished. Renamed {total} places. Reloading…', 'radius' ),
 						'repairSlugsError'     => __( 'Could not restore a batch of slugs. Try again.', 'radius' ),
 						'repairSlugsNetwork'   => __( 'Network error during slug restore. Try again.', 'radius' ),
@@ -1105,14 +1105,15 @@ class Radius_Admin {
 					<div class="radius-card radius-card--orphan-slugs">
 						<h2><?php esc_html_e( 'Orphan numbered slugs', 'radius' ); ?></h2>
 						<div class="radius-card__text">
+							<p class="description"><?php esc_html_e( 'Only fixes places whose slug ends in -1 through -9 when the main slug (same name without the number) is missing in the library. If the main slug already exists, use Remove duplicates for the extra -2, -3 rows instead.', 'radius' ); ?></p>
 							<?php if ( $uses_legacy_slug_repair ) : ?>
-								<p class="description"><?php esc_html_e( 'Magic Page legacy locations are available. Restore will match each Radius place to the legacy term with the same slug and copy lat, lng, ZIP, and region (so -2 and -3 can stay separate when Magic Page has different coordinates). Missing base slugs are re-imported from legacy instead of blind rename.', 'radius' ); ?></p>
+								<p class="description"><?php esc_html_e( 'When Magic Page still has that base location, it is re-imported from legacy. Otherwise the lowest suffix is renamed (e.g. city-2 → city).', 'radius' ); ?></p>
 							<?php else : ?>
-								<p class="description"><?php esc_html_e( 'Places whose slug ends in -2, -3, etc. while the base slug is missing — often after slug-pattern cleanup. With no legacy location taxonomy, the lowest suffix is renamed to the base (e.g. city-2 → city).', 'radius' ); ?></p>
+								<p class="description"><?php esc_html_e( 'No legacy location taxonomy — the lowest suffix is renamed to the base slug.', 'radius' ); ?></p>
 							<?php endif; ?>
 							<p class="radius-card__stat">
 								<strong><?php echo esc_html( number_format_i18n( $orphan_numbered_slugs ) ); ?></strong>
-								<?php echo esc_html( _n( 'repair action', 'repair actions', $orphan_numbered_slugs, 'radius' ) ); ?>
+								<?php echo esc_html( _n( 'missing base slug', 'missing base slugs', $orphan_numbered_slugs, 'radius' ) ); ?>
 							</p>
 						</div>
 						<?php if ( current_user_can( 'manage_options' ) ) : ?>

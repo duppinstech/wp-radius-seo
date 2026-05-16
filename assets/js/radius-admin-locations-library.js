@@ -354,6 +354,7 @@
 				var body = new URLSearchParams();
 				body.set('action', 'radius_repair_numbered_slug_places_batch');
 				body.set('nonce', repairSlugNonce);
+				body.set('group_offset', String(cursor));
 				body.set('cursor_term_id', String(cursor));
 
 				fetch(ajaxurl, {
@@ -382,12 +383,14 @@
 						var rep = parseInt(d.repaired, 10) || 0;
 						var rem = parseInt(d.remaining, 10);
 						totalRepaired += rep;
-						cursor = parseInt(d.next_cursor_term_id, 10) || 0;
+						cursor =
+							parseInt(d.group_offset, 10) ||
+							parseInt(d.next_cursor_term_id, 10) ||
+							0;
 						status.textContent = fmt(
 							tplOr(i18n.repairSlugsProgressTpl, ''),
 							{
 								repaired: rep,
-								legacySync: parseInt(d.legacy_synced, 10) || 0,
 								legacyImport: parseInt(d.legacy_imported, 10) || 0,
 								renamed: parseInt(d.slug_renamed, 10) || 0,
 								skipped: parseInt(d.skipped, 10) || 0,

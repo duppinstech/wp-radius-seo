@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.53
+Stable tag: 1.6.54
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -70,10 +70,14 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_slug_blacklist_trash_deployed_pages` — return false to delete slug-blacklist place terms without moving matching `radius_landing` / `radius_service_area` posts to the Trash first (default true).
 * `radius_migration_places_expected_count` — filter the **adjusted** legacy location count used for migration wizard parity (after slug blacklist + duplicate-name collapse on the Magic Page taxonomy; second arg is raw legacy count).
 * `radius_legacy_import_skip_slug_blacklist` — return false to import legacy location terms whose slug matches the low-value substring list (default true: skip so re-import does not recreate cleaned-up places).
-* `radius_place_numbered_slug_suffix_max` — highest numeric suffix treated as a WordPress duplicate slug when restoring orphans (default 99).
+* `radius_place_numbered_slug_suffix_max` — highest numeric suffix treated as a WordPress duplicate slug when restoring missing bases (default 9).
 * `radius_repair_numbered_slug_places_chunk_size` — places renamed per AJAX batch for “Restore base slugs” (default 40).
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
+* `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.54 =
+* **Fix: Restore base slugs no longer stalls.** Removed per-row “legacy sync” that re-processed the same `-2`/`-3` slugs forever (remaining never dropped). Repair now only runs for **missing base slugs** (`-1` … `-9`); when the base already exists, use **Remove duplicates** instead. One batch action per missing base (import from legacy or rename lowest suffix).
 
 = 1.6.53 =
 * **Restore base slugs:** When the Magic Page legacy location taxonomy is present, repair **syncs each Radius place from the matching legacy term by slug** (lat, lng, ZIP, region) so `-2` / `-3` rows can stay separate when coordinates differ. **Re-imports missing base slugs** from legacy instead of renaming the lowest suffix. Falls back to rename-only when legacy locations are unavailable.

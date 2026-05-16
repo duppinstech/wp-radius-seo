@@ -372,16 +372,20 @@ class Radius_Ajax {
 			@set_time_limit( 120 );
 		}
 
-		$cursor = isset( $_POST['cursor_term_id'] ) ? absint( wp_unslash( $_POST['cursor_term_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$chunk  = (int) apply_filters( 'radius_repair_numbered_slug_places_chunk_size', 40 );
-		$chunk  = max( 5, min( 80, $chunk ) );
+		$group_offset = 0;
+		if ( isset( $_POST['group_offset'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$group_offset = absint( wp_unslash( $_POST['group_offset'] ) );
+		} elseif ( isset( $_POST['cursor_term_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$group_offset = absint( wp_unslash( $_POST['cursor_term_id'] ) );
+		}
+		$chunk = (int) apply_filters( 'radius_repair_numbered_slug_places_chunk_size', 40 );
+		$chunk = max( 5, min( 80, $chunk ) );
 
-		$batch          = Radius_Place_Taxonomy::get_place_numbered_slug_repairs_chunk( $chunk, $cursor );
-		$repaired       = 0;
-		$skipped        = 0;
-		$legacy_synced  = 0;
+		$batch           = Radius_Place_Taxonomy::get_place_numbered_slug_repairs_chunk( $chunk, $group_offset );
+		$repaired        = 0;
+		$skipped         = 0;
 		$legacy_imported = 0;
-		$slug_renamed   = 0;
+		$slug_renamed    = 0;
 
 		foreach ( $batch['repairs'] as $repair ) {
 			if ( ! is_array( $repair ) ) {
@@ -391,9 +395,7 @@ class Radius_Ajax {
 			if ( ! empty( $res['success'] ) ) {
 				++$repaired;
 				$act = isset( $res['action'] ) ? (string) $res['action'] : '';
-				if ( 'legacy_sync' === $act ) {
-					++$legacy_synced;
-				} elseif ( 'legacy_import_base' === $act ) {
+				if ( 'legacy_import_base' === $act ) {
 					++$legacy_imported;
 				} elseif ( 'slug_rename' === $act ) {
 					++$slug_renamed;
@@ -404,28 +406,21 @@ class Radius_Ajax {
 		}
 
 		$remaining   = Radius_Place_Taxonomy::count_repairable_place_slug_actions();
-		$scan_done   = empty( $batch['scan_has_more'] );
-		$next_cursor = (int) $batch['next_cursor_term_id'];
-
-		if ( $scan_done && $remaining > 0 && ( $repaired > 0 || $skipped > 0 ) ) {
-			$next_cursor = 0;
-		}
-
-		$done = $remaining <= 0;
-		if ( $scan_done && $repaired === 0 && $skipped === 0 ) {
-			$done = true;
-		}
+		$next_offset = (int) $batch['group_offset'];
+		$done        = ! empty( $batch['done'] ) || $remaining <= 0;
 
 		wp_send_json_success(
 			array(
 				'repaired'            => $repaired,
 				'skipped'             => $skipped,
-				'legacy_synced'       => $legacy_synced,
+				'legacy_synced'       => 0,
 				'legacy_imported'     => $legacy_imported,
 				'slug_renamed'        => $slug_renamed,
 				'uses_legacy'         => ! empty( $batch['uses_legacy'] ),
 				'remaining'           => $remaining,
-				'next_cursor_term_id' => $next_cursor,
+				'group_offset'        => $next_offset,
+				'next_cursor_term_id' => $next_offset,
+				'total_groups'        => (int) $batch['total_groups'],
 				'done'                => $done,
 			)
 		);
