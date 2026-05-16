@@ -3603,7 +3603,7 @@ class Radius_Legacy_Import_Service {
 
 		$towing_title = apply_filters(
 			'radius_migration_towing_template_title',
-			__( '24/7 Towing Company in {{place_name}}, {{region}}.', 'radius' ),
+			__( '24/7 Towing Company in {{place_name}}, {{region}}', 'radius' ),
 			$base_id
 		);
 		if ( is_string( $towing_title ) && $towing_title !== '' ) {

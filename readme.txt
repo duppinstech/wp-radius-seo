@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.60
+Stable tag: 1.6.61
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,6 +78,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.61 =
+* **Migration:** Default towing template title no longer ends with a period (`24/7 Towing Company in {{place_name}}, {{region}}`).
 
 = 1.6.60 =
 * **Migration wizard — deploy landings:** Deploy batch AJAX now reads the response as text (same as the Deploy screen) instead of `res.json()`, so WordPress critical-error HTML no longer surfaces as a cryptic `SyntaxError`. Clear messages for HTTP 403/5xx, timeouts, and HTML bodies; failures log `response_snippet` to **Radius → Logs**.
@@ -232,7 +235,7 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * **Wizard without Magic Page active:** If you dismissed the wizard or started migration, the modal can still load after deactivating Magic Page so you can finish cleanup manually. Filters: `radius_migration_wizard_show_without_magic_page`, Magic Page landing footprint: `radius_magic_page_landing_post_types`, `radius_magic_page_landing_location_meta_keys`, `radius_magic_page_landing_group_meta_keys`, `radius_magic_page_landing_abort_if_candidates_match_all_pages`.
 
 = 1.6.18 =
-* **Magic Page migration wizard:** Before cloning variants, normalize imported towing template `{spintax_towing…}` → `{{towing…}}` across Elementor + Radius meta; set default towing title to “24/7 Towing Company in {{place_name}}, {{region}}.” (filter `radius_migration_towing_template_title`).
+* **Magic Page migration wizard:** Before cloning variants, normalize imported towing template `{spintax_towing…}` → `{{towing…}}` across Elementor + Radius meta; set default towing title to “24/7 Towing Company in {{place_name}}, {{region}}” (filter `radius_migration_towing_template_title`).
 * **Variant clones:** replace `{{towing-…}}` / `{{towing_…}}` / `{{towing}}` with the correct service prefix (`roadside`, `heavy`, `equipment`) so cloned templates are not left with towing tokens.
 * **Cleanup:** optional (`radius_migration_delete_previous_templates_before_run`, default true) delete prior migration-sourced `radius_template` posts (`_radius_imported_from` / `_radius_migration_clone_of`) before re-import so you end up with exactly four service templates.
 
