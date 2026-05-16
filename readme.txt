@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.55
+Stable tag: 1.6.56
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -70,11 +70,15 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_slug_blacklist_trash_deployed_pages` — return false to delete slug-blacklist place terms without moving matching `radius_landing` / `radius_service_area` posts to the Trash first (default true).
 * `radius_migration_places_expected_count` — filter the **adjusted** legacy location count used for migration wizard parity (after slug blacklist + duplicate-name collapse on the Magic Page taxonomy; second arg is raw legacy count).
 * `radius_legacy_import_skip_slug_blacklist` — return false to import legacy location terms whose slug matches the low-value substring list (default true: skip so re-import does not recreate cleaned-up places).
+* `radius_legacy_import_skip_numbered_slugs` — return false to import legacy `-1` … `-9` collision slugs even when the base slug exists (default true: skip or remap to base).
 * `radius_place_numbered_slug_suffix_max` — highest numeric suffix treated as a WordPress duplicate slug when restoring missing bases (default 9).
 * `radius_repair_numbered_slug_places_chunk_size` — places renamed per AJAX batch for “Restore base slugs” (default 40).
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.56 =
+* **Legacy place import:** Skips `-1` … `-9` collision slugs when the base slug exists in Magic Page or Radius; otherwise imports under the **base** slug (e.g. `portland-2` → `portland`). Slug-pattern blacklist now matches **hyphen segments** (fixes cities like Portland excluded by the `land` fragment). Service-area anchor migration can create or link missing anchor places from legacy locations.
 
 = 1.6.55 =
 * **Fix: Migration wizard step completion.** “Import legacy locations” no longer shows **Completed** when the Radius place library is empty (including `0 === 0` parity). “Copy company & phone into site replacers” only infers complete when **company-name** and **phone-number** have values, not when other default keyword rows are filled.

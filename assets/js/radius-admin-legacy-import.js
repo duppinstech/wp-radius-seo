@@ -294,6 +294,9 @@
 					'{skipped_slug_blacklist}': String(
 						d.skipped_slug_blacklist != null ? d.skipped_slug_blacklist : 0
 					),
+					'{skipped_numbered_suffix}': String(
+						d.skipped_numbered_suffix != null ? d.skipped_numbered_suffix : 0
+					),
 				});
 
 				if (log) {

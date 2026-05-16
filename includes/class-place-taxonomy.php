@@ -428,13 +428,36 @@ class Radius_Place_Taxonomy {
 	 * @param string $slug Term slug.
 	 * @return bool
 	 */
+	public static function place_slug_matches_blacklist_fragment( $slug, $fragment ) {
+		$slug      = strtolower( (string) $slug );
+		$fragment  = strtolower( trim( (string) $fragment ) );
+		if ( $slug === '' || $fragment === '' ) {
+			return false;
+		}
+		if ( $slug === $fragment ) {
+			return true;
+		}
+		foreach ( explode( '-', $slug ) as $part ) {
+			if ( $part === $fragment ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a place slug matches the blacklist (hyphen-delimited segment match, not substring).
+	 *
+	 * @param string $slug Term slug.
+	 * @return bool
+	 */
 	public static function place_slug_matches_blacklist( $slug ) {
 		$slug = strtolower( (string) $slug );
 		if ( $slug === '' ) {
 			return false;
 		}
 		foreach ( self::get_place_slug_blacklist_fragments() as $frag ) {
-			if ( strpos( $slug, $frag ) !== false ) {
+			if ( self::place_slug_matches_blacklist_fragment( $slug, $frag ) ) {
 				return true;
 			}
 		}
@@ -446,22 +469,39 @@ class Radius_Place_Taxonomy {
 	 *
 	 * @return int
 	 */
+	private static function place_slug_blacklist_sql_match_clauses( $alias = 't' ) {
+		global $wpdb;
+		$alias      = preg_replace( '/[^a-z0-9_]/', '', (string) $alias );
+		if ( $alias === '' ) {
+			$alias = 't';
+		}
+		$clauses = array();
+		$params  = array();
+		foreach ( self::get_place_slug_blacklist_fragments() as $f ) {
+			$f = strtolower( trim( (string) $f ) );
+			if ( $f === '' ) {
+				continue;
+			}
+			$clauses[] = "({$alias}.slug = %s OR {$alias}.slug LIKE %s OR {$alias}.slug LIKE %s OR {$alias}.slug LIKE %s)";
+			$params[]  = $f;
+			$params[]  = $f . '-%';
+			$params[]  = '%-' . $wpdb->esc_like( $f );
+			$params[]  = '%-' . $wpdb->esc_like( $f ) . '-%';
+		}
+		return array( $clauses, $params );
+	}
+
 	public static function count_places_matching_slug_blacklist() {
 		global $wpdb;
-		$frags = self::get_place_slug_blacklist_fragments();
-		if ( array() === $frags ) {
+		list( $clauses, $frag_params ) = self::place_slug_blacklist_sql_match_clauses( 't' );
+		if ( array() === $clauses ) {
 			return 0;
 		}
-		$tax            = self::TAXONOMY;
-		$placeholders   = array();
-		$params         = array( $tax );
-		foreach ( $frags as $f ) {
-			$placeholders[] = 't.slug LIKE %s';
-			$params[]       = '%' . $wpdb->esc_like( $f ) . '%';
-		}
-		$sql = "SELECT COUNT(*) FROM {$wpdb->terms} AS t
+		$tax    = self::TAXONOMY;
+		$params = array_merge( array( $tax ), $frag_params );
+		$sql    = "SELECT COUNT(*) FROM {$wpdb->terms} AS t
 			INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
-			WHERE (" . implode( ' OR ', $placeholders ) . ')';
+			WHERE (" . implode( ' OR ', $clauses ) . ')';
 		$sql = $wpdb->prepare( $sql, $params ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$n   = (int) $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $sql from $wpdb->prepare().
 		return max( 0, $n );
@@ -475,22 +515,16 @@ class Radius_Place_Taxonomy {
 	 */
 	public static function get_place_term_ids_for_slug_blacklist_chunk( $limit = 80 ) {
 		global $wpdb;
-		$frags = self::get_place_slug_blacklist_fragments();
-		if ( array() === $frags ) {
+		list( $clauses, $frag_params ) = self::place_slug_blacklist_sql_match_clauses( 't' );
+		if ( array() === $clauses ) {
 			return array();
 		}
-		$tax          = self::TAXONOMY;
-		$limit        = max( 1, min( 200, (int) $limit ) );
-		$placeholders = array();
-		$params       = array( $tax );
-		foreach ( $frags as $f ) {
-			$placeholders[] = 't.slug LIKE %s';
-			$params[]       = '%' . $wpdb->esc_like( $f ) . '%';
-		}
-		$params[] = $limit;
-		$sql      = "SELECT t.term_id FROM {$wpdb->terms} AS t
+		$tax    = self::TAXONOMY;
+		$limit  = max( 1, min( 200, (int) $limit ) );
+		$params = array_merge( array( $tax ), $frag_params, array( $limit ) );
+		$sql    = "SELECT t.term_id FROM {$wpdb->terms} AS t
 			INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id AND tt.taxonomy = %s
-			WHERE (" . implode( ' OR ', $placeholders ) . ')
+			WHERE (" . implode( ' OR ', $clauses ) . ')
 			ORDER BY t.term_id ASC
 			LIMIT %d';
 		$sql = $wpdb->prepare( $sql, $params ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
