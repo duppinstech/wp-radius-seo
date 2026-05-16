@@ -241,22 +241,53 @@ class Radius_Ajax {
 	}
 
 	/**
+	 * Discard output buffered during deploy_batch so notices/fatals do not prefix JSON.
+	 *
+	 * @param string $channel Log channel.
+	 * @param array  $context Extra log context.
+	 * @return void
+	 */
+	private static function flush_stray_output_before_json( $channel, $context = array() ) {
+		if ( ob_get_level() < 1 ) {
+			return;
+		}
+		$stray = ob_get_contents();
+		if ( is_string( $stray ) && trim( $stray ) !== '' ) {
+			Radius_Operation_Log::error(
+				$channel,
+				'Stray output before JSON response (breaks admin-ajax JSON)',
+				array_merge(
+					$context,
+					array(
+						'output_snippet' => substr( preg_replace( '/\s+/', ' ', trim( $stray ) ), 0, 1200 ),
+					)
+				)
+			);
+		}
+		ob_end_clean();
+	}
+
+	/**
 	 * One deploy chunk (chained from JS until all places are processed — Magic Page–style).
 	 *
 	 * @return void
 	 */
 	public static function deploy_batch() {
+		ob_start();
+
 		check_ajax_referer( 'radius_deploy_batch', 'nonce' );
 
 		$t0 = microtime( true );
 
 		if ( ! Radius_API_License::is_unlocked() ) {
 			Radius_Operation_Log::error( 'deploy_batch', 'Deploy blocked: license locked.', Radius_Operation_Log::request_context() );
+			self::flush_stray_output_before_json( 'deploy_batch', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
 		}
 
 		if ( ! current_user_can( 'edit_posts' ) ) {
 			Radius_Operation_Log::error( 'deploy_batch', 'Deploy forbidden.', Radius_Operation_Log::request_context() );
+			self::flush_stray_output_before_json( 'deploy_batch', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
 		}
 
@@ -307,6 +338,7 @@ class Radius_Ajax {
 			if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && current_user_can( 'manage_options' ) ) ) {
 				$detail = __( 'Deploy batch failed (server error). See Radius → Logs or try a smaller deploy batch under Settings.', 'radius' );
 			}
+			self::flush_stray_output_before_json( 'deploy_batch', $deploy_ctx );
 			wp_send_json_error( array( 'message' => $detail ) );
 			return;
 		}
@@ -317,6 +349,7 @@ class Radius_Ajax {
 				'Deploy batch failed: ' . ( isset( $result['message'] ) ? (string) $result['message'] : 'unknown' ),
 				array_merge( $deploy_ctx, array( 'duration' => round( microtime( true ) - $t0, 2 ) ) )
 			);
+			self::flush_stray_output_before_json( 'deploy_batch', $deploy_ctx );
 			wp_send_json_error( array( 'message' => $result['message'] ) );
 		}
 
@@ -361,6 +394,8 @@ class Radius_Ajax {
 				)
 			);
 		}
+
+		self::flush_stray_output_before_json( 'deploy_batch', $deploy_ctx );
 
 		if ( $payload['done'] ) {
 			$acc = $payload['stats_total'];

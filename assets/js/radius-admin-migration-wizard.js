@@ -928,6 +928,63 @@
 		return m;
 	}
 
+	function describeDeployNonJson(bundle, raw) {
+		var st = bundle && bundle.status ? bundle.status : 0;
+		var tx = (raw || '').trim();
+		if (st === 403) {
+			return (
+				(i18n.deployHttp403 ||
+					'Deploy blocked (HTTP 403) — host/WAF may be blocking admin-ajax.') +
+				' (HTTP ' +
+				st +
+				')'
+			);
+		}
+		if (st === 524 || st === 504) {
+			return (
+				(i18n.deployHttpTimeout ||
+					'Deploy timed out (HTTP ' + st + ') — proxy or PHP max execution time.') +
+				' (HTTP ' +
+				st +
+				')'
+			);
+		}
+		if (st >= 500) {
+			return (
+				(i18n.deployHttp500 ||
+					'Deploy server error (HTTP ' + st + ') — check Radius → Logs and PHP error log.') +
+				' (HTTP ' +
+				st +
+				')'
+			);
+		}
+		if (tx.indexOf('critical error') !== -1) {
+			return (
+				i18n.deployWpCritical ||
+				'WordPress returned a critical error page instead of JSON. Enable WP_DEBUG_LOG or check server PHP logs.'
+			);
+		}
+		if (tx.charAt(0) === '<') {
+			return (
+				(i18n.deployHtmlResponse ||
+					'Deploy returned HTML instead of JSON (often a PHP fatal or security page).') +
+				' (HTTP ' +
+				st +
+				')'
+			);
+		}
+		return (
+			(i18n.deployBadResponse || 'Unexpected deploy response.') + ' (HTTP ' + st + ')'
+		);
+	}
+
+	function normalizeDeployLogSnippet(raw) {
+		return String(raw || '')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.substring(0, 1200);
+	}
+
 	async function runDeployBatchRequest(templateId, target, continuing) {
 		var fd = new FormData();
 		fd.append('action', 'radius_deploy_batch');
@@ -945,16 +1002,33 @@
 				Accept: 'application/json, text/javascript, */*; q=0.01',
 			},
 		});
-		return res.json();
+		var raw = await res.text();
+		var json = null;
+		if (raw && (raw.charAt(0) === '{' || raw.charAt(0) === '[')) {
+			try {
+				json = JSON.parse(raw);
+			} catch (parseErr) {
+				json = null;
+			}
+		}
+		if (!res.ok || !json || typeof json.success !== 'boolean') {
+			var snippet = normalizeDeployLogSnippet(raw);
+			logClientError('deploy_batch', describeDeployNonJson(res, raw), {
+				template_id: templateId,
+				target: target,
+				continuing: !!continuing,
+				http_status: res.status,
+				response_snippet: snippet,
+			});
+			throw new Error(describeDeployNonJson(res, raw));
+		}
+		return json;
 	}
 
 	async function runDeployChain(templateId, target) {
 		var cont = false;
 		for (;;) {
 			var json = await runDeployBatchRequest(templateId, target, cont);
-			if (!json || typeof json.success !== 'boolean') {
-				throw new Error(i18n.deployBadResponse || 'Unexpected deploy response.');
-			}
 			if (!json.success) {
 				var msg =
 					json.data &&

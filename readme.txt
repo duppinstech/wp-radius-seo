@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.59
+Stable tag: 1.6.60
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,6 +78,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.60 =
+* **Migration wizard — deploy landings:** Deploy batch AJAX now reads the response as text (same as the Deploy screen) instead of `res.json()`, so WordPress critical-error HTML no longer surfaces as a cryptic `SyntaxError`. Clear messages for HTTP 403/5xx, timeouts, and HTML bodies; failures log `response_snippet` to **Radius → Logs**.
+* **Deploy batch (server):** Buffers and logs stray PHP output before sending JSON so notices do not corrupt admin-ajax responses.
 
 = 1.6.59 =
 * **Logs:** New **Radius → Logs** admin page with persistent **processing** and **error** log files under uploads (`radius-seo-logs/`). Legacy import batches, deploy batches (service areas + landings), migration wizard steps, and browser-side failures are recorded. Survives after the migration modal closes.
