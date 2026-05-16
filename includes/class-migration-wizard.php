@@ -167,6 +167,9 @@ final class Radius_Migration_Wizard {
 		array_unshift( $log, $row );
 		$log = array_slice( $log, 0, 50 );
 		update_option( self::OPTION_ACTIVITY, $log, false );
+		if ( class_exists( 'Radius_Operation_Log' ) ) {
+			Radius_Operation_Log::info( 'activity', $message, $ctx );
+		}
 	}
 
 	/**
@@ -611,6 +614,17 @@ final class Radius_Migration_Wizard {
 
 		$action = isset( $_POST['wizard_action'] ) ? sanitize_key( wp_unslash( $_POST['wizard_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 
+		if ( class_exists( 'Radius_Operation_Log' ) ) {
+			Radius_Operation_Log::info(
+				'migration_wizard',
+				'Wizard request: ' . ( $action !== '' ? $action : '(empty)' ),
+				array_merge(
+					Radius_Operation_Log::request_context(),
+					array( 'wizard_action' => $action )
+				)
+			);
+		}
+
 		switch ( $action ) {
 			case 'status':
 				wp_send_json_success( self::build_status_payload() );
@@ -889,6 +903,7 @@ final class Radius_Migration_Wizard {
 			'deploy_batch_nonce'          => wp_create_nonce( 'radius_deploy_batch' ),
 			'steps'            => self::build_steps_status(),
 			'activity_log'     => self::get_activity_log(),
+			'operation_logs_url' => admin_url( 'admin.php?page=radius-logs' ),
 		);
 	}
 }

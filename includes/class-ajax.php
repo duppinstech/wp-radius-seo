@@ -28,6 +28,38 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_migration_import_templates', array( __CLASS__, 'migration_import_templates' ) );
 		add_action( 'wp_ajax_radius_migration_clone_variants', array( __CLASS__, 'migration_clone_variants' ) );
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
+		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
+	}
+
+	/**
+	 * Log a client-side migration/import/deploy error from the browser (persistent file log).
+	 *
+	 * @return void
+	 */
+	public static function operation_log_client() {
+		check_ajax_referer( 'radius_operation_log', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$channel = isset( $_POST['channel'] ) ? sanitize_key( wp_unslash( $_POST['channel'] ) ) : 'client'; // phpcs:ignore WordPress.Security.NonceVerification
+		$message = isset( $_POST['message'] ) ? sanitize_text_field( wp_unslash( $_POST['message'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $message === '' ) {
+			wp_send_json_error( array( 'message' => __( 'Empty message.', 'radius' ) ), 400 );
+		}
+		$ctx_raw = isset( $_POST['context'] ) ? wp_unslash( $_POST['context'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$ctx     = array();
+		if ( is_string( $ctx_raw ) && $ctx_raw !== '' ) {
+			$decoded = json_decode( $ctx_raw, true );
+			if ( is_array( $decoded ) ) {
+				$ctx = $decoded;
+			}
+		}
+		$ctx = array_merge( Radius_Operation_Log::request_context(), $ctx );
+
+		Radius_Operation_Log::error( $channel !== '' ? $channel : 'client', $message, $ctx );
+		wp_send_json_success( array( 'ok' => true ) );
 	}
 
 	/**
@@ -91,15 +123,20 @@ class Radius_Ajax {
 	public static function legacy_places_batch() {
 		check_ajax_referer( 'radius_legacy_pl_import', 'nonce' );
 
+		$t0 = microtime( true );
+
 		if ( ! Radius_API_License::is_unlocked() ) {
+			Radius_Operation_Log::error( 'legacy_import', 'Legacy import blocked: license locked.', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
 		}
 
 		if ( ! current_user_can( 'manage_options' ) ) {
+			Radius_Operation_Log::error( 'legacy_import', 'Legacy import forbidden.', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
 		}
 
 		if ( ! Radius_Legacy_Import_Service::detect_legacy_places() ) {
+			Radius_Operation_Log::error( 'legacy_import', 'No legacy location taxonomy found.', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'No legacy location taxonomy found.', 'radius' ) ) );
 		}
 
@@ -144,12 +181,61 @@ class Radius_Ajax {
 			$options['delta_mode'] = false;
 		}
 
-		$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
+		try {
+			$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
+		} catch ( \Throwable $e ) {
+			Radius_Operation_Log::error(
+				'legacy_import',
+				'Legacy import batch exception: ' . $e->getMessage(),
+				array_merge(
+					Radius_Operation_Log::request_context(),
+					array(
+						'offset' => $offset,
+						'trace'  => $e->getTraceAsString(),
+					)
+				)
+			);
+			$detail = $e->getMessage();
+			if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
+				$detail = __( 'Legacy import batch failed (server error). See Radius → Logs.', 'radius' );
+			}
+			wp_send_json_error( array( 'message' => $detail ) );
+			return;
+		}
 
 		if ( ! isset( $res['total_legacy'] ) ) {
 			$res['total_legacy'] = Radius_Legacy_Import_Service::legacy_place_term_count();
 		}
 		$res['batch_size'] = $lim;
+
+		$log_ctx = array_merge(
+			Radius_Operation_Log::request_context(),
+			array(
+				'offset'   => $offset,
+				'duration' => round( microtime( true ) - $t0, 2 ),
+				'stats'    => array(
+					'imported'                => isset( $res['imported'] ) ? (int) $res['imported'] : 0,
+					'updated'                 => isset( $res['updated'] ) ? (int) $res['updated'] : 0,
+					'skipped_existing'        => isset( $res['skipped_existing'] ) ? (int) $res['skipped_existing'] : 0,
+					'skipped_numbered_suffix' => isset( $res['skipped_numbered_suffix'] ) ? (int) $res['skipped_numbered_suffix'] : 0,
+					'skipped_slug_blacklist'  => isset( $res['skipped_slug_blacklist'] ) ? (int) $res['skipped_slug_blacklist'] : 0,
+					'skipped_unchanged'       => isset( $res['skipped_unchanged'] ) ? (int) $res['skipped_unchanged'] : 0,
+					'has_more'                => ! empty( $res['has_more'] ),
+					'delta_mode'              => ! empty( $res['delta_mode'] ),
+					'queue_total'             => isset( $res['queue_total'] ) ? (int) $res['queue_total'] : null,
+					'queue_prepared'          => ! empty( $res['queue_prepared'] ),
+				),
+			)
+		);
+		if ( ! empty( $res['errors'] ) && is_array( $res['errors'] ) ) {
+			Radius_Operation_Log::error(
+				'legacy_import',
+				'Legacy import batch reported errors: ' . implode( ' ', array_slice( $res['errors'], 0, 3 ) ),
+				array_merge( $log_ctx, array( 'errors' => array_slice( $res['errors'], 0, 10 ) ) )
+			);
+		} else {
+			Radius_Operation_Log::info( 'legacy_import', 'Legacy import batch OK', $log_ctx );
+		}
 
 		wp_send_json_success( $res );
 	}
@@ -162,11 +248,15 @@ class Radius_Ajax {
 	public static function deploy_batch() {
 		check_ajax_referer( 'radius_deploy_batch', 'nonce' );
 
+		$t0 = microtime( true );
+
 		if ( ! Radius_API_License::is_unlocked() ) {
+			Radius_Operation_Log::error( 'deploy_batch', 'Deploy blocked: license locked.', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
 		}
 
 		if ( ! current_user_can( 'edit_posts' ) ) {
+			Radius_Operation_Log::error( 'deploy_batch', 'Deploy forbidden.', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
 		}
 
@@ -190,22 +280,43 @@ class Radius_Ajax {
 			$target = 'radius_landing';
 		}
 
+		$deploy_ctx = array_merge(
+			Radius_Operation_Log::request_context(),
+			array(
+				'template_id' => $template_id,
+				'target'      => $target,
+				'continuing'  => $continuing,
+			)
+		);
+
 		try {
 			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
 		} catch ( \Throwable $e ) {
-			if ( function_exists( 'error_log' ) ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Operational logging for deploy failures.
-				error_log( 'Radius deploy_batch: ' . $e->getMessage() . "\n" . $e->getTraceAsString() );
-			}
+			Radius_Operation_Log::error(
+				'deploy_batch',
+				'Deploy batch exception: ' . $e->getMessage(),
+				array_merge(
+					$deploy_ctx,
+					array(
+						'duration' => round( microtime( true ) - $t0, 2 ),
+						'trace'    => $e->getTraceAsString(),
+					)
+				)
+			);
 			$detail = $e->getMessage();
 			if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && current_user_can( 'manage_options' ) ) ) {
-				$detail = __( 'Deploy batch failed (server error). Try a smaller deploy batch under Radius → Settings, or deploy again with “Continue deployment”.', 'radius' );
+				$detail = __( 'Deploy batch failed (server error). See Radius → Logs or try a smaller deploy batch under Settings.', 'radius' );
 			}
 			wp_send_json_error( array( 'message' => $detail ) );
 			return;
 		}
 
 		if ( ! $result['success'] ) {
+			Radius_Operation_Log::error(
+				'deploy_batch',
+				'Deploy batch failed: ' . ( isset( $result['message'] ) ? (string) $result['message'] : 'unknown' ),
+				array_merge( $deploy_ctx, array( 'duration' => round( microtime( true ) - $t0, 2 ) ) )
+			);
 			wp_send_json_error( array( 'message' => $result['message'] ) );
 		}
 
@@ -223,6 +334,32 @@ class Radius_Ajax {
 		$batch = $payload['stats_batch'];
 		if ( ! empty( $batch['errors'] ) && is_array( $batch['errors'] ) ) {
 			$payload['batch_errors'] = array_slice( $batch['errors'], 0, 5 );
+			Radius_Operation_Log::error(
+				'deploy_batch',
+				'Deploy batch partial errors',
+				array_merge(
+					$deploy_ctx,
+					array(
+						'duration' => round( microtime( true ) - $t0, 2 ),
+						'errors'   => $payload['batch_errors'],
+						'remaining' => $payload['remaining'],
+					)
+				)
+			);
+		} else {
+			Radius_Operation_Log::info(
+				'deploy_batch',
+				$payload['done'] ? 'Deploy queue finished' : 'Deploy batch OK',
+				array_merge(
+					$deploy_ctx,
+					array(
+						'duration'  => round( microtime( true ) - $t0, 2 ),
+						'done'      => $payload['done'],
+						'remaining' => $payload['remaining'],
+						'stats_batch' => $payload['stats_batch'],
+					)
+				)
+			);
 		}
 
 		if ( $payload['done'] ) {

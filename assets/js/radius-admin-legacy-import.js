@@ -280,6 +280,22 @@
 						j.data && j.data.message
 							? j.data.message
 							: i18n.stopped || 'Import stopped.';
+					if (cfg.operationLogNonce && cfg.ajaxurl) {
+						var efd = new FormData();
+						efd.append('action', 'radius_operation_log_client');
+						efd.append('nonce', cfg.operationLogNonce);
+						efd.append('channel', 'legacy_import');
+						efd.append('message', errMsg);
+						efd.append(
+							'context',
+							JSON.stringify({ offset: offset, cursor: cursorTermId })
+						);
+						fetch(cfg.ajaxurl, {
+							method: 'POST',
+							body: efd,
+							credentials: 'same-origin',
+						}).catch(function () {});
+					}
 					if (log) {
 						log.textContent +=
 							(i18n.errorPrefix || 'Error:') + ' ' + errMsg + '\n';

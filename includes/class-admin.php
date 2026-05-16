@@ -184,6 +184,15 @@ class Radius_Admin {
 			'radius-settings',
 			array( __CLASS__, 'render_settings' )
 		);
+
+		add_submenu_page(
+			self::PARENT_SLUG,
+			__( 'Logs', 'radius' ),
+			__( 'Logs', 'radius' ),
+			'manage_options',
+			'radius-logs',
+			array( __CLASS__, 'render_operation_logs' )
+		);
 	}
 
 	/**
@@ -255,6 +264,8 @@ class Radius_Admin {
 				'interBatchDelayMs' => max( 0, $inter_ms ),
 				'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
 				'deltaMode'         => ! empty( $radius_settings['legacy_import_delta_mode'] ) ? 1 : 0,
+				'operationLogNonce' => wp_create_nonce( 'radius_operation_log' ),
+				'operationLogsUrl'  => admin_url( 'admin.php?page=radius-logs' ),
 				'i18n'              => array(
 					'progressDeltaFmt' => __( 'Overall: {pct}% of locations needing work ({done} / {total}). {all} in Magic Page total.', 'radius' ),
 					'queuePrepareFmt'  => __( 'Scanning libraries… {remaining} location(s) need import or sync (of {all} legacy).', 'radius' ),
@@ -291,6 +302,8 @@ class Radius_Admin {
 				'ajaxurl'               => admin_url( 'admin-ajax.php' ),
 				'nonce'                 => wp_create_nonce( 'radius_migration' ),
 				'wizardNonce'           => wp_create_nonce( 'radius_migration_wizard' ),
+				'operationLogNonce'     => wp_create_nonce( 'radius_operation_log' ),
+				'operationLogsUrl'      => admin_url( 'admin.php?page=radius-logs' ),
 				'wizardAction'          => 'radius_migration_wizard',
 				'deployBatchNonce'      => wp_create_nonce( 'radius_deploy_batch' ),
 				'openOnLoad'            => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
@@ -301,6 +314,7 @@ class Radius_Admin {
 				'i18n'                  => array(
 					'errorPrefix'               => __( 'Error:', 'radius' ),
 					'requestFailed'             => __( 'Request failed.', 'radius' ),
+					'viewLogs'                  => __( 'View logs', 'radius' ),
 					'title'                     => __( 'Magic Page → Radius migration', 'radius' ),
 					'intro'                     => __( 'This assistant imports legacy locations (count matches Magic Page after the same slug-pattern and duplicate-name rules as deploy), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
 					'runThisStep'               => __( 'Run this step when you click Start', 'radius' ),
@@ -551,6 +565,8 @@ class Radius_Admin {
 						'interBatchDelayMs' => max( 0, $inter_ms ),
 						'maxRetries'        => (int) apply_filters( 'radius_legacy_import_max_retries', 5 ),
 						'deltaMode'         => ! empty( $radius_settings['legacy_import_delta_mode'] ) ? 1 : 0,
+						'operationLogNonce' => wp_create_nonce( 'radius_operation_log' ),
+						'operationLogsUrl'  => admin_url( 'admin.php?page=radius-logs' ),
 						'i18n'              => array(
 							'progressDeltaFmt' => __( 'Overall: {pct}% of locations needing work ({done} / {total}). {all} in Magic Page total.', 'radius' ),
 							'queuePrepareFmt'  => __( 'Scanning libraries… {remaining} location(s) need import or sync (of {all} legacy).', 'radius' ),
@@ -590,6 +606,8 @@ class Radius_Admin {
 						'ajaxurl'              => admin_url( 'admin-ajax.php' ),
 						'nonce'                => wp_create_nonce( 'radius_migration' ),
 						'wizardNonce'          => wp_create_nonce( 'radius_migration_wizard' ),
+						'operationLogNonce'    => wp_create_nonce( 'radius_operation_log' ),
+						'operationLogsUrl'     => admin_url( 'admin.php?page=radius-logs' ),
 						'wizardAction'         => 'radius_migration_wizard',
 						'deployBatchNonce'     => wp_create_nonce( 'radius_deploy_batch' ),
 						'openOnLoad'           => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
@@ -600,6 +618,7 @@ class Radius_Admin {
 						'i18n'                 => array(
 							'errorPrefix'                      => __( 'Error:', 'radius' ),
 							'requestFailed'                    => __( 'Request failed.', 'radius' ),
+							'viewLogs'                         => __( 'View logs', 'radius' ),
 							'title'                            => __( 'Magic Page → Radius migration', 'radius' ),
 							'intro'                            => __( 'This assistant imports legacy locations (count matches Magic Page after the same slug-pattern and duplicate-name rules as deploy), publishes your four service templates, copies replacers and anchors, removes old Magic Page landing pages, optionally removes the Magic Page plugin, then deploys service areas and landing pages using your Deploy batch settings.', 'radius' ),
 							'runThisStep'                      => __( 'Run this step when you click Start', 'radius' ),
@@ -2019,7 +2038,12 @@ class Radius_Admin {
 						<?php endforeach; ?>
 					</ul>
 				</div>
-			<?php endif; ?>
+				<?php endif; ?>
+
+				<p class="description" style="margin-top:1em;">
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-logs' ) ); ?>"><?php esc_html_e( 'View full processing & error logs', 'radius' ); ?></a>
+					<?php esc_html_e( '(persists after the migration modal closes — import, deploy batches, and wizard steps).', 'radius' ); ?>
+				</p>
 
 			<div class="radius-card" style="margin-top:1.5em;">
 				<?php self::dashboard_card_heading( 'dashicons-filter', __( 'Page Deduplication', 'radius' ) ); ?>
@@ -3129,6 +3153,73 @@ Fast roadside help in {{region}}
 				<div class="radius-license-primary-actions">
 					<?php submit_button(); ?>
 				</div>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Operation / error logs (file-backed, survives modal close).
+	 *
+	 * @return void
+	 */
+	public static function render_operation_logs() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
+		}
+
+		if ( isset( $_POST['radius_clear_logs'] ) && check_admin_referer( 'radius_clear_operation_logs' ) ) {
+			$which = isset( $_POST['log_target'] ) ? sanitize_key( wp_unslash( $_POST['log_target'] ) ) : 'both';
+			if ( ! in_array( $which, array( 'process', 'error', 'both' ), true ) ) {
+				$which = 'both';
+			}
+			Radius_Operation_Log::clear( $which );
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Log cleared.', 'radius' ) . '</p></div>';
+		}
+
+		$process_tail = Radius_Operation_Log::tail( Radius_Operation_Log::PROCESS_FILE );
+		$error_tail   = Radius_Operation_Log::tail( Radius_Operation_Log::ERROR_FILE );
+		$log_dir      = Radius_Operation_Log::log_dir();
+		?>
+		<div class="wrap radius-admin-wrap">
+			<h1><?php esc_html_e( 'Radius logs', 'radius' ); ?></h1>
+			<p class="description">
+				<?php
+				printf(
+					/* translators: %s: directory path on server */
+					esc_html__( 'Logs are stored under %s (not web-accessible). Service area and landing deploys run in chained AJAX batches; legacy place import uses delta queues when enabled.', 'radius' ),
+					'<code>' . esc_html( $log_dir ) . '</code>'
+				);
+				?>
+			</p>
+
+			<div class="radius-card" style="margin-bottom:1.5em;">
+				<h2><?php esc_html_e( 'Processing log', 'radius' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Batch progress: legacy import, deploy batches, migration wizard requests, activity summaries.', 'radius' ); ?></p>
+				<pre class="radius-operation-log" style="max-height:28em;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:12px;font-size:12px;line-height:1.45;"><?php echo esc_html( $process_tail !== '' ? $process_tail : __( '(empty)', 'radius' ) ); ?></pre>
+				<form method="post" style="margin-top:8px;">
+					<?php wp_nonce_field( 'radius_clear_operation_logs' ); ?>
+					<input type="hidden" name="log_target" value="process" />
+					<button type="submit" name="radius_clear_logs" value="1" class="button"><?php esc_html_e( 'Clear processing log', 'radius' ); ?></button>
+				</form>
+			</div>
+
+			<div class="radius-card">
+				<h2><?php esc_html_e( 'Error log', 'radius' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Failures, HTTP/firewall hints from the browser, deploy exceptions, and partial batch errors.', 'radius' ); ?></p>
+				<pre class="radius-operation-log" style="max-height:28em;overflow:auto;background:#2a1212;color:#f8d7da;padding:12px;font-size:12px;line-height:1.45;"><?php echo esc_html( $error_tail !== '' ? $error_tail : __( '(empty)', 'radius' ) ); ?></pre>
+				<form method="post" style="margin-top:8px;">
+					<?php wp_nonce_field( 'radius_clear_operation_logs' ); ?>
+					<input type="hidden" name="log_target" value="error" />
+					<button type="submit" name="radius_clear_logs" value="1" class="button"><?php esc_html_e( 'Clear error log', 'radius' ); ?></button>
+				</form>
+			</div>
+
+			<form method="post" style="margin-top:1em;">
+				<?php wp_nonce_field( 'radius_clear_operation_logs' ); ?>
+				<input type="hidden" name="log_target" value="both" />
+				<button type="submit" name="radius_clear_logs" value="1" class="button button-secondary"><?php esc_html_e( 'Clear both logs', 'radius' ); ?></button>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=radius-logs' ) ); ?>"><?php esc_html_e( 'Refresh', 'radius' ); ?></a>
 			</form>
 		</div>
 		<?php

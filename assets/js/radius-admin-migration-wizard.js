@@ -46,6 +46,31 @@
 		return n;
 	}
 
+	function logClientError(channel, message, context) {
+		if (!cfg.operationLogNonce || !cfg.ajaxurl) {
+			return;
+		}
+		var fd = new FormData();
+		fd.append('action', 'radius_operation_log_client');
+		fd.append('nonce', cfg.operationLogNonce);
+		fd.append('channel', channel || 'migration_wizard');
+		fd.append('message', String(message || 'Unknown error'));
+		if (context && typeof context === 'object') {
+			try {
+				fd.append('context', JSON.stringify(context));
+			} catch (e1) {
+				/* ignore */
+			}
+		}
+		fetch(cfg.ajaxurl, {
+			method: 'POST',
+			body: fd,
+			credentials: 'same-origin',
+		}).catch(function () {
+			/* ignore */
+		});
+	}
+
 	function mergeCfgFromPayload(payload) {
 		if (!payload || typeof payload !== 'object') {
 			return;
@@ -1454,6 +1479,10 @@
 				run.hidden = true;
 			}
 		} catch (err) {
+			logClientError('migration_wizard', String(err), {
+				step: 'run_all',
+				logs_url: cfg.operationLogsUrl || '',
+			});
 			postWizard('status').then(function (st) {
 				if (st.success && st.data && st.data.steps) {
 					mergeCfgFromPayload(st.data);
@@ -1461,9 +1490,15 @@
 				}
 			});
 			if (run) {
+				var logsHint = cfg.operationLogsUrl
+					? ' <a href="' + esc(cfg.operationLogsUrl) + '" target="_blank" rel="noopener">' +
+						esc(i18n.viewLogs || 'View logs') +
+						'</a>'
+					: '';
 				run.innerHTML =
 					'<p class="radius-mw-error">' +
 					esc((i18n.errorPrefix || 'Error') + ': ' + String(err)) +
+					logsHint +
 					'</p>';
 			}
 			if (start) {
