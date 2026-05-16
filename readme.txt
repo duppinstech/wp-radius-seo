@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.57
+Stable tag: 1.6.58
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,6 +78,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.58 =
+* **Slug pattern list:** Removed `land` from default low-value slug fragments (it falsely excluded cities like Portland on older substring matching; segment matching in 1.6.56+ already avoids that, but `land` is no longer in the default list).
 
 = 1.6.57 =
 * **Legacy place import — delta mode (default).** Scans Magic Page vs Radius once, then only imports or syncs locations that are missing or out of date (slug, legacy link, lat/lng). Re-runs process tens of rows instead of thousands when the library is mostly complete. Full legacy pass still available by disabling delta import or “skip existing”. Deploy landing/service-area steps remain full redeploys.

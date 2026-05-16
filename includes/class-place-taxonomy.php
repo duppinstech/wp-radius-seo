@@ -357,7 +357,7 @@ class Radius_Place_Taxonomy {
 
 	/**
 	 * Default slug substring list for “low value” Magic Page places (trailers, subdivisions, etc.).
-	 * A term matches if its slug contains any fragment as a substring.
+	 * A term matches if its slug contains any fragment as a hyphen-delimited segment (see place_slug_matches_blacklist_fragment).
 	 *
 	 * @return string[]
 	 */
@@ -378,7 +378,6 @@ class Radius_Place_Taxonomy {
 			'highlands',
 			'drive',
 			'homestead',
-			'land',
 			'woods',
 			'oak',
 			'bend',
