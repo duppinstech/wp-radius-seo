@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Ship changes to GitHub and releases
 
-When this project’s code is changed in a way that would ship to users (any non-trivial fix or feature, including small follow-ups), the agent should **not** stop at a local commit only.
+When this project’s code is changed in a way that would ship to users (any non-trivial fix or feature, including small follow-ups), the agent should **not** stop at a local commit only. **Do not wait for a separate “commit it” request** — ship to `main` + GitHub Release so the user can test on live/staging sites via the updater.
 
 1. **Commit** on `main` with a clear message.
 2. **Push** to `origin` (`git push origin main`).
