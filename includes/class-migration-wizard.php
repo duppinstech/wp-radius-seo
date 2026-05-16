@@ -230,7 +230,10 @@ final class Radius_Migration_Wizard {
 
 		$counts_match = false;
 		if ( $legacy_tax && $legacy_n > 0 ) {
-			$counts_match = ( $radius_n === $legacy_effective );
+			// Require a populated Radius library and parity with the adjusted legacy count (0 === 0 is not "imported").
+			$counts_match = $radius_n > 0 && $legacy_effective > 0 && $radius_n === $legacy_effective;
+		} elseif ( $legacy_tax ) {
+			$counts_match = $radius_n > 0;
 		} else {
 			$counts_match = $radius_n > 0;
 		}
@@ -324,26 +327,21 @@ final class Radius_Migration_Wizard {
 	}
 
 	/**
-	 * Whether site replacers have at least one non-empty value.
+	 * Whether migration-required site replacers (company + phone by default) have non-empty values.
+	 *
+	 * Default keyword rows (e.g. roadside-keyword) are ignored so a fresh install is not marked complete.
 	 *
 	 * @return bool
 	 */
 	public static function infer_replacers_filled() {
-		$rows = Radius_Settings::get()['site_replacements'];
-		if ( ! is_array( $rows ) ) {
+		$keys = apply_filters(
+			'radius_migration_wizard_required_replacer_keys',
+			array( 'company-name', 'phone-number' )
+		);
+		if ( ! is_array( $keys ) ) {
 			return false;
 		}
-		foreach ( $rows as $row ) {
-			if ( ! is_array( $row ) || empty( $row['values'] ) || ! is_array( $row['values'] ) ) {
-				continue;
-			}
-			foreach ( $row['values'] as $v ) {
-				if ( is_string( $v ) && trim( $v ) !== '' ) {
-					return true;
-				}
-			}
-		}
-		return false;
+		return Radius_Settings::site_replacement_keys_have_nonempty_values( $keys );
 	}
 
 	/**

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.54
+Stable tag: 1.6.55
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -75,6 +75,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.55 =
+* **Fix: Migration wizard step completion.** “Import legacy locations” no longer shows **Completed** when the Radius place library is empty (including `0 === 0` parity). “Copy company & phone into site replacers” only infers complete when **company-name** and **phone-number** have values, not when other default keyword rows are filled.
 
 = 1.6.54 =
 * **Fix: Restore base slugs no longer stalls.** Removed per-row “legacy sync” that re-processed the same `-2`/`-3` slugs forever (remaining never dropped). Repair now only runs for **missing base slugs** (`-1` … `-9`); when the base already exists, use **Remove duplicates** instead. One batch action per missing base (import from legacy or rename lowest suffix).

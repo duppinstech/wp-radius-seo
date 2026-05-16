@@ -185,6 +185,54 @@ class Radius_Settings {
 	}
 
 	/**
+	 * Whether every listed site replacer key has at least one non-empty value.
+	 *
+	 * @param string[] $keys Replacer keys (e.g. company-name, phone-number).
+	 * @return bool
+	 */
+	public static function site_replacement_keys_have_nonempty_values( array $keys ) {
+		$keys = array_values(
+			array_filter(
+				array_map(
+					static function ( $k ) {
+						return sanitize_key( (string) $k );
+					},
+					$keys
+				)
+			)
+		);
+		if ( $keys === array() ) {
+			return false;
+		}
+
+		$by_key = array();
+		foreach ( self::get()['site_replacements'] as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+
+		foreach ( $keys as $k ) {
+			if ( ! isset( $by_key[ $k ] ) ) {
+				return false;
+			}
+			$vals   = isset( $by_key[ $k ]['values'] ) && is_array( $by_key[ $k ]['values'] ) ? $by_key[ $k ]['values'] : array();
+			$filled = false;
+			foreach ( $vals as $v ) {
+				if ( is_string( $v ) && trim( $v ) !== '' ) {
+					$filled = true;
+					break;
+				}
+			}
+			if ( ! $filled ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Plugin basename(s) used only to detect presence under WP_PLUGIN_DIR (activation / Integrations UI).
 	 *
 	 * @return array<string,string|string[]> Option key => single basename or list of alternatives.
