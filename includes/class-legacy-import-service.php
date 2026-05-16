@@ -3753,10 +3753,25 @@ class Radius_Legacy_Import_Service {
 			}
 		}
 
+		$base_label = '';
+		if ( $base_id > 0 ) {
+			$base_post = get_post( $base_id );
+			if ( $base_post instanceof WP_Post && $base_post->post_title !== '' ) {
+				$base_label = $base_post->post_title;
+			}
+		}
+		if ( $base_label === '' ) {
+			$base_label = (string) apply_filters(
+				'radius_migration_towing_template_title',
+				__( '24/7 Towing Company in {{place_name}}, {{region}}', 'radius' ),
+				$base_id
+			);
+		}
+
 		$labels = array(
 			array(
 				'key'   => 'towing',
-				'label' => __( 'Towing', 'radius' ),
+				'label' => $base_label,
 				'id'    => $base_id,
 			),
 		);

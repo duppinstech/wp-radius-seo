@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.61
+Stable tag: 1.6.62
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,6 +78,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 == Changelog ==
+
+= 1.6.62 =
+* **Migration summary:** Towing template list now shows the full template title (e.g. `24/7 Towing Company in {{place_name}}, {{region}}`) instead of the slug label “Towing”.
 
 = 1.6.61 =
 * **Migration:** Default towing template title no longer ends with a period (`24/7 Towing Company in {{place_name}}, {{region}}`).
