@@ -293,9 +293,10 @@ class Radius_Form_Handlers {
 	 * @param int    $template_id      Template post ID.
 	 * @param bool   $continuing       True = resume from transient queue; false = start fresh (replaces queue).
 	 * @param string $target_post_type radius_landing or radius_service_area.
-	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array,prefilter?:array{removed_blacklist:int,removed_duplicate:int}}
+	 * @param string $context          Optional caller context (e.g. migration_wizard) for batch tuning.
+	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array,prefilter?:array{removed_blacklist:int,removed_duplicate:int},batch_size?:int,chunk_duration?:float}
 	 */
-	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing' ) {
+	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing', $context = '' ) {
 		$template_id = (int) $template_id;
 		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'radius_template' ) {
 			return array(
@@ -328,13 +329,23 @@ class Radius_Form_Handlers {
 		/**
 		 * How many places to process per deploy HTTP request (each AJAX round-trip or Continue click runs one chunk).
 		 *
-		 * @param int $per_request Clamped 1–200 from Settings → Deploy batch size.
-		 * @param int $template_id Template ID.
+		 * @param int    $per_request Clamped 1–200 from Settings → Deploy batch size.
+		 * @param int    $template_id Template ID.
+		 * @param string $target_post_type radius_landing or radius_service_area.
+		 * @param string $context       Caller context (migration_wizard, …).
 		 */
-		$per_request = (int) apply_filters( 'radius_deploy_places_per_request', $per_request, $template_id );
+		$per_request = (int) apply_filters( 'radius_deploy_places_per_request', $per_request, $template_id, $target_post_type, $context );
+
+		$context = sanitize_key( (string) $context );
+		if ( 'migration_wizard' === $context ) {
+			$wiz_cap = (int) apply_filters( 'radius_migration_wizard_deploy_batch', 10, $template_id, $target_post_type );
+			$wiz_cap = max( 3, min( 25, $wiz_cap ) );
+			$per_request = min( $per_request, $wiz_cap );
+		}
 
 		$user_id = get_current_user_id();
 		$tkey    = self::deploy_queue_transient_key( $user_id, $template_id, $target_post_type );
+		$state   = null;
 
 		$acc = array(
 			'created'               => 0,
@@ -352,6 +363,17 @@ class Radius_Form_Handlers {
 
 		if ( $continuing ) {
 			$state = get_transient( $tkey );
+			if ( is_array( $state ) && ! empty( $state['last_duration'] ) ) {
+				$last       = (float) $state['last_duration'];
+				$target_sec = (float) apply_filters( 'radius_deploy_batch_target_seconds', 48.0, $template_id, $target_post_type, $context );
+				$target_sec = max( 20.0, min( 120.0, $target_sec ) );
+				if ( $last > $target_sec && $per_request > 3 ) {
+					$scaled = (int) max( 3, floor( $per_request * ( $target_sec / $last ) ) );
+					if ( $scaled < $per_request ) {
+						$per_request = $scaled;
+					}
+				}
+			}
 			if ( ! is_array( $state ) || empty( $state['remaining'] ) || ! is_array( $state['remaining'] ) ) {
 				delete_transient( $tkey );
 				return array(
@@ -431,6 +453,7 @@ class Radius_Form_Handlers {
 
 		$this_chunk = array_slice( $ids, 0, $per_request );
 		$remaining   = array_slice( $ids, $per_request );
+		$t_chunk     = microtime( true );
 		$chunk_res   = Radius_Deploy_Service::deploy(
 			$template_id,
 			$this_chunk,
@@ -439,7 +462,13 @@ class Radius_Form_Handlers {
 				'target_post_type'  => $target_post_type,
 			)
 		);
+		$chunk_duration = microtime( true ) - $t_chunk;
 		$acc = Radius_Deploy_Service::merge_stats( $acc, $chunk_res );
+
+		$base_return = array(
+			'batch_size'     => count( $this_chunk ),
+			'chunk_duration' => round( $chunk_duration, 2 ),
+		);
 
 		if ( ! empty( $remaining ) ) {
 			set_transient(
@@ -450,31 +479,38 @@ class Radius_Form_Handlers {
 					'stats'          => $acc,
 					'initial_total'  => $initial_total,
 					'prefilter'      => $deploy_prefilter,
+					'last_duration'  => $chunk_duration,
 				),
 				DAY_IN_SECONDS
 			);
-			return array(
-				'success'       => true,
-				'message'       => '',
-				'done'          => false,
-				'remaining'     => count( $remaining ),
-				'initial_total' => $initial_total,
-				'stats_total'   => $acc,
-				'stats_batch'   => $chunk_res,
-				'prefilter'     => $deploy_prefilter,
+			return array_merge(
+				$base_return,
+				array(
+					'success'       => true,
+					'message'       => '',
+					'done'          => false,
+					'remaining'     => count( $remaining ),
+					'initial_total' => $initial_total,
+					'stats_total'   => $acc,
+					'stats_batch'   => $chunk_res,
+					'prefilter'     => $deploy_prefilter,
+				)
 			);
 		}
 
 		delete_transient( $tkey );
-		return array(
-			'success'       => true,
-			'message'       => '',
-			'done'          => true,
-			'remaining'     => 0,
-			'initial_total' => $initial_total,
-			'stats_total'   => $acc,
-			'stats_batch'   => $chunk_res,
-			'prefilter'     => $deploy_prefilter,
+		return array_merge(
+			$base_return,
+			array(
+				'success'       => true,
+				'message'       => '',
+				'done'          => true,
+				'remaining'     => 0,
+				'initial_total' => $initial_total,
+				'stats_total'   => $acc,
+				'stats_batch'   => $chunk_res,
+				'prefilter'     => $deploy_prefilter,
+			)
 		);
 	}
 

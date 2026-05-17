@@ -97,6 +97,15 @@
 		if (typeof payload.deploy_batch_nonce === 'string') {
 			cfg.deployBatchNonce = payload.deploy_batch_nonce;
 		}
+		if (typeof payload.service_area_deploy_queue_remaining === 'number') {
+			cfg.serviceAreaDeployQueueRemaining = payload.service_area_deploy_queue_remaining;
+		}
+		if (
+			payload.landing_deploy_queue_remaining &&
+			typeof payload.landing_deploy_queue_remaining === 'object'
+		) {
+			cfg.landingDeployQueueRemaining = payload.landing_deploy_queue_remaining;
+		}
 	}
 
 	function postMigration(action, extra) {
@@ -1011,48 +1020,101 @@
 			.substring(0, 1200);
 	}
 
-	async function runDeployBatchRequest(templateId, target, continuing) {
-		var fd = new FormData();
-		fd.append('action', 'radius_deploy_batch');
-		fd.append('nonce', cfg.deployBatchNonce || '');
-		fd.append('radius_template_id', String(templateId));
-		fd.append('radius_deploy_target', target);
-		if (continuing) {
-			fd.append('radius_deploy_continue', '1');
-		}
-		var res = await fetch(cfg.ajaxurl, {
-			method: 'POST',
-			body: fd,
-			credentials: 'same-origin',
-			headers: {
-				Accept: 'application/json, text/javascript, */*; q=0.01',
-			},
-		});
-		var raw = await res.text();
-		var json = null;
-		if (raw && (raw.charAt(0) === '{' || raw.charAt(0) === '[')) {
-			try {
-				json = JSON.parse(raw);
-			} catch (parseErr) {
-				json = null;
-			}
-		}
-		if (!res.ok || !json || typeof json.success !== 'boolean') {
-			var snippet = normalizeDeployLogSnippet(raw);
-			logClientError('deploy_batch', describeDeployNonJson(res, raw), {
-				template_id: templateId,
-				target: target,
-				continuing: !!continuing,
-				http_status: res.status,
-				response_snippet: snippet,
-			});
-			throw new Error(describeDeployNonJson(res, raw));
-		}
-		return json;
+	function deployBatchRetryableStatus(status) {
+		return (
+			status === 0 ||
+			status === 408 ||
+			status === 429 ||
+			status === 500 ||
+			status === 502 ||
+			status === 503 ||
+			status === 504 ||
+			status === 524
+		);
 	}
 
-	async function runDeployChain(templateId, target) {
-		var cont = false;
+	function deployErrorWithResumeHint(msg) {
+		var hint = i18n.deployResumeHint || '';
+		if (!hint) {
+			return msg;
+		}
+		return msg + ' ' + hint;
+	}
+
+	async function runDeployBatchRequest(templateId, target, continuing) {
+		var maxAttempts = 4;
+		var lastRes = null;
+		var lastRaw = '';
+		for (var attempt = 0; attempt < maxAttempts; attempt++) {
+			if (attempt > 0) {
+				await new Promise(function (resolve) {
+					setTimeout(resolve, 1500 * attempt);
+				});
+			}
+			var fd = new FormData();
+			fd.append('action', 'radius_deploy_batch');
+			fd.append('nonce', cfg.deployBatchNonce || '');
+			fd.append('radius_template_id', String(templateId));
+			fd.append('radius_deploy_target', target);
+			fd.append('radius_deploy_context', 'migration_wizard');
+			if (continuing) {
+				fd.append('radius_deploy_continue', '1');
+			}
+			var res = await fetch(cfg.ajaxurl, {
+				method: 'POST',
+				body: fd,
+				credentials: 'same-origin',
+				headers: {
+					Accept: 'application/json, text/javascript, */*; q=0.01',
+				},
+			});
+			lastRes = res;
+			var raw = await res.text();
+			lastRaw = raw;
+			var json = null;
+			if (raw && (raw.charAt(0) === '{' || raw.charAt(0) === '[')) {
+				try {
+					json = JSON.parse(raw);
+				} catch (parseErr) {
+					json = null;
+				}
+			}
+			if (res.ok && json && typeof json.success === 'boolean') {
+				return json;
+			}
+			if (
+				!deployBatchRetryableStatus(res.status) ||
+				attempt >= maxAttempts - 1
+			) {
+				break;
+			}
+		}
+		var snippet = normalizeDeployLogSnippet(lastRaw);
+		logClientError('deploy_batch', describeDeployNonJson(lastRes, lastRaw), {
+			template_id: templateId,
+			target: target,
+			continuing: !!continuing,
+			http_status: lastRes ? lastRes.status : 0,
+			response_snippet: snippet,
+		});
+		throw new Error(
+			deployErrorWithResumeHint(describeDeployNonJson(lastRes, lastRaw))
+		);
+	}
+
+	function setDeployRunProgress(remaining) {
+		var run = document.getElementById('radius-mw-run');
+		if (!run || remaining === undefined || remaining === null) {
+			return;
+		}
+		var tpl =
+			i18n.deployProgress || 'Deploying… %d places remaining in this queue.';
+		run.textContent = tpl.replace('%d', String(remaining));
+		run.hidden = false;
+	}
+
+	async function runDeployChain(templateId, target, resumeContinuing) {
+		var cont = !!resumeContinuing;
 		for (;;) {
 			var json = await runDeployBatchRequest(templateId, target, cont);
 			if (!json.success) {
@@ -1062,9 +1124,12 @@
 					json.data.message !== ''
 						? json.data.message
 						: i18n.deployFailed || 'Deploy failed.';
-				throw new Error(msg);
+				throw new Error(deployErrorWithResumeHint(msg));
 			}
 			var d = json.data || {};
+			if (d.remaining !== undefined) {
+				setDeployRunProgress(d.remaining);
+			}
 			if (d.done) {
 				return d;
 			}
@@ -1493,7 +1558,18 @@
 							'Set the service area template under Radius → Settings → General, save, then run deployment again.'
 					);
 				}
-				await runDeployChain(saId, 'radius_service_area');
+				var saQueueLeft =
+					parseInt(
+						statusPayload.service_area_deploy_queue_remaining ||
+							cfg.serviceAreaDeployQueueRemaining ||
+							0,
+						10
+					) || 0;
+				await runDeployChain(
+					saId,
+					'radius_service_area',
+					saQueueLeft > 0
+				);
 				await postWizard('step_complete', { step: 'deploy_areas' });
 				setStepState('mw-step-deploy-areas', 'done');
 				stFresh = await postWizard('status');
@@ -1536,8 +1612,22 @@
 							'Could not find published service templates (towing, roadside, heavy, equipment). Run the templates step first.'
 					);
 				}
+				var lQueues =
+					cfg.landingDeployQueueRemaining ||
+					lastPayload.landing_deploy_queue_remaining ||
+					{};
 				for (var ti = 0; ti < landingIds.length; ti++) {
-					await runDeployChain(landingIds[ti], 'radius_landing');
+					var landTplId = parseInt(landingIds[ti], 10) || 0;
+					var landQueueLeft =
+						parseInt(
+							lQueues[String(landTplId)] || lQueues[landTplId] || 0,
+							10
+						) || 0;
+					await runDeployChain(
+						landTplId,
+						'radius_landing',
+						landQueueLeft > 0
+					);
 				}
 				await postWizard('step_complete', { step: 'deploy_landings' });
 				setStepState('mw-step-deploy-landings', 'done');

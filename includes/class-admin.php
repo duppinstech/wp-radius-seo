@@ -685,6 +685,8 @@ class Radius_Admin {
 							'deployHtmlResponse'             => __( 'Deploy returned HTML instead of JSON (often a PHP fatal or security page).', 'radius' ),
 							'deployMissingServiceAreaTemplate' => __( 'Set the service area template under Radius → Settings → General, save, then run deployment again.', 'radius' ),
 							'deployMissingLandingTemplates'   => __( 'Could not find published service templates. Run the templates step first.', 'radius' ),
+							'deployProgress'                  => __( 'Deploying… %d places remaining in this queue.', 'radius' ),
+							'deployResumeHint'                => __( 'A deploy queue may still be saved. Click Start migration again to resume, or open Radius → Deploy and use Continue on the template card.', 'radius' ),
 							'migrationCompletedTitle'         => __( 'Migration complete', 'radius' ),
 							'migrationCompletedBody'          => __( 'Service areas and landing templates were deployed. This site is marked as migrated.', 'radius' ),
 							'summaryAfterDeploy'                => __( 'Migration summary', 'radius' ),

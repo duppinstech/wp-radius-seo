@@ -324,18 +324,52 @@ class Radius_Ajax {
 			$target = 'radius_landing';
 		}
 
+		$deploy_context = isset( $_POST['radius_deploy_context'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_context'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
 		$deploy_ctx = array_merge(
 			Radius_Operation_Log::request_context(),
 			array(
 				'template_id' => $template_id,
 				'target'      => $target,
 				'continuing'  => $continuing,
+				'context'     => $deploy_context,
 			)
 		);
 
+		register_shutdown_function(
+			static function () use ( $t0, $deploy_ctx ) {
+				if ( ! class_exists( 'Radius_Operation_Log' ) ) {
+					return;
+				}
+				$err = error_get_last();
+				if ( ! is_array( $err ) ) {
+					return;
+				}
+				$fatal_types = array( E_ERROR, E_PARSE, E_COMPILE_ERROR, E_CORE_ERROR );
+				if ( ! in_array( (int) $err['type'], $fatal_types, true ) ) {
+					return;
+				}
+				Radius_Operation_Log::error(
+					'deploy_batch',
+					'Deploy batch fatal: ' . (string) ( $err['message'] ?? 'unknown' ),
+					array_merge(
+						$deploy_ctx,
+						array(
+							'duration' => round( microtime( true ) - $t0, 2 ),
+							'file'     => isset( $err['file'] ) ? (string) $err['file'] : '',
+							'line'     => isset( $err['line'] ) ? (int) $err['line'] : 0,
+						)
+					)
+				);
+			}
+		);
+
 		try {
-			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target );
+			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target, $deploy_context );
 		} catch ( \Throwable $e ) {
+			if ( class_exists( 'Radius_Multisite' ) ) {
+				Radius_Multisite::release_heavy_operation();
+			}
 			Radius_Operation_Log::error(
 				'deploy_batch',
 				'Deploy batch exception: ' . $e->getMessage(),
@@ -357,6 +391,9 @@ class Radius_Ajax {
 		}
 
 		if ( ! $result['success'] ) {
+			if ( class_exists( 'Radius_Multisite' ) ) {
+				Radius_Multisite::release_heavy_operation();
+			}
 			Radius_Operation_Log::error(
 				'deploy_batch',
 				'Deploy batch failed: ' . ( isset( $result['message'] ) ? (string) $result['message'] : 'unknown' ),
@@ -375,6 +412,8 @@ class Radius_Ajax {
 			'done_message'    => '',
 			'batch_errors'    => array(),
 			'prefilter'       => isset( $result['prefilter'] ) && is_array( $result['prefilter'] ) ? $result['prefilter'] : array(),
+			'batch_size'      => isset( $result['batch_size'] ) ? (int) $result['batch_size'] : 0,
+			'chunk_duration'  => isset( $result['chunk_duration'] ) ? (float) $result['chunk_duration'] : 0,
 		);
 
 		$batch = $payload['stats_batch'];
@@ -399,10 +438,12 @@ class Radius_Ajax {
 				array_merge(
 					$deploy_ctx,
 					array(
-						'duration'  => round( microtime( true ) - $t0, 2 ),
-						'done'      => $payload['done'],
-						'remaining' => $payload['remaining'],
-						'stats_batch' => $payload['stats_batch'],
+						'duration'       => round( microtime( true ) - $t0, 2 ),
+						'done'           => $payload['done'],
+						'remaining'      => $payload['remaining'],
+						'stats_batch'    => $payload['stats_batch'],
+						'batch_size'     => $payload['batch_size'],
+						'chunk_duration' => $payload['chunk_duration'],
 					)
 				)
 			);

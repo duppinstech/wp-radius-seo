@@ -258,6 +258,25 @@ final class Radius_Migration_Wizard {
 	 *
 	 * @return int[]
 	 */
+	/**
+	 * Places left in the current user's resumable deploy queue for a template.
+	 *
+	 * @param int    $template_id Template post ID.
+	 * @param string $target      radius_landing or radius_service_area.
+	 * @return int
+	 */
+	private static function deploy_queue_remaining_count( $template_id, $target ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 || ! class_exists( 'Radius_Form_Handlers' ) ) {
+			return 0;
+		}
+		$q = Radius_Form_Handlers::get_deploy_queue_for_template( $template_id, $target );
+		if ( ! is_array( $q ) || empty( $q['remaining'] ) || ! is_array( $q['remaining'] ) ) {
+			return 0;
+		}
+		return count( $q['remaining'] );
+	}
+
 	private static function landing_template_ids_ordered() {
 		$slugs = apply_filters(
 			'radius_migration_wizard_deploy_landing_slugs',
@@ -920,6 +939,14 @@ final class Radius_Migration_Wizard {
 		$counts     = self::place_count_snapshot();
 		$settings   = Radius_Settings::get();
 		$sa_tpl     = isset( $settings['service_area_template_id'] ) ? (int) $settings['service_area_template_id'] : 0;
+		$landing_ids = self::landing_template_ids_ordered();
+		$landing_queues = array();
+		foreach ( $landing_ids as $lid ) {
+			$left = self::deploy_queue_remaining_count( (int) $lid, 'radius_landing' );
+			if ( $left > 0 ) {
+				$landing_queues[ (string) (int) $lid ] = $left;
+			}
+		}
 		return array(
 			'wizard_available' => self::wizard_assets_available(),
 			'all_steps_done'   => self::all_core_steps_done(),
@@ -940,8 +967,10 @@ final class Radius_Migration_Wizard {
 			'places_radius_count'           => $counts['radius'],
 			'places_counts_match'           => ! empty( $counts['counts_match'] ),
 			'service_area_template_id'    => $sa_tpl,
-			'deploy_landing_template_ids' => self::landing_template_ids_ordered(),
-			'deploy_batch_nonce'          => wp_create_nonce( 'radius_deploy_batch' ),
+			'deploy_landing_template_ids'         => $landing_ids,
+			'service_area_deploy_queue_remaining' => $sa_tpl > 0 ? self::deploy_queue_remaining_count( $sa_tpl, 'radius_service_area' ) : 0,
+			'landing_deploy_queue_remaining'      => $landing_queues,
+			'deploy_batch_nonce'                  => wp_create_nonce( 'radius_deploy_batch' ),
 			'steps'            => self::build_steps_status(),
 			'activity_log'     => self::get_activity_log(),
 			'operation_logs_url' => admin_url( 'admin.php?page=radius-logs' ),
