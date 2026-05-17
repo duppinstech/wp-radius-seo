@@ -179,16 +179,22 @@
 			.replace('%d', String(score))
 			.replace('%s', gradeLabel);
 		var sysUrl = cfg.systemRequirementsUrl || '';
+		var detailsOpen = score < min ? ' open' : '';
+		var compactReady = score >= min;
 		wrap.innerHTML =
 			'<h2 class="radius-mw-system-check__title">' +
 			esc(i18n.systemCheckHeading || 'Server readiness') +
 			'</h2>' +
-			'<p class="description">' +
-			esc(i18n.systemCheckIntro || '') +
-			'</p>' +
+			(compactReady
+				? ''
+				: '<p class="description radius-mw-system-check__intro">' +
+					esc(i18n.systemCheckIntro || '') +
+					'</p>') +
 			'<div class="radius-sysreq-score radius-sysreq-score--' +
 			esc(banner) +
-			' radius-mw-system-check__score">' +
+			' radius-mw-system-check__score' +
+			(compactReady ? ' radius-mw-system-check__score--compact' : '') +
+			'">' +
 			'<div class="radius-sysreq-score__ring" aria-hidden="true"><span class="radius-sysreq-score__pct">' +
 			esc(String(score)) +
 			'%</span></div>' +
@@ -196,8 +202,13 @@
 			'<p class="radius-sysreq-score__title">' +
 			esc(scoreFmt) +
 			'</p>' +
-			(grade.summary
+			(grade.summary && !compactReady
 				? '<p class="radius-sysreq-score__summary">' + esc(grade.summary) + '</p>'
+				: '') +
+			(compactReady
+				? '<p class="radius-sysreq-score__summary radius-sysreq-score__summary--compact">' +
+					esc(i18n.systemCheckReadyShort || 'Ready to migrate.') +
+					'</p>'
 				: '') +
 			(score < min
 				? '<p class="radius-sysreq-score__gate">' +
@@ -211,8 +222,29 @@
 				: '') +
 			'</div>' +
 			'</div>' +
+			'<details class="radius-mw-system-check__details"' +
+			detailsOpen +
+			' id="radius-mw-system-details">' +
+			'<summary class="radius-mw-system-check__summary">' +
+			esc(i18n.systemCheckViewDetails || 'View details') +
+			'</summary>' +
+			'<div class="radius-mw-system-check__details-inner">' +
+			(compactReady
+				? '<p class="description">' + esc(i18n.systemCheckIntro || '') + '</p>'
+				: '') +
+			(grade.summary && compactReady
+				? '<p class="description">' + esc(grade.summary) + '</p>'
+				: '') +
 			'<table class="widefat striped radius-sysreq-table radius-mw-system-check__table"><thead><tr>' +
-			'<th>Setting</th><th>Current</th><th>Recommended</th><th>Status</th>' +
+			'<th>' +
+			esc(i18n.systemCheckColSetting || 'Setting') +
+			'</th><th>' +
+			esc(i18n.systemCheckColCurrent || 'Current') +
+			'</th><th>' +
+			esc(i18n.systemCheckColRecommended || 'Recommended') +
+			'</th><th>' +
+			esc(i18n.systemCheckColStatus || 'Status') +
+			'</th>' +
 			'</tr></thead><tbody>' +
 			rows +
 			'</tbody></table>' +
@@ -220,9 +252,11 @@
 				? '<p class="radius-mw-system-check__link"><a href="' +
 					esc(sysUrl) +
 					'" target="_blank" rel="noopener">' +
-					esc(i18n.systemCheckViewSystem || 'View full report') +
+					esc(i18n.systemCheckViewSystem || 'View full report on Deploy → System') +
 					'</a></p>'
 				: '') +
+			'</div>' +
+			'</details>' +
 			'<p class="radius-mw-system-check__actions">' +
 			'<button type="button" class="button" id="radius-mw-system-bypass" hidden>' +
 			esc(i18n.systemCheckBypass || 'Bypass') +

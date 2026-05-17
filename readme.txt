@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.67
+Stable tag: 1.6.68
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,6 +79,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 == Changelog ==
+
+= 1.6.68 =
+* **Migration wizard:** Server readiness details are collapsed by default when score is 60%+ (compact score + “View details” drawer). Full table opens automatically only when below the migration threshold.
 
 = 1.6.67 =
 * **Deploy → System:** Server environment report with weighted readiness score (0–100%), green/yellow/red per PHP setting, and loaded php.ini path. Migration wizard pre-flight uses the same checks; scores below 60% block Start until bypass.
