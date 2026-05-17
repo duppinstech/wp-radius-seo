@@ -148,12 +148,30 @@
 							? ' — your host/WAF may be blocking admin-ajax POSTs.'
 							: res.status === 524 || res.status === 504
 								? ' — often a Cloudflare/proxy timeout (origin took too long). Retry, or pause Cloudflare for wp-admin / raise origin timeouts.'
-								: '';
+								: res.status === 409
+									? ''
+									: '';
+					var errMsg = bad + ' (HTTP ' + res.status + httpHint + ')';
+					var tErr = (raw || '').trim();
+					if (tErr.charAt(0) === '{') {
+						try {
+							var errJson = JSON.parse(raw);
+							if (
+								errJson &&
+								errJson.data &&
+								typeof errJson.data.message === 'string' &&
+								errJson.data.message !== ''
+							) {
+								errMsg = errJson.data.message;
+							}
+						} catch (e409) {
+							/* use default */
+						}
+					}
 					return {
 						success: false,
 						data: {
-							message:
-								bad + ' (HTTP ' + res.status + httpHint + ')',
+							message: errMsg,
 						},
 					};
 				}
@@ -352,6 +370,11 @@
 		hTitle.id = 'radius-mw-title';
 		head.appendChild(hTitle);
 		var intro = el('p', 'radius-mw-intro', i18n.intro || '');
+		var multisiteNote = null;
+		if (cfg.isMultisite && i18n.multisiteParallelWarning) {
+			multisiteNote = el('p', 'radius-mw-multisite-note', i18n.multisiteParallelWarning);
+			multisiteNote.setAttribute('role', 'note');
+		}
 		var overallWrap = el('div', 'radius-mw-overall-progress', '');
 		overallWrap.id = 'radius-mw-overall-progress';
 		var overallLab = el(
@@ -457,6 +480,9 @@
 
 		panel.appendChild(head);
 		panel.appendChild(intro);
+		if (multisiteNote) {
+			panel.appendChild(multisiteNote);
+		}
 		panel.appendChild(overallWrap);
 		panel.appendChild(stepsOl);
 		panel.appendChild(run);

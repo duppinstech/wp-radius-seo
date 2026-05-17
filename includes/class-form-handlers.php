@@ -243,7 +243,8 @@ class Radius_Form_Handlers {
 	 */
 	private static function deploy_queue_transient_key( $user_id, $template_id, $target_post_type = 'radius_landing' ) {
 		$suffix = ( 'radius_service_area' === sanitize_key( (string) $target_post_type ) ) ? '_sa' : '';
-		return 'radius_dq_u' . (int) $user_id . '_t' . (int) $template_id . $suffix;
+		$key    = 'radius_dq_u' . (int) $user_id . '_t' . (int) $template_id . $suffix;
+		return class_exists( 'Radius_Multisite' ) ? Radius_Multisite::scoped_key( $key ) : $key;
 	}
 
 	/**

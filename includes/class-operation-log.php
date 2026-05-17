@@ -29,7 +29,14 @@ final class Radius_Operation_Log {
 	public static function log_dir() {
 		$upload = wp_upload_dir();
 		$base   = isset( $upload['basedir'] ) ? (string) $upload['basedir'] : WP_CONTENT_DIR . '/uploads';
-		return trailingslashit( $base ) . 'radius-seo-logs';
+		$dir    = trailingslashit( $base ) . 'radius-seo-logs';
+		if ( is_multisite() && class_exists( 'Radius_Multisite' ) ) {
+			$bid = Radius_Multisite::blog_id();
+			if ( $bid > 0 ) {
+				$dir .= '/site-' . $bid;
+			}
+		}
+		return $dir;
 	}
 
 	/**
@@ -231,6 +238,9 @@ final class Radius_Operation_Log {
 				? round( microtime( true ) - (float) $_SERVER['REQUEST_TIME_FLOAT'], 2 )
 				: 0,
 		);
+		if ( class_exists( 'Radius_Multisite' ) ) {
+			$ctx = array_merge( $ctx, Radius_Multisite::request_context_extras() );
+		}
 		if ( isset( $_SERVER['REQUEST_METHOD'] ) ) {
 			$ctx['method'] = sanitize_text_field( wp_unslash( (string) $_SERVER['REQUEST_METHOD'] ) );
 		}

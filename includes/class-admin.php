@@ -311,8 +311,10 @@ class Radius_Admin {
 				'importPageUrl'         => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 				'serviceAreasUrl'       => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
 				'locationsLibraryUrl'   => admin_url( 'admin.php?page=radius-locations' ),
+				'isMultisite'           => is_multisite(),
 				'i18n'                  => array(
 					'errorPrefix'               => __( 'Error:', 'radius' ),
+					'multisiteParallelWarning'  => __( 'Multisite: run migration or large deploy on one subsite at a time. Parallel jobs on the same server often cause timeouts, blank admin-ajax responses, or memory errors.', 'radius' ),
 					'requestFailed'             => __( 'Request failed.', 'radius' ),
 					'viewLogs'                  => __( 'View logs', 'radius' ),
 					'title'                     => __( 'Magic Page → Radius migration', 'radius' ),
@@ -620,8 +622,10 @@ class Radius_Admin {
 						'importPageUrl'        => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 						'serviceAreasUrl'      => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
 						'locationsLibraryUrl'  => admin_url( 'admin.php?page=radius-locations' ),
+						'isMultisite'          => is_multisite(),
 						'i18n'                 => array(
 							'errorPrefix'                      => __( 'Error:', 'radius' ),
+							'multisiteParallelWarning'         => __( 'Multisite: run migration or large deploy on one subsite at a time. Parallel jobs on the same server often cause timeouts, blank admin-ajax responses, or memory errors.', 'radius' ),
 							'requestFailed'                    => __( 'Request failed.', 'radius' ),
 							'viewLogs'                         => __( 'View logs', 'radius' ),
 							'title'                            => __( 'Magic Page → Radius migration', 'radius' ),
@@ -3200,6 +3204,10 @@ Fast roadside help in {{region}}
 					esc_html__( 'Logs are stored under %s (not web-accessible). Service area and landing deploys run in chained AJAX batches; legacy place import uses delta queues when enabled.', 'radius' ),
 					'<code>' . esc_html( $log_dir ) . '</code>'
 				);
+				if ( is_multisite() ) {
+					echo ' ';
+					esc_html_e( 'On multisite, each subsite has its own log folder (site-ID suffix). Run large migration or deploy jobs on one subsite at a time.', 'radius' );
+				}
 				?>
 			</p>
 

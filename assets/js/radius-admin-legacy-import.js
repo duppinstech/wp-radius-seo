@@ -78,7 +78,22 @@
 				lastErr = !res.ok
 					? 'HTTP ' + res.status
 					: 'HTML or non-JSON response (likely firewall / timeout)';
-				if (attempt >= maxRetries) {
+				if (!res.ok && raw && raw.trim().charAt(0) === '{') {
+					try {
+						var errBody = JSON.parse(raw);
+						if (
+							errBody &&
+							errBody.data &&
+							typeof errBody.data.message === 'string' &&
+							errBody.data.message !== ''
+						) {
+							lastErr = errBody.data.message;
+						}
+					} catch (eJson) {
+						/* keep HTTP status */
+					}
+				}
+				if (attempt >= maxRetries || res.status === 409) {
 					throw new Error(lastErr);
 				}
 				await sleep(1000 * Math.pow(2, attempt));

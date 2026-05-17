@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.62
+Stable tag: 1.6.63
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -77,7 +77,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_repair_numbered_slug_places_chunk_size` — places renamed per AJAX batch for “Restore base slugs” (default 40).
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
+* `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 == Changelog ==
+
+= 1.6.63 =
+* **Multisite:** Blog-scoped transient keys, per-subsite log directories (`radius-seo-logs/site-{id}/`), `blog_id` / `site_url` in operation logs. Network coordination blocks starting a second heavy import/deploy/migration on another subsite while one is active (HTTP 409 with a clear message; filter `radius_multisite_allow_parallel_heavy_ops` to opt out). Admin warning when another subsite holds the lock; migration modal shows a multisite note.
 
 = 1.6.62 =
 * **Migration summary:** Towing template list now shows the full template title (e.g. `24/7 Towing Company in {{place_name}}, {{region}}`) instead of the slug label “Towing”.

@@ -27,6 +27,7 @@ final class Radius_Migration_Wizard {
 	public static function init() {
 		add_action( 'wp_ajax_radius_migration_wizard', array( __CLASS__, 'ajax' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_banner' ), 12 );
+		add_action( 'admin_notices', array( __CLASS__, 'admin_multisite_notice' ), 13 );
 	}
 
 	/**
@@ -579,6 +580,30 @@ final class Radius_Migration_Wizard {
 	/**
 	 * @return void
 	 */
+	/**
+	 * Warn when another subsite is running a heavy Radius job (multisite).
+	 *
+	 * @return void
+	 */
+	public static function admin_multisite_notice() {
+		if ( ! is_multisite() || ! current_user_can( 'manage_options' ) || ! class_exists( 'Radius_Multisite' ) ) {
+			return;
+		}
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || strpos( (string) $screen->id, 'radius' ) === false ) {
+			return;
+		}
+		$foreign = Radius_Multisite::get_foreign_heavy_operation();
+		if ( ! $foreign ) {
+			return;
+		}
+		printf(
+			'<div class="notice notice-warning"><p><strong>%s</strong> %s</p></div>',
+			esc_html__( 'Radius — multisite', 'radius' ),
+			esc_html( Radius_Multisite::format_foreign_lock_message( $foreign ) )
+		);
+	}
+
 	public static function admin_banner() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
@@ -625,6 +650,17 @@ final class Radius_Migration_Wizard {
 			);
 		}
 
+		$heavy_wizard_actions = array(
+			'templates_pipeline',
+			'templates_pipeline_continue',
+			'site_replacers',
+			'service_anchors',
+			'magic_pages_cleanup',
+		);
+		if ( in_array( $action, $heavy_wizard_actions, true ) && class_exists( 'Radius_Multisite' ) ) {
+			Radius_Multisite::require_heavy_operation_or_exit_json( 'migration_' . $action );
+		}
+
 		switch ( $action ) {
 			case 'status':
 				wp_send_json_success( self::build_status_payload() );
@@ -635,6 +671,9 @@ final class Radius_Migration_Wizard {
 				return;
 			case 'complete':
 				self::set_state( 'completed' );
+				if ( class_exists( 'Radius_Multisite' ) ) {
+					Radius_Multisite::release_heavy_operation();
+				}
 				wp_send_json_success( array( 'ok' => true ) );
 				return;
 			case 'step_complete':
@@ -745,7 +784,9 @@ final class Radius_Migration_Wizard {
 				$after = isset( $_POST['after_post_id'] ) ? absint( wp_unslash( $_POST['after_post_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
 
 				$uid  = get_current_user_id();
-				$tkey = 'radius_mw_mp_cleanup_' . $uid;
+				$tkey = class_exists( 'Radius_Multisite' )
+					? Radius_Multisite::scoped_key( 'radius_mw_mp_cleanup_' . $uid )
+					: 'radius_mw_mp_cleanup_' . $uid;
 				if ( 0 === $after ) {
 					delete_transient( $tkey );
 				}

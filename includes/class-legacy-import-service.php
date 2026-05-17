@@ -1544,7 +1544,8 @@ class Radius_Legacy_Import_Service {
 	 * @return void
 	 */
 	public static function bust_magic_page_footprint_cache() {
-		delete_transient( self::FOOTPRINT_CACHE_KEY );
+		$key = class_exists( 'Radius_Multisite' ) ? Radius_Multisite::scoped_key( self::FOOTPRINT_CACHE_KEY ) : self::FOOTPRINT_CACHE_KEY;
+		delete_transient( $key );
 	}
 
 	/**
@@ -1557,7 +1558,8 @@ class Radius_Legacy_Import_Service {
 	 * @return array{options: array{label:string,rows:int,bytes:int}, postmeta: array{label:string,rows:int,bytes:int}, cleanup_bytes:int, postmeta_bytes_omitted: bool}
 	 */
 	public static function get_magic_page_storage_footprint() {
-		$cached = get_transient( self::FOOTPRINT_CACHE_KEY );
+		$cache_key = class_exists( 'Radius_Multisite' ) ? Radius_Multisite::scoped_key( self::FOOTPRINT_CACHE_KEY ) : self::FOOTPRINT_CACHE_KEY;
+		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) && isset( $cached['options'], $cached['postmeta'], $cached['cleanup_bytes'] ) && isset( $cached['postmeta_bytes_omitted'] ) ) {
 			return $cached;
 		}
@@ -1649,7 +1651,7 @@ class Radius_Legacy_Import_Service {
 		 */
 		$ttl = (int) apply_filters( 'radius_magic_page_footprint_cache_ttl', 10 * MINUTE_IN_SECONDS );
 		if ( $ttl > 0 ) {
-			set_transient( self::FOOTPRINT_CACHE_KEY, $out, $ttl );
+			set_transient( $cache_key, $out, $ttl );
 		}
 
 		return $out;
@@ -3681,7 +3683,8 @@ class Radius_Legacy_Import_Service {
 	 * @return string
 	 */
 	private static function templates_pipeline_resume_transient_key() {
-		return 'radius_mw_tpl_resume_' . get_current_user_id();
+		$key = 'radius_mw_tpl_resume_' . get_current_user_id();
+		return class_exists( 'Radius_Multisite' ) ? Radius_Multisite::scoped_key( $key ) : $key;
 	}
 
 	/**

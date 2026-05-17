@@ -140,6 +140,10 @@ class Radius_Ajax {
 			wp_send_json_error( array( 'message' => __( 'No legacy location taxonomy found.', 'radius' ) ) );
 		}
 
+		if ( class_exists( 'Radius_Multisite' ) ) {
+			Radius_Multisite::require_heavy_operation_or_exit_json( 'legacy_import' );
+		}
+
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Long-running legacy import batch.
 			@set_time_limit( 180 );
@@ -237,6 +241,10 @@ class Radius_Ajax {
 			Radius_Operation_Log::info( 'legacy_import', 'Legacy import batch OK', $log_ctx );
 		}
 
+		if ( class_exists( 'Radius_Multisite' ) && empty( $res['has_more'] ) ) {
+			Radius_Multisite::release_heavy_operation();
+		}
+
 		wp_send_json_success( $res );
 	}
 
@@ -289,6 +297,10 @@ class Radius_Ajax {
 			Radius_Operation_Log::error( 'deploy_batch', 'Deploy forbidden.', Radius_Operation_Log::request_context() );
 			self::flush_stray_output_before_json( 'deploy_batch', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( class_exists( 'Radius_Multisite' ) ) {
+			Radius_Multisite::require_heavy_operation_or_exit_json( 'deploy_batch' );
 		}
 
 		$time_cap = (int) apply_filters( 'radius_deploy_batch_time_limit', 300 );
@@ -433,6 +445,10 @@ class Radius_Ajax {
 					$ph
 				);
 			}
+		}
+
+		if ( ! empty( $payload['done'] ) && class_exists( 'Radius_Multisite' ) ) {
+			Radius_Multisite::release_heavy_operation();
 		}
 
 		wp_send_json_success( $payload );
