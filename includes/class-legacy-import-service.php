@@ -647,6 +647,49 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Remove Magic Page `[map]` shortcode from template text (no Radius replacement).
+	 *
+	 * Magic Page embeds a map widget via `[map]` or `[map width="…" height="…"]`. Radius does not
+	 * ship a map shortcode; strip it during import/conversion so templates stay clean.
+	 *
+	 * @param string $text HTML / Elementor string fragment.
+	 * @return string
+	 */
+	public static function strip_magic_page_map_shortcode_from_text( $text ) {
+		$text = (string) $text;
+		if ( $text === '' || stripos( $text, '[map' ) === false ) {
+			return $text;
+		}
+		$tags = apply_filters(
+			'radius_magic_page_shortcodes_to_strip',
+			array( 'map' )
+		);
+		if ( ! is_array( $tags ) || empty( $tags ) ) {
+			return $text;
+		}
+		foreach ( $tags as $tag ) {
+			$tag = sanitize_key( (string) $tag );
+			if ( $tag === '' ) {
+				continue;
+			}
+			$text = (string) preg_replace( '/\[' . preg_quote( $tag, '/' ) . '(\b[^\]]*)?\]/i', '', $text );
+		}
+		return $text;
+	}
+
+	/**
+	 * Strip unsupported Magic Page shortcodes and rename `[cities]` → `[radius_cities]`.
+	 *
+	 * @param string $text Raw HTML/text.
+	 * @return string
+	 */
+	public static function sanitize_magic_page_shortcodes_in_text( $text ) {
+		$text = self::strip_magic_page_map_shortcode_from_text( $text );
+		$text = self::rewrite_magic_page_cities_shortcode_to_radius_shortcode( $text );
+		return $text;
+	}
+
+	/**
 	 * Backfill helper: rewrite the legacy `[cities …]` Magic Page shortcode to `[radius_cities …]`
 	 * across one radius_template's post fields and JSON meta (Elementor data / page settings /
 	 * Radius spintax / xfields / slot variations).
@@ -667,7 +710,7 @@ class Radius_Legacy_Import_Service {
 			return false;
 		}
 
-		$cb       = array( __CLASS__, 'rewrite_magic_page_cities_shortcode_to_radius_shortcode' );
+		$cb       = array( __CLASS__, 'sanitize_magic_page_shortcodes_in_text' );
 		$changed  = false;
 
 		$json_keys = apply_filters(
@@ -2811,6 +2854,7 @@ class Radius_Legacy_Import_Service {
 		if ( $text === '' ) {
 			return '';
 		}
+		$text = self::strip_magic_page_map_shortcode_from_text( $text );
 		// Magic Page `[cities …]` → Radius-native `[radius_cities …]` so migrated templates
 		// carry no legacy MP shortcode names and stay self-contained when Magic Page is
 		// later uninstalled. Radius_Deploy_Service::expand_cities_shortcode and the runtime

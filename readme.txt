@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.64
+Stable tag: 1.6.65
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,6 +79,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 == Changelog ==
+
+= 1.6.65 =
+* **Templates:** Magic Page `[map]` shortcode is stripped during template import/conversion and at deploy (no Radius map widget). Use filter `radius_magic_page_shortcodes_to_strip` to add more tags to remove.
 
 = 1.6.64 =
 * **Deploy → Health check tab:** New tab after Migration runs validation checks — migration step completion, service anchors, deploy scope, service area hub coverage per place, landing coverage per published template, landings without hubs, Magic Page leftovers, duplicate pages, and missing deploy meta. Shows pass/warn/fail with sample missing slugs and links to fix.

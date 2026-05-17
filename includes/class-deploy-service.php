@@ -860,6 +860,9 @@ class Radius_Deploy_Service {
 	private static function render_value_for_deploy( $value, array $tokens, $seed, $place_id = 0, &$placeholder_removed = null ) {
 		if ( is_string( $value ) ) {
 			$rendered = Radius_Token_Engine::render( $value, $tokens, $seed, false, true, $placeholder_removed );
+			if ( class_exists( 'Radius_Legacy_Import_Service' ) ) {
+				$rendered = Radius_Legacy_Import_Service::strip_magic_page_map_shortcode_from_text( $rendered );
+			}
 			if ( $place_id > 0
 				&& ( strpos( $rendered, '[radius_cities' ) !== false || strpos( $rendered, '[cities' ) !== false )
 			) {
