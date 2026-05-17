@@ -448,14 +448,16 @@ final class Radius_Deploy_Health_Check {
 	}
 
 	/**
-	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
-	 * @param array<int,int[]>                                                                  $deployed_sa Deployed map.
-	 * @return array<string,mixed>
+	 * Place IDs with a service-area hub but outside current deploy scope.
+	 *
+	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
 	 */
-	private static function check_service_area_coverage( array $scope, array $deployed_sa ) {
-		$expected = array_fill_keys( $scope['ids'], true );
-		$tid      = (int) ( Radius_Settings::get()['service_area_template_id'] ?? 0 );
-		$have     = array();
+	public static function get_service_area_coverage_gaps() {
+		$scope      = self::get_expected_scope_place_ids();
+		$deployed_sa = self::get_deployed_place_ids_map( 'radius_service_area' );
+		$tid        = (int) ( Radius_Settings::get()['service_area_template_id'] ?? 0 );
+		$expected   = array_fill_keys( $scope['ids'], true );
+		$have       = array();
 		if ( $tid > 0 && isset( $deployed_sa[ $tid ] ) ) {
 			foreach ( $deployed_sa[ $tid ] as $pid ) {
 				$have[ (int) $pid ] = true;
@@ -467,12 +469,67 @@ final class Radius_Deploy_Health_Check {
 				$missing[] = (int) $pid;
 			}
 		}
-		$extra_places = array();
+		$extra = array();
 		foreach ( array_keys( $have ) as $pid ) {
 			if ( empty( $expected[ (int) $pid ] ) ) {
-				$extra_places[] = (int) $pid;
+				$extra[] = (int) $pid;
 			}
 		}
+		return array(
+			'template_id'         => $tid,
+			'extra_place_ids'     => $extra,
+			'missing_place_ids'   => $missing,
+			'expected_count'      => count( $expected ),
+			'deployed_count'      => count( $have ),
+		);
+	}
+
+	/**
+	 * Move service-area hub pages to Trash for places outside deploy scope.
+	 *
+	 * @return array{trashed:int,places:int,template_id:int}
+	 */
+	public static function trash_extra_service_area_hubs() {
+		$gaps = self::get_service_area_coverage_gaps();
+		$tid  = (int) $gaps['template_id'];
+		$extra = isset( $gaps['extra_place_ids'] ) && is_array( $gaps['extra_place_ids'] )
+			? $gaps['extra_place_ids']
+			: array();
+		if ( $tid <= 0 || empty( $extra ) ) {
+			return array(
+				'trashed'     => 0,
+				'places'      => 0,
+				'template_id' => $tid,
+			);
+		}
+		$trashed = 0;
+		foreach ( $extra as $place_id ) {
+			$trashed += Radius_Deploy_Service::trash_all_deployed_for_place_template(
+				$tid,
+				(int) $place_id,
+				'radius_service_area'
+			);
+		}
+		return array(
+			'trashed'     => $trashed,
+			'places'      => count( $extra ),
+			'template_id' => $tid,
+		);
+	}
+
+	/**
+	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
+	 * @param array<int,int[]>                                                                  $deployed_sa Deployed map.
+	 * @return array<string,mixed>
+	 */
+	private static function check_service_area_coverage( array $scope, array $deployed_sa ) {
+		$gaps           = self::get_service_area_coverage_gaps();
+		$missing        = $gaps['missing_place_ids'];
+		$extra_places   = $gaps['extra_place_ids'];
+		$tid            = (int) $gaps['template_id'];
+		$expected_count = (int) $gaps['expected_count'];
+		$deployed_count = (int) $gaps['deployed_count'];
+
 		if ( empty( $missing ) && empty( $extra_places ) ) {
 			return self::make_check(
 				'service_area_coverage',
@@ -481,16 +538,41 @@ final class Radius_Deploy_Health_Check {
 				sprintf(
 					/* translators: %d: place count */
 					__( 'A service area hub exists for each of the %d places in scope.', 'radius' ),
-					count( $expected )
+					$expected_count
 				),
 				'',
 				array(
-					'deployed' => count( $have ),
-					'expected' => count( $expected ),
+					'deployed' => $deployed_count,
+					'expected' => $expected_count,
 				)
 			);
 		}
 		$status = ! empty( $missing ) ? 'fail' : 'warn';
+		$detail = '';
+		if ( ! empty( $extra_places ) ) {
+			$detail = __(
+				'Extra hubs are for places outside your current deploy scope (outside service areas, slug-pattern exclusions, or duplicate-name rules). Use the button below to trash those hub pages.',
+				'radius'
+			);
+		}
+		$extra_fields = array(
+			'missing_count'   => count( $missing ),
+			'extra_count'     => count( $extra_places ),
+			'missing_slugs'   => self::place_slugs_sample( $missing ),
+			'extra_slugs'     => self::place_slugs_sample( $extra_places ),
+			'deployed'        => $deployed_count,
+			'expected'        => $expected_count,
+			'template_id'     => $tid,
+		);
+		if ( ! empty( $missing ) ) {
+			$extra_fields['fix_url'] = admin_url( 'admin.php?page=radius-deploy&tab=service-areas' );
+		}
+		if ( ! empty( $extra_places ) ) {
+			$extra_fields['remediation'] = array(
+				'action' => 'trash_extra_service_areas',
+				'count'  => count( $extra_places ),
+			);
+		}
 		return self::make_check(
 			'service_area_coverage',
 			__( 'Service area pages', 'radius' ),
@@ -501,17 +583,8 @@ final class Radius_Deploy_Health_Check {
 				count( $missing ),
 				count( $extra_places )
 			),
-			'',
-			array(
-				'missing_count'      => count( $missing ),
-				'extra_count'        => count( $extra_places ),
-				'missing_slugs'    => self::place_slugs_sample( $missing ),
-				'extra_slugs'        => self::place_slugs_sample( $extra_places ),
-				'deployed'           => count( $have ),
-				'expected'           => count( $expected ),
-				'template_id'        => $tid,
-				'fix_url'            => admin_url( 'admin.php?page=radius-deploy&tab=service-areas' ),
-			)
+			$detail,
+			$extra_fields
 		);
 	}
 

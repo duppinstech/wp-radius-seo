@@ -29,6 +29,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_migration_clone_variants', array( __CLASS__, 'migration_clone_variants' ) );
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
 		add_action( 'wp_ajax_radius_deploy_health_check', array( __CLASS__, 'deploy_health_check' ) );
+		add_action( 'wp_ajax_radius_deploy_health_remediate', array( __CLASS__, 'deploy_health_remediate' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
 	}
 
@@ -870,6 +871,81 @@ class Radius_Ajax {
 		}
 
 		wp_send_json_success( $report );
+	}
+
+	/**
+	 * Run a health-check remediation action (e.g. trash out-of-scope service area hubs).
+	 *
+	 * @return void
+	 */
+	public static function deploy_health_remediate() {
+		check_ajax_referer( 'radius_deploy_health_check', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$action = isset( $_POST['remediate_action'] ) ? sanitize_key( wp_unslash( $_POST['remediate_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 300 );
+		}
+
+		if ( 'trash_extra_service_areas' !== $action || ! class_exists( 'Radius_Deploy_Health_Check' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unknown remediation action.', 'radius' ) ), 400 );
+			return;
+		}
+
+		try {
+			$result = Radius_Deploy_Health_Check::trash_extra_service_area_hubs();
+		} catch ( \Throwable $e ) {
+			if ( class_exists( 'Radius_Operation_Log' ) ) {
+				Radius_Operation_Log::error(
+					'deploy_health',
+					'Health remediation exception: ' . $e->getMessage(),
+					Radius_Operation_Log::request_context()
+				);
+			}
+			wp_send_json_error( array( 'message' => __( 'Remediation failed (server error). See Radius → Logs.', 'radius' ) ) );
+			return;
+		}
+
+		if ( class_exists( 'Radius_Operation_Log' ) ) {
+			Radius_Operation_Log::info(
+				'deploy_health',
+				sprintf(
+					'Trashed %1$d out-of-scope service area hub page(s) for %2$d place(s).',
+					(int) $result['trashed'],
+					(int) $result['places']
+				),
+				array_merge( Radius_Operation_Log::request_context(), $result )
+			);
+		}
+
+		$report = Radius_Deploy_Health_Check::run();
+
+		wp_send_json_success(
+			array(
+				'remediation' => $result,
+				'message'     => sprintf(
+					/* translators: 1: pages trashed, 2: place count */
+					_n(
+						'Moved %1$d hub page to Trash (%2$d place outside scope).',
+						'Moved %1$d hub pages to Trash (%2$d places outside scope).',
+						(int) $result['places'],
+						'radius'
+					),
+					(int) $result['trashed'],
+					(int) $result['places']
+				),
+				'report'      => $report,
+			)
+		);
 	}
 
 	public static function dedupe_landings() {

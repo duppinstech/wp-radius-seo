@@ -436,6 +436,34 @@ class Radius_Deploy_Service {
 	}
 
 	/**
+	 * Trash every deployed post for a template + place (all copies).
+	 *
+	 * @param int    $template_id Template post ID.
+	 * @param int    $place_id    radius_place term ID.
+	 * @param string $post_type   radius_landing or radius_service_area.
+	 * @return int Posts moved to trash.
+	 */
+	public static function trash_all_deployed_for_place_template( $template_id, $place_id, $post_type ) {
+		$template_id = (int) $template_id;
+		$place_id    = (int) $place_id;
+		$post_type   = sanitize_key( (string) $post_type );
+		if ( $template_id <= 0 || $place_id <= 0 ) {
+			return 0;
+		}
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			return 0;
+		}
+		$ids     = self::find_extra_deployed_ids( $template_id, $place_id, $post_type, 0 );
+		$trashed = 0;
+		foreach ( $ids as $eid ) {
+			if ( wp_trash_post( (int) $eid ) ) {
+				++$trashed;
+			}
+		}
+		return $trashed;
+	}
+
+	/**
 	 * Trash all deployed posts for a template+place except the canonical one.
 	 * Called before unique_slug so the canonical post can reclaim the base slug.
 	 *
