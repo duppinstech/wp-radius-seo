@@ -106,6 +106,165 @@
 		) {
 			cfg.landingDeployQueueRemaining = payload.landing_deploy_queue_remaining;
 		}
+		if (payload.system_requirements && typeof payload.system_requirements === 'object') {
+			cfg.systemRequirements = payload.system_requirements;
+		}
+		if (payload.system_requirements_url) {
+			cfg.systemRequirementsUrl = payload.system_requirements_url;
+		}
+	}
+
+	function systemCheckStatusLabel(status) {
+		if (status === 'good') {
+			return i18n.systemCheckStatusGood || 'Good';
+		}
+		if (status === 'critical') {
+			return i18n.systemCheckStatusCritical || 'Critical';
+		}
+		return i18n.systemCheckStatusWarn || 'Needs improvement';
+	}
+
+	function systemCheckBannerClass(score) {
+		var s = parseInt(score, 10) || 0;
+		if (s >= 75) {
+			return 'ok';
+		}
+		if (s >= 60) {
+			return 'warn';
+		}
+		return 'bad';
+	}
+
+	function renderSystemCheckPanel(report) {
+		var wrap = document.getElementById('radius-mw-system-check');
+		if (!wrap || !report) {
+			return;
+		}
+		cfg.systemRequirements = report;
+		var score = parseInt(report.score, 10) || 0;
+		var min = parseInt(report.min_score, 10) || 60;
+		var grade = report.grade || {};
+		var gradeLabel = grade.label || '';
+		var banner = systemCheckBannerClass(score);
+		var checks = Array.isArray(report.checks) ? report.checks : [];
+		var rows = '';
+		checks.forEach(function (row) {
+			if (!row || !row.label) {
+				return;
+			}
+			var st = row.status || 'warn';
+			rows +=
+				'<tr class="radius-sysreq-row radius-sysreq-row--' +
+				esc(st) +
+				'">' +
+				'<td><strong>' +
+				esc(row.label) +
+				'</strong>' +
+				(row.detail ? '<p class="description">' + esc(row.detail) + '</p>' : '') +
+				'</td>' +
+				'<td><code>' +
+				esc(row.value_display || '') +
+				'</code></td>' +
+				'<td>' +
+				esc(row.recommended || '') +
+				'</td>' +
+				'<td><span class="radius-sysreq-badge radius-sysreq-badge--' +
+				esc(st) +
+				'">' +
+				esc(systemCheckStatusLabel(st)) +
+				'</span></td>' +
+				'</tr>';
+		});
+		var scoreFmt = (i18n.systemCheckScoreFmt || 'Readiness: %d%% — %s')
+			.replace('%d', String(score))
+			.replace('%s', gradeLabel);
+		var sysUrl = cfg.systemRequirementsUrl || '';
+		wrap.innerHTML =
+			'<h2 class="radius-mw-system-check__title">' +
+			esc(i18n.systemCheckHeading || 'Server readiness') +
+			'</h2>' +
+			'<p class="description">' +
+			esc(i18n.systemCheckIntro || '') +
+			'</p>' +
+			'<div class="radius-sysreq-score radius-sysreq-score--' +
+			esc(banner) +
+			' radius-mw-system-check__score">' +
+			'<div class="radius-sysreq-score__ring" aria-hidden="true"><span class="radius-sysreq-score__pct">' +
+			esc(String(score)) +
+			'%</span></div>' +
+			'<div class="radius-sysreq-score__body">' +
+			'<p class="radius-sysreq-score__title">' +
+			esc(scoreFmt) +
+			'</p>' +
+			(grade.summary
+				? '<p class="radius-sysreq-score__summary">' + esc(grade.summary) + '</p>'
+				: '') +
+			(score < min
+				? '<p class="radius-sysreq-score__gate">' +
+					esc(i18n.systemCheckBlocked || '') +
+					'</p>'
+				: '') +
+			(report.bypass_active
+				? '<p class="radius-sysreq-score__bypass-note">' +
+					esc(i18n.systemCheckBypassActive || 'Bypass active for your account.') +
+					'</p>'
+				: '') +
+			'</div>' +
+			'</div>' +
+			'<table class="widefat striped radius-sysreq-table radius-mw-system-check__table"><thead><tr>' +
+			'<th>Setting</th><th>Current</th><th>Recommended</th><th>Status</th>' +
+			'</tr></thead><tbody>' +
+			rows +
+			'</tbody></table>' +
+			(sysUrl
+				? '<p class="radius-mw-system-check__link"><a href="' +
+					esc(sysUrl) +
+					'" target="_blank" rel="noopener">' +
+					esc(i18n.systemCheckViewSystem || 'View full report') +
+					'</a></p>'
+				: '') +
+			'<p class="radius-mw-system-check__actions">' +
+			'<button type="button" class="button" id="radius-mw-system-bypass" hidden>' +
+			esc(i18n.systemCheckBypass || 'Bypass') +
+			'</button></p>';
+		var bypassBtn = document.getElementById('radius-mw-system-bypass');
+		if (bypassBtn && !bypassBtn.dataset.bound) {
+			bypassBtn.dataset.bound = '1';
+			bypassBtn.addEventListener('click', onSystemCheckBypass);
+		}
+		applySystemGate(report);
+	}
+
+	function applySystemGate(report) {
+		var start = document.getElementById('radius-mw-start');
+		var bypassBtn = document.getElementById('radius-mw-system-bypass');
+		if (!report) {
+			return;
+		}
+		var score = parseInt(report.score, 10) || 0;
+		var min = parseInt(report.min_score, 10) || 60;
+		var ready = !!report.migration_ready;
+		if (start) {
+			start.disabled = !ready && score < min;
+		}
+		if (bypassBtn) {
+			bypassBtn.hidden = ready || score >= min;
+		}
+	}
+
+	async function onSystemCheckBypass() {
+		if (
+			!window.confirm(
+				i18n.systemCheckBypassConfirm ||
+					'Bypass the server readiness check?'
+			)
+		) {
+			return;
+		}
+		var res = await postWizard('system_requirements_bypass');
+		if (res.success && res.data && res.data.system_requirements) {
+			renderSystemCheckPanel(res.data.system_requirements);
+		}
 	}
 
 	function postMigration(action, extra) {
@@ -487,11 +646,15 @@
 		summary.hidden = true;
 		summary.id = 'radius-mw-summary';
 
+		var sysCheck = el('section', 'radius-mw-system-check', '');
+		sysCheck.id = 'radius-mw-system-check';
+
 		panel.appendChild(head);
 		panel.appendChild(intro);
 		if (multisiteNote) {
 			panel.appendChild(multisiteNote);
 		}
+		panel.appendChild(sysCheck);
 		panel.appendChild(overallWrap);
 		panel.appendChild(stepsOl);
 		panel.appendChild(run);
@@ -505,13 +668,33 @@
 		dismiss.addEventListener('click', onDismiss);
 		bindMagicPagePluginButtons();
 		rootEl = panel;
+		if (payload && payload.system_requirements) {
+			renderSystemCheckPanel(payload.system_requirements);
+		}
 		if (payload && payload.steps) {
 			applyPrefilledSteps(payload.steps);
 		} else if (payload) {
 			postWizard('status').then(function (st) {
-				if (st.success && st.data && st.data.steps) {
+				if (st.success && st.data) {
 					mergeCfgFromPayload(st.data);
-					applyPrefilledSteps(st.data.steps);
+					if (st.data.system_requirements) {
+						renderSystemCheckPanel(st.data.system_requirements);
+					}
+					if (st.data.steps) {
+						applyPrefilledSteps(st.data.steps);
+					}
+				}
+			});
+		} else {
+			postWizard('status').then(function (st) {
+				if (st.success && st.data) {
+					mergeCfgFromPayload(st.data);
+					if (st.data.system_requirements) {
+						renderSystemCheckPanel(st.data.system_requirements);
+					}
+					if (st.data.steps) {
+						applyPrefilledSteps(st.data.steps);
+					}
 				}
 			});
 		}
@@ -1179,6 +1362,23 @@
 			return;
 		}
 		mergeCfgFromPayload(stFresh.data);
+		if (stFresh.data.system_requirements) {
+			renderSystemCheckPanel(stFresh.data.system_requirements);
+		}
+		if (
+			stFresh.data.system_requirements &&
+			!stFresh.data.system_requirements.migration_ready
+		) {
+			var blockMsg = i18n.systemCheckBlocked || 'Server readiness is below 60%.';
+			if (run) {
+				run.innerHTML =
+					'<p class="radius-mw-error">' + esc(blockMsg) + '</p>';
+			}
+			if (start) {
+				start.disabled = false;
+			}
+			return;
+		}
 		var steps = stFresh.data.steps || {};
 
 		// Single steps_reset replaces N× step_reset — clears persisted “recorded” flags only (needed so deploy-only steps can re-run and the log stays honest).

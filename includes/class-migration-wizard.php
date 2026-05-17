@@ -684,6 +684,21 @@ final class Radius_Migration_Wizard {
 			case 'status':
 				wp_send_json_success( self::build_status_payload() );
 				return;
+			case 'system_requirements_bypass':
+				if ( class_exists( 'Radius_System_Requirements' ) ) {
+					Radius_System_Requirements::set_user_bypass( true );
+					self::append_activity_log(
+						__( 'Server readiness check bypassed for migration.', 'radius' ),
+						array( 'source' => 'wizard' )
+					);
+				}
+				wp_send_json_success(
+					array(
+						'ok'                  => true,
+						'system_requirements' => class_exists( 'Radius_System_Requirements' ) ? Radius_System_Requirements::get_report() : array(),
+					)
+				);
+				return;
 			case 'dismiss':
 				self::set_state( 'dismissed' );
 				wp_send_json_success( array( 'ok' => true ) );
@@ -971,6 +986,8 @@ final class Radius_Migration_Wizard {
 			'service_area_deploy_queue_remaining' => $sa_tpl > 0 ? self::deploy_queue_remaining_count( $sa_tpl, 'radius_service_area' ) : 0,
 			'landing_deploy_queue_remaining'      => $landing_queues,
 			'deploy_batch_nonce'                  => wp_create_nonce( 'radius_deploy_batch' ),
+			'system_requirements'                 => class_exists( 'Radius_System_Requirements' ) ? Radius_System_Requirements::get_report() : array(),
+			'system_requirements_url'             => admin_url( 'admin.php?page=radius-deploy&tab=system' ),
 			'steps'            => self::build_steps_status(),
 			'activity_log'     => self::get_activity_log(),
 			'operation_logs_url' => admin_url( 'admin.php?page=radius-logs' ),

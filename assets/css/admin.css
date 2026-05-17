@@ -1716,3 +1716,108 @@ progress.radius-mw-overall-bar {
 	padding: 12px 14px;
 	border-radius: 4px;
 }
+
+/* Deploy → System / migration server readiness */
+.radius-sysreq-score {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 16px;
+	margin: 1.25em 0 1.5em;
+	padding: 16px 18px;
+	border-radius: 6px;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+}
+.radius-sysreq-score--ok {
+	border-left: 4px solid #00a32a;
+	background: #f0fdf4;
+}
+.radius-sysreq-score--warn {
+	border-left: 4px solid #dba617;
+	background: #fffbeb;
+}
+.radius-sysreq-score--bad {
+	border-left: 4px solid #d63638;
+	background: #fef2f2;
+}
+.radius-sysreq-score__ring {
+	flex: 0 0 auto;
+	width: 72px;
+	height: 72px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 700;
+	font-size: 1.15rem;
+	border: 3px solid currentColor;
+}
+.radius-sysreq-score--ok .radius-sysreq-score__ring {
+	color: #00a32a;
+}
+.radius-sysreq-score--warn .radius-sysreq-score__ring {
+	color: #996800;
+}
+.radius-sysreq-score--bad .radius-sysreq-score__ring {
+	color: #d63638;
+}
+.radius-sysreq-score__body {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+.radius-sysreq-score__title {
+	margin: 0 0 6px;
+	font-size: 1.05em;
+}
+.radius-sysreq-score__summary,
+.radius-sysreq-score__gate,
+.radius-sysreq-score__bypass-note {
+	margin: 0 0 6px;
+}
+.radius-sysreq-table {
+	margin-top: 0;
+}
+.radius-sysreq-row--critical {
+	background: #fef2f2;
+}
+.radius-sysreq-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+}
+.radius-sysreq-badge--good {
+	background: #d5f5e0;
+	color: #0a4b1e;
+}
+.radius-sysreq-badge--warn {
+	background: #fcf0c3;
+	color: #6d4c00;
+}
+.radius-sysreq-badge--critical {
+	background: #fcebea;
+	color: #8a2424;
+}
+.radius-sysreq-ini {
+	margin-top: 1em;
+}
+.radius-mw-system-check {
+	margin: 0 0 1.25em;
+	padding: 0 0 1em;
+	border-bottom: 1px solid #dcdcde;
+}
+.radius-mw-system-check__title {
+	margin: 0 0 0.35em;
+	font-size: 1.05em;
+}
+.radius-mw-system-check__table {
+	margin-top: 0.75em;
+}
+.radius-mw-system-check__link {
+	margin: 0.75em 0 0;
+}
+.radius-mw-system-check__actions {
+	margin: 0.75em 0 0;
+}

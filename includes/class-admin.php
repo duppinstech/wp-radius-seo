@@ -308,6 +308,7 @@ class Radius_Admin {
 				'deployBatchNonce'      => wp_create_nonce( 'radius_deploy_batch' ),
 				'openOnLoad'            => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
 				'deployPageUrl'         => admin_url( 'admin.php?page=radius-deploy' ),
+				'systemRequirementsUrl' => admin_url( 'admin.php?page=radius-deploy&tab=system' ),
 				'importPageUrl'         => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 				'serviceAreasUrl'       => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
 				'locationsLibraryUrl'   => admin_url( 'admin.php?page=radius-locations' ),
@@ -343,6 +344,18 @@ class Radius_Admin {
 					'deployHtmlResponse'        => __( 'Deploy returned HTML instead of JSON (often a PHP fatal or security page).', 'radius' ),
 					'deployMissingServiceAreaTemplate' => __( 'Set the service area template under Radius → Settings → General, save, then run deployment again.', 'radius' ),
 					'deployMissingLandingTemplates' => __( 'Could not find published service templates. Run the templates step first.', 'radius' ),
+					'deployResumeHint'          => __( 'A deploy queue may still be saved. Click Start migration again to resume, or open Radius → Deploy and use Continue on the template card.', 'radius' ),
+					'systemCheckHeading'        => __( 'Server readiness', 'radius' ),
+					'systemCheckIntro'          => __( 'Radius checks PHP limits before migration. Fix critical items on Deploy → System, or bypass if you accept timeouts and failed batches.', 'radius' ),
+					'systemCheckScoreFmt'       => __( 'Readiness: %d%% — %s', 'radius' ),
+					'systemCheckBlocked'        => __( 'Migration is blocked until the server readiness score is at least 60% or you bypass this check.', 'radius' ),
+					'systemCheckBypass'         => __( 'I understand — run migration anyway', 'radius' ),
+					'systemCheckBypassActive'   => __( 'You bypassed the readiness check for your account.', 'radius' ),
+					'systemCheckBypassConfirm'  => __( 'Bypass the server readiness check? Deploy and migration may fail or time out until PHP limits are raised.', 'radius' ),
+					'systemCheckViewSystem'     => __( 'View full report on Deploy → System', 'radius' ),
+					'systemCheckStatusGood'     => __( 'Good', 'radius' ),
+					'systemCheckStatusWarn'     => __( 'Needs improvement', 'radius' ),
+					'systemCheckStatusCritical' => __( 'Critical', 'radius' ),
 					'migrationCompletedTitle'   => __( 'Migration complete', 'radius' ),
 					'migrationCompletedBody'    => __( 'Service areas and landing templates were deployed. This site is marked as migrated.', 'radius' ),
 					'summaryAfterDeploy'        => __( 'Migration summary', 'radius' ),
@@ -650,6 +663,7 @@ class Radius_Admin {
 						'deployBatchNonce'     => wp_create_nonce( 'radius_deploy_batch' ),
 						'openOnLoad'           => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
 						'deployPageUrl'        => admin_url( 'admin.php?page=radius-deploy' ),
+						'systemRequirementsUrl' => admin_url( 'admin.php?page=radius-deploy&tab=system' ),
 						'importPageUrl'        => admin_url( 'admin.php?page=radius-import&tab=migration' ),
 						'serviceAreasUrl'      => admin_url( 'admin.php?page=radius-settings&tab=areas' ),
 						'locationsLibraryUrl'  => admin_url( 'admin.php?page=radius-locations' ),
@@ -687,6 +701,17 @@ class Radius_Admin {
 							'deployMissingLandingTemplates'   => __( 'Could not find published service templates. Run the templates step first.', 'radius' ),
 							'deployProgress'                  => __( 'Deploying… %d places remaining in this queue.', 'radius' ),
 							'deployResumeHint'                => __( 'A deploy queue may still be saved. Click Start migration again to resume, or open Radius → Deploy and use Continue on the template card.', 'radius' ),
+							'systemCheckHeading'              => __( 'Server readiness', 'radius' ),
+							'systemCheckIntro'                  => __( 'Radius checks PHP limits before migration. Fix critical items on Deploy → System, or bypass if you accept timeouts and failed batches.', 'radius' ),
+							'systemCheckScoreFmt'               => __( 'Readiness: %d%% — %s', 'radius' ),
+							'systemCheckBlocked'                => __( 'Migration is blocked until the server readiness score is at least 60% or you bypass this check.', 'radius' ),
+							'systemCheckBypass'                 => __( 'I understand — run migration anyway', 'radius' ),
+							'systemCheckBypassActive'           => __( 'You bypassed the readiness check for your account.', 'radius' ),
+							'systemCheckBypassConfirm'          => __( 'Bypass the server readiness check? Deploy and migration may fail or time out until PHP limits are raised.', 'radius' ),
+							'systemCheckViewSystem'             => __( 'View full report on Deploy → System', 'radius' ),
+							'systemCheckStatusGood'             => __( 'Good', 'radius' ),
+							'systemCheckStatusWarn'             => __( 'Needs improvement', 'radius' ),
+							'systemCheckStatusCritical'         => __( 'Critical', 'radius' ),
 							'migrationCompletedTitle'         => __( 'Migration complete', 'radius' ),
 							'migrationCompletedBody'          => __( 'Service areas and landing templates were deployed. This site is marked as migrated.', 'radius' ),
 							'summaryAfterDeploy'                => __( 'Migration summary', 'radius' ),
@@ -1617,7 +1642,7 @@ class Radius_Admin {
 		}
 
 		$deploy_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'landings'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check' ), true ) ) {
+		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check', 'system' ), true ) ) {
 			$deploy_tab = 'landings';
 		}
 
@@ -1697,6 +1722,7 @@ class Radius_Admin {
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=service-areas' ) ); ?>" class="nav-tab<?php echo 'service-areas' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Service Areas', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=migration' ) ); ?>" class="nav-tab<?php echo 'migration' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Migration', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=health-check' ) ); ?>" class="nav-tab<?php echo 'health-check' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Health check', 'radius' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=system' ) ); ?>" class="nav-tab<?php echo 'system' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'System', 'radius' ); ?></a>
 		</h2>
 
 		<?php if ( 'landings' === $deploy_tab ) : ?>
@@ -2125,6 +2151,10 @@ class Radius_Admin {
 			<div id="radius-deploy-health-results" class="radius-deploy-health-results" role="region" aria-label="<?php esc_attr_e( 'Health check results', 'radius' ); ?>"></div>
 		</div>
 	<?php endif; /* health-check tab */ ?>
+
+	<?php if ( 'system' === $deploy_tab && class_exists( 'Radius_System_Requirements' ) ) : ?>
+		<?php Radius_System_Requirements::render_admin_section(); ?>
+	<?php endif; /* system tab */ ?>
 
 	<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
 				<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-deploy-close="1"></button>
