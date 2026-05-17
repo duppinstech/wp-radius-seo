@@ -28,6 +28,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_migration_import_templates', array( __CLASS__, 'migration_import_templates' ) );
 		add_action( 'wp_ajax_radius_migration_clone_variants', array( __CLASS__, 'migration_clone_variants' ) );
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
+		add_action( 'wp_ajax_radius_deploy_health_check', array( __CLASS__, 'deploy_health_check' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
 	}
 
@@ -768,6 +769,68 @@ class Radius_Ajax {
 	 *
 	 * @return void
 	 */
+	/**
+	 * Run deploy / migration health checks (Deploy → Health check tab).
+	 *
+	 * @return void
+	 */
+	public static function deploy_health_check() {
+		check_ajax_referer( 'radius_deploy_health_check', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 300 );
+		}
+		if ( function_exists( 'wp_raise_memory_limit' ) ) {
+			wp_raise_memory_limit( 'admin' );
+		}
+
+		try {
+			$report = Radius_Deploy_Health_Check::run();
+		} catch ( \Throwable $e ) {
+			if ( class_exists( 'Radius_Operation_Log' ) ) {
+				Radius_Operation_Log::error(
+					'deploy_health',
+					'Health check exception: ' . $e->getMessage(),
+					array_merge(
+						Radius_Operation_Log::request_context(),
+						array( 'trace' => $e->getTraceAsString() )
+					)
+				);
+			}
+			$detail = $e->getMessage();
+			if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
+				$detail = __( 'Health check failed (server error). See Radius → Logs.', 'radius' );
+			}
+			wp_send_json_error( array( 'message' => $detail ) );
+			return;
+		}
+
+		if ( class_exists( 'Radius_Operation_Log' ) ) {
+			$sum = isset( $report['summary'] ) && is_array( $report['summary'] ) ? $report['summary'] : array();
+			Radius_Operation_Log::info(
+				'deploy_health',
+				sprintf(
+					'Health check finished: %d pass, %d warn, %d fail',
+					(int) ( $sum['pass'] ?? 0 ),
+					(int) ( $sum['warn'] ?? 0 ),
+					(int) ( $sum['fail'] ?? 0 )
+				),
+				Radius_Operation_Log::request_context()
+			);
+		}
+
+		wp_send_json_success( $report );
+	}
+
 	public static function dedupe_landings() {
 		check_ajax_referer( 'radius_dedupe_landings', 'nonce' );
 

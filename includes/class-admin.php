@@ -542,6 +542,37 @@ class Radius_Admin {
 				),
 			)
 		);
+			wp_enqueue_script(
+				'radius-deploy-health',
+				RADIUS_URL . 'assets/js/radius-deploy-health.js',
+				array(),
+				RADIUS_VERSION,
+				true
+			);
+			wp_localize_script(
+				'radius-deploy-health',
+				'radiusDeployHealth',
+				array(
+					'ajaxurl'    => admin_url( 'admin-ajax.php' ),
+					'nonce'      => wp_create_nonce( 'radius_deploy_health_check' ),
+					'autoRun'    => ( isset( $_GET['tab'] ) && 'health-check' === sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) ), // phpcs:ignore WordPress.Security.NonceVerification
+					'i18n'       => array(
+						'running'       => __( 'Running checks…', 'radius' ),
+						'errorPrefix'   => __( 'Error:', 'radius' ),
+						'runAgain'      => __( 'Run health check', 'radius' ),
+						'overallPass'   => __( 'All checks passed.', 'radius' ),
+						'overallWarn'   => __( 'Checks passed with warnings — review items below.', 'radius' ),
+						'overallFail'   => __( 'Some checks failed — fix issues before considering migration complete.', 'radius' ),
+						'pass'          => __( 'Pass', 'radius' ),
+						'warn'          => __( 'Warning', 'radius' ),
+						'fail'          => __( 'Fail', 'radius' ),
+						'skip'          => __( 'Skipped', 'radius' ),
+						'fix'           => __( 'Open fix', 'radius' ),
+						'missingSlugs'  => __( 'Sample missing place slugs', 'radius' ),
+						'scopeFmt'      => __( 'Deploy scope: %d places (inside service areas after prefilter).', 'radius' ),
+					),
+				)
+			);
 		return;
 	}
 	if ( 'radius_page_radius-analytics' === $hook_suffix ) {
@@ -1584,7 +1615,7 @@ class Radius_Admin {
 		}
 
 		$deploy_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'landings'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration' ), true ) ) {
+		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check' ), true ) ) {
 			$deploy_tab = 'landings';
 		}
 
@@ -1663,6 +1694,7 @@ class Radius_Admin {
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=landings' ) ); ?>" class="nav-tab<?php echo 'landings' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Landings', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=service-areas' ) ); ?>" class="nav-tab<?php echo 'service-areas' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Service Areas', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=migration' ) ); ?>" class="nav-tab<?php echo 'migration' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Migration', 'radius' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=health-check' ) ); ?>" class="nav-tab<?php echo 'health-check' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Health check', 'radius' ); ?></a>
 		</h2>
 
 		<?php if ( 'landings' === $deploy_tab ) : ?>
@@ -2074,6 +2106,23 @@ class Radius_Admin {
 			</div>
 		</div>
 	<?php endif; /* migration tab */ ?>
+
+	<?php if ( 'health-check' === $deploy_tab ) : ?>
+		<div class="radius-card radius-deploy-health" id="radius-deploy-health">
+			<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Deployment health check', 'radius' ); ?></h2>
+			<p class="description">
+				<?php esc_html_e( 'Validates migration steps, service-area coverage, and landing pages per template against the same place list used when you deploy (places inside your service areas, minus slug-pattern and duplicate-name exclusions).', 'radius' ); ?>
+			</p>
+			<p>
+				<button type="button" class="button button-primary" id="radius-deploy-health-run">
+					<?php esc_html_e( 'Run health check', 'radius' ); ?>
+				</button>
+				<span class="spinner" id="radius-deploy-health-spinner" style="float:none;margin-top:0;"></span>
+			</p>
+			<div id="radius-deploy-health-summary" class="radius-deploy-health-summary" hidden aria-live="polite"></div>
+			<div id="radius-deploy-health-results" class="radius-deploy-health-results" role="region" aria-label="<?php esc_attr_e( 'Health check results', 'radius' ); ?>"></div>
+		</div>
+	<?php endif; /* health-check tab */ ?>
 
 	<div id="radius-deploy-help-dialog" class="radius-deploy-help-overlay" hidden data-radius-deploy-overlay="1" aria-hidden="true">
 				<button type="button" class="radius-deploy-help-overlay__backdrop" tabindex="-1" aria-label="<?php esc_attr_e( 'Close', 'radius' ); ?>" data-radius-deploy-close="1"></button>

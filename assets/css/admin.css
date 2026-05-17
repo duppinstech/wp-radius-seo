@@ -1674,3 +1674,45 @@ progress.radius-mw-overall-bar {
 	margin-left: 8px;
 	vertical-align: middle;
 }
+
+/* Deploy → Health check */
+.radius-deploy-health-list {
+	list-style: none;
+	margin: 1em 0 0;
+	padding: 0;
+}
+.radius-deploy-health-item {
+	margin: 0 0 12px;
+	padding: 12px 14px;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #fff;
+}
+.radius-deploy-health-item--pass {
+	border-left: 4px solid #00a32a;
+}
+.radius-deploy-health-item--warn {
+	border-left: 4px solid #dba617;
+}
+.radius-deploy-health-item--fail {
+	border-left: 4px solid #d63638;
+}
+.radius-deploy-health-item--skip {
+	border-left: 4px solid #8c8f94;
+}
+.radius-deploy-health-item__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+.radius-deploy-health-item__summary {
+	margin: 0 0 4px;
+}
+.radius-deploy-health-summary {
+	margin: 1em 0;
+	padding: 12px 14px;
+	border-radius: 4px;
+}
