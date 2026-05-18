@@ -190,6 +190,9 @@ class Radius_Ajax {
 		try {
 			$res = Radius_Legacy_Import_Service::import_places( $lim, $offset, $posted_total > 0 ? $posted_total : null, $options );
 		} catch ( \Throwable $e ) {
+			if ( class_exists( 'Radius_Multisite' ) ) {
+				Radius_Multisite::release_heavy_operation();
+			}
 			Radius_Operation_Log::error(
 				'legacy_import',
 				'Legacy import batch exception: ' . $e->getMessage(),

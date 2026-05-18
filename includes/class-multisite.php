@@ -27,6 +27,16 @@ final class Radius_Multisite {
 	}
 
 	/**
+	 * Normalized array key for network lock rows (avoids int vs string strict-compare bugs).
+	 *
+	 * @param int|string $blog_id Blog ID.
+	 * @return string
+	 */
+	private static function blog_key( $blog_id ) {
+		return (string) (int) $blog_id;
+	}
+
+	/**
 	 * Suffix for transient/option keys (avoids object-cache collisions on some hosts).
 	 *
 	 * @return string e.g. _b3 or empty on single site.
@@ -82,12 +92,12 @@ final class Radius_Multisite {
 			return true;
 		}
 
-		$bid   = (string) self::blog_id();
+		$bid   = self::blog_key( self::blog_id() );
 		$locks = self::prune_network_locks( self::get_network_locks() );
 		$now   = time();
 
 		foreach ( $locks as $other_bid => $lock ) {
-			if ( $other_bid === $bid || ! is_array( $lock ) ) {
+			if ( self::blog_key( $other_bid ) === $bid || ! is_array( $lock ) ) {
 				continue;
 			}
 			return false;
@@ -106,7 +116,7 @@ final class Radius_Multisite {
 		if ( ! is_multisite() ) {
 			return;
 		}
-		$bid   = (string) self::blog_id();
+		$bid   = self::blog_key( self::blog_id() );
 		$locks = self::get_network_locks();
 		if ( ! isset( $locks[ $bid ] ) ) {
 			return;
@@ -124,11 +134,11 @@ final class Radius_Multisite {
 		if ( ! is_multisite() ) {
 			return null;
 		}
-		$bid   = (string) self::blog_id();
+		$bid   = self::blog_key( self::blog_id() );
 		$locks = self::prune_network_locks( self::get_network_locks() );
 		foreach ( $locks as $other_bid => $lock ) {
-			if ( $other_bid !== $bid && is_array( $lock ) ) {
-				$lock['blog_id'] = (int) $other_bid;
+			if ( self::blog_key( $other_bid ) !== $bid && is_array( $lock ) ) {
+				$lock['blog_id'] = (int) self::blog_key( $other_bid );
 				return $lock;
 			}
 		}
@@ -189,7 +199,9 @@ final class Radius_Multisite {
 		if ( class_exists( 'Radius_Operation_Log' ) ) {
 			Radius_Operation_Log::error(
 				'multisite',
-				'Heavy operation blocked: another subsite holds the network lock.',
+				$foreign
+					? 'Heavy operation blocked: another subsite holds the network lock.'
+					: 'Heavy operation blocked: network lock could not be acquired.',
 				array_merge(
 					Radius_Operation_Log::request_context(),
 					array(
@@ -214,7 +226,14 @@ final class Radius_Multisite {
 	 */
 	private static function get_network_locks() {
 		$raw = get_site_option( self::NETWORK_LOCKS_OPTION, array() );
-		return is_array( $raw ) ? $raw : array();
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$locks = array();
+		foreach ( $raw as $bid => $lock ) {
+			$locks[ self::blog_key( $bid ) ] = $lock;
+		}
+		return $locks;
 	}
 
 	/**
@@ -242,12 +261,13 @@ final class Radius_Multisite {
 	 * @return void
 	 */
 	private static function touch_network_lock( $operation ) {
-		$bid   = (string) self::blog_id();
+		$bid   = self::blog_key( self::blog_id() );
 		$locks = self::prune_network_locks( self::get_network_locks() );
 		$now   = time();
 		$locks[ $bid ] = array(
 			'operation'  => sanitize_key( $operation ),
 			'user_id'    => get_current_user_id(),
+			'blog_id'    => (int) self::blog_id(),
 			'since'      => isset( $locks[ $bid ]['since'] ) ? (int) $locks[ $bid ]['since'] : $now,
 			'touched'    => $now,
 			'site_url'   => home_url( '/' ),
