@@ -927,22 +927,41 @@ class Radius_Ajax {
 			);
 		}
 
-		$report = Radius_Deploy_Health_Check::run();
+		$report    = Radius_Deploy_Health_Check::run();
+		$redirects = isset( $result['redirects'] ) ? (int) $result['redirects'] : 0;
+		$index_url = class_exists( 'Radius_Redirect_Service' )
+			? Radius_Redirect_Service::get_service_area_index_url()
+			: '';
+
+		$message = sprintf(
+			/* translators: 1: pages trashed, 2: place count */
+			_n(
+				'Moved %1$d hub page to Trash (%2$d place outside scope).',
+				'Moved %1$d hub pages to Trash (%2$d places outside scope).',
+				(int) $result['places'],
+				'radius'
+			),
+			(int) $result['trashed'],
+			(int) $result['places']
+		);
+		if ( $redirects > 0 && $index_url !== '' ) {
+			$message .= ' ' . sprintf(
+				/* translators: 1: redirect count, 2: service area index URL */
+				_n(
+					'Added %1$d redirect to %2$s.',
+					'Added %1$d redirects to %2$s.',
+					$redirects,
+					'radius'
+				),
+				$redirects,
+				$index_url
+			);
+		}
 
 		wp_send_json_success(
 			array(
 				'remediation' => $result,
-				'message'     => sprintf(
-					/* translators: 1: pages trashed, 2: place count */
-					_n(
-						'Moved %1$d hub page to Trash (%2$d place outside scope).',
-						'Moved %1$d hub pages to Trash (%2$d places outside scope).',
-						(int) $result['places'],
-						'radius'
-					),
-					(int) $result['trashed'],
-					(int) $result['places']
-				),
+				'message'     => $message,
 				'report'      => $report,
 			)
 		);

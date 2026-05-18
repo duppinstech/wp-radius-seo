@@ -588,7 +588,7 @@ class Radius_Admin {
 						'skip'          => __( 'Skipped', 'radius' ),
 						'fix'           => __( 'Open fix', 'radius' ),
 						'trashExtraHubs' => __( 'Trash out-of-scope hubs', 'radius' ),
-						'trashExtraHubsConfirm' => __( 'Move all service area hub pages for places outside deploy scope to the Trash? Landing pages are not affected.', 'radius' ),
+						'trashExtraHubsConfirm' => __( 'Move all service area hub pages for places outside deploy scope to the Trash? Each trashed URL will 301 redirect to your service area index (e.g. /service-area/). With the Redirection plugin active, rules are added under Tools → Redirection. Landing pages are not affected.', 'radius' ),
 						'trashExtraHubsRunning' => __( 'Trashing hubs…', 'radius' ),
 						'extraSlugs'    => __( 'Sample out-of-scope place slugs', 'radius' ),
 						'missingSlugs'  => __( 'Sample missing place slugs', 'radius' ),

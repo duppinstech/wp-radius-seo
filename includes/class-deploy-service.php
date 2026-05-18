@@ -384,7 +384,11 @@ class Radius_Deploy_Service {
 			if ( $pid <= 0 ) {
 				continue;
 			}
-			if ( wp_trash_post( $pid ) ) {
+			if ( class_exists( 'Radius_Redirect_Service' ) ) {
+				if ( Radius_Redirect_Service::trash_deployed_post_with_redirect( $pid ) ) {
+					++$trashed;
+				}
+			} elseif ( wp_trash_post( $pid ) ) {
 				++$trashed;
 			}
 		}
@@ -456,7 +460,11 @@ class Radius_Deploy_Service {
 		$ids     = self::find_extra_deployed_ids( $template_id, $place_id, $post_type, 0 );
 		$trashed = 0;
 		foreach ( $ids as $eid ) {
-			if ( wp_trash_post( (int) $eid ) ) {
+			if ( class_exists( 'Radius_Redirect_Service' ) ) {
+				if ( Radius_Redirect_Service::trash_deployed_post_with_redirect( (int) $eid ) ) {
+					++$trashed;
+				}
+			} elseif ( wp_trash_post( (int) $eid ) ) {
 				++$trashed;
 			}
 		}
@@ -477,7 +485,11 @@ class Radius_Deploy_Service {
 		$extras  = self::find_extra_deployed_ids( $template_id, $place_id, $post_type, $canonical_id );
 		$trashed = 0;
 		foreach ( $extras as $eid ) {
-			if ( wp_trash_post( $eid ) ) {
+			if ( class_exists( 'Radius_Redirect_Service' ) ) {
+				if ( Radius_Redirect_Service::trash_deployed_post_with_redirect( (int) $eid ) ) {
+					++$trashed;
+				}
+			} elseif ( wp_trash_post( $eid ) ) {
 				++$trashed;
 			}
 		}
@@ -554,7 +566,11 @@ class Radius_Deploy_Service {
 			// Keep the oldest (first by ID, already ASC-sorted); trash the rest.
 			array_shift( $ids );
 			foreach ( $ids as $eid ) {
-				if ( wp_trash_post( $eid ) ) {
+				if ( class_exists( 'Radius_Redirect_Service' ) ) {
+					if ( Radius_Redirect_Service::trash_deployed_post_with_redirect( (int) $eid ) ) {
+						++$trashed;
+					}
+				} elseif ( wp_trash_post( $eid ) ) {
 					++$trashed;
 				}
 			}

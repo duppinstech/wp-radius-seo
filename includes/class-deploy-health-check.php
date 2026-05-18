@@ -487,9 +487,12 @@ final class Radius_Deploy_Health_Check {
 	/**
 	 * Move service-area hub pages to Trash for places outside deploy scope.
 	 *
-	 * @return array{trashed:int,places:int,template_id:int}
+	 * @return array{trashed:int,places:int,template_id:int,redirects:int}
 	 */
 	public static function trash_extra_service_area_hubs() {
+		if ( class_exists( 'Radius_Redirect_Service' ) ) {
+			Radius_Redirect_Service::reset_batch_redirect_count();
+		}
 		$gaps = self::get_service_area_coverage_gaps();
 		$tid  = (int) $gaps['template_id'];
 		$extra = isset( $gaps['extra_place_ids'] ) && is_array( $gaps['extra_place_ids'] )
@@ -500,6 +503,7 @@ final class Radius_Deploy_Health_Check {
 				'trashed'     => 0,
 				'places'      => 0,
 				'template_id' => $tid,
+				'redirects'   => 0,
 			);
 		}
 		$trashed = 0;
@@ -510,10 +514,13 @@ final class Radius_Deploy_Health_Check {
 				'radius_service_area'
 			);
 		}
+		$redirects = class_exists( 'Radius_Redirect_Service' ) ? Radius_Redirect_Service::get_batch_redirect_count() : 0;
+
 		return array(
 			'trashed'     => $trashed,
 			'places'      => count( $extra ),
 			'template_id' => $tid,
+			'redirects'   => $redirects,
 		);
 	}
 
@@ -551,7 +558,7 @@ final class Radius_Deploy_Health_Check {
 		$detail = '';
 		if ( ! empty( $extra_places ) ) {
 			$detail = __(
-				'Extra hubs are for places outside your current deploy scope (outside service areas, slug-pattern exclusions, or duplicate-name rules). Use the button below to trash those hub pages.',
+				'Extra hubs are for places outside your current deploy scope (outside service areas, slug-pattern exclusions, or duplicate-name rules). Use the button below to trash those hub pages. Each trashed URL gets a 301 redirect to your service area index (e.g. /service-area/). If the Redirection plugin is active, rules appear under Tools → Redirection in the Radius SEO group.',
 				'radius'
 			);
 		}

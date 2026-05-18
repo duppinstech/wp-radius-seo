@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.69
+Stable tag: 1.6.70
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,6 +79,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 == Changelog ==
+
+= 1.6.70 =
+* **Redirects:** Trashing service area hubs (health check remediation, dedupe, or deploy cleanup) registers a 301 to your service area index URL (settings slug, e.g. `/service-area/`). When the free [Redirection](https://wordpress.org/plugins/redirection/) plugin is active, rules are created there (group **Radius SEO**). Otherwise rules use the built-in `radius_redirect_rules` option (or Yoast SEO Premium when available). Landings trashed via the same deploy helpers also redirect to that index by default (`radius_trash_redirect_landing_to_service_area_index`).
 
 = 1.6.69 =
 * **Health check:** “Trash out-of-scope hubs” remediation on the Service area pages check — moves hub pages for places outside deploy scope to Trash (landings unchanged), then re-runs the report.
