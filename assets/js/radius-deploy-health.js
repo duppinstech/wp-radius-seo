@@ -126,21 +126,36 @@
 					(c.extra_count > c.extra_slugs.length ? ' …' : '') +
 					'</p>';
 			}
-			if (
-				c.remediation &&
-				c.remediation.action === 'trash_extra_service_areas' &&
-				c.remediation.count > 0
-			) {
-				html +=
-					'<p class="radius-deploy-health-remediate">' +
-					'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
-					'data-remediate-action="trash_extra_service_areas" data-check-id="' +
-					esc(c.id || 'service_area_coverage') +
-					'">' +
-					esc(i18n.trashExtraHubs || 'Trash out-of-scope hubs') +
-					' (' +
-					esc(String(c.remediation.count)) +
-					')</button></p>';
+			if (c.remediation && c.remediation.count > 0) {
+				if (c.remediation.action === 'trash_extra_service_areas') {
+					html +=
+						'<p class="radius-deploy-health-remediate">' +
+						'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
+						'data-remediate-action="trash_extra_service_areas" data-check-id="' +
+						esc(c.id || 'service_area_coverage') +
+						'" data-btn-label="' +
+						esc(i18n.trashExtraHubs || 'Trash out-of-scope hubs') +
+						'">' +
+						esc(i18n.trashExtraHubs || 'Trash out-of-scope hubs') +
+						' (' +
+						esc(String(c.remediation.count)) +
+						')</button></p>';
+				} else if (c.remediation.action === 'trash_extra_landings') {
+					html +=
+						'<p class="radius-deploy-health-remediate">' +
+						'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
+						'data-remediate-action="trash_extra_landings" data-template-id="' +
+						esc(String(c.remediation.template_id || c.template_id || '')) +
+						'" data-check-id="' +
+						esc(c.id || '') +
+						'" data-btn-label="' +
+						esc(i18n.trashExtraLandings || 'Trash out-of-scope landings') +
+						'">' +
+						esc(i18n.trashExtraLandings || 'Trash out-of-scope landings') +
+						' (' +
+						esc(String(c.remediation.count)) +
+						')</button></p>';
+				}
 			}
 			if (c.fix_url) {
 				html +=
@@ -207,11 +222,15 @@
 			});
 	}
 
-	function runRemediate(action, triggerBtn) {
+	function runRemediate(action, triggerBtn, templateId) {
 		if (!cfg.ajaxurl || !cfg.nonce || !action) {
 			return;
 		}
 		var i18n = cfg.i18n || {};
+		var defaultLabel =
+			triggerBtn && triggerBtn.getAttribute('data-btn-label')
+				? triggerBtn.getAttribute('data-btn-label')
+				: '';
 		if (
 			action === 'trash_extra_service_areas' &&
 			!window.confirm(
@@ -221,14 +240,31 @@
 		) {
 			return;
 		}
+		if (
+			action === 'trash_extra_landings' &&
+			!window.confirm(
+				i18n.trashExtraLandingsConfirm ||
+					'Move out-of-scope landing pages to the Trash?'
+			)
+		) {
+			return;
+		}
 		if (triggerBtn) {
 			triggerBtn.disabled = true;
-			triggerBtn.textContent = i18n.trashExtraHubsRunning || 'Trashing hubs…';
+			if (action === 'trash_extra_landings') {
+				triggerBtn.textContent =
+					i18n.trashExtraLandingsRunning || 'Trashing landings…';
+			} else {
+				triggerBtn.textContent = i18n.trashExtraHubsRunning || 'Trashing hubs…';
+			}
 		}
 		var fd = new FormData();
 		fd.append('action', 'radius_deploy_health_remediate');
 		fd.append('nonce', cfg.nonce);
 		fd.append('remediate_action', action);
+		if (action === 'trash_extra_landings' && templateId) {
+			fd.append('template_id', String(templateId));
+		}
 		fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' })
 			.then(function (r) {
 				return r.json();
@@ -237,7 +273,10 @@
 				if (triggerBtn) {
 					triggerBtn.disabled = false;
 					triggerBtn.textContent =
-						i18n.trashExtraHubs || 'Trash out-of-scope hubs';
+						defaultLabel ||
+						(action === 'trash_extra_landings'
+							? i18n.trashExtraLandings || 'Trash out-of-scope landings'
+							: i18n.trashExtraHubs || 'Trash out-of-scope hubs');
 				}
 				var resultsEl = document.getElementById('radius-deploy-health-results');
 				if (!json || !json.success) {
@@ -273,7 +312,10 @@
 				if (triggerBtn) {
 					triggerBtn.disabled = false;
 					triggerBtn.textContent =
-						i18n.trashExtraHubs || 'Trash out-of-scope hubs';
+						defaultLabel ||
+						(action === 'trash_extra_landings'
+							? i18n.trashExtraLandings || 'Trash out-of-scope landings'
+							: i18n.trashExtraHubs || 'Trash out-of-scope hubs');
 				}
 				var resultsEl = document.getElementById('radius-deploy-health-results');
 				if (resultsEl) {
@@ -307,7 +349,8 @@
 				runRemediate(
 					t.getAttribute('data-remediate-action') ||
 						'trash_extra_service_areas',
-					t
+					t,
+					t.getAttribute('data-template-id') || ''
 				);
 			}
 		});

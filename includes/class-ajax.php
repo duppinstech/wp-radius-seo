@@ -896,13 +896,39 @@ class Radius_Ajax {
 			@set_time_limit( 300 );
 		}
 
-		if ( 'trash_extra_service_areas' !== $action || ! class_exists( 'Radius_Deploy_Health_Check' ) ) {
-			wp_send_json_error( array( 'message' => __( 'Unknown remediation action.', 'radius' ) ), 400 );
+		if ( ! class_exists( 'Radius_Deploy_Health_Check' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Health check unavailable.', 'radius' ) ), 500 );
 			return;
 		}
 
+		$template_id = isset( $_POST['template_id'] ) ? (int) $_POST['template_id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
+
 		try {
-			$result = Radius_Deploy_Health_Check::trash_extra_service_area_hubs();
+			if ( 'trash_extra_service_areas' === $action ) {
+				$result  = Radius_Deploy_Health_Check::trash_extra_service_area_hubs();
+				$log_msg = sprintf(
+					'Trashed %1$d out-of-scope service area hub page(s) for %2$d place(s).',
+					(int) $result['trashed'],
+					(int) $result['places']
+				);
+				$message = self::health_remediate_message_hubs( $result );
+			} elseif ( 'trash_extra_landings' === $action ) {
+				if ( $template_id <= 0 ) {
+					wp_send_json_error( array( 'message' => __( 'Template ID required for landing remediation.', 'radius' ) ), 400 );
+					return;
+				}
+				$result  = Radius_Deploy_Health_Check::trash_extra_landings_for_template( $template_id );
+				$log_msg = sprintf(
+					'Trashed %1$d out-of-scope landing page(s) for template %3$d (%2$d place(s)).',
+					(int) $result['trashed'],
+					(int) $result['places'],
+					$template_id
+				);
+				$message = self::health_remediate_message_landings( $result );
+			} else {
+				wp_send_json_error( array( 'message' => __( 'Unknown remediation action.', 'radius' ) ), 400 );
+				return;
+			}
 		} catch ( \Throwable $e ) {
 			if ( class_exists( 'Radius_Operation_Log' ) ) {
 				Radius_Operation_Log::error(
@@ -918,16 +944,27 @@ class Radius_Ajax {
 		if ( class_exists( 'Radius_Operation_Log' ) ) {
 			Radius_Operation_Log::info(
 				'deploy_health',
-				sprintf(
-					'Trashed %1$d out-of-scope service area hub page(s) for %2$d place(s).',
-					(int) $result['trashed'],
-					(int) $result['places']
-				),
+				$log_msg,
 				array_merge( Radius_Operation_Log::request_context(), $result )
 			);
 		}
 
-		$report    = Radius_Deploy_Health_Check::run();
+		$report = Radius_Deploy_Health_Check::run();
+
+		wp_send_json_success(
+			array(
+				'remediation' => $result,
+				'message'     => $message,
+				'report'      => $report,
+			)
+		);
+	}
+
+	/**
+	 * @param array{trashed:int,places:int,redirects?:int} $result Remediation stats.
+	 * @return string
+	 */
+	private static function health_remediate_message_hubs( array $result ) {
 		$redirects = isset( $result['redirects'] ) ? (int) $result['redirects'] : 0;
 		$index_url = class_exists( 'Radius_Redirect_Service' )
 			? Radius_Redirect_Service::get_service_area_index_url()
@@ -944,26 +981,52 @@ class Radius_Ajax {
 			(int) $result['trashed'],
 			(int) $result['places']
 		);
-		if ( $redirects > 0 && $index_url !== '' ) {
-			$message .= ' ' . sprintf(
-				/* translators: 1: redirect count, 2: service area index URL */
-				_n(
-					'Added %1$d redirect to %2$s.',
-					'Added %1$d redirects to %2$s.',
-					$redirects,
-					'radius'
-				),
-				$redirects,
-				$index_url
-			);
-		}
+		return $message . self::health_remediate_redirect_suffix( $redirects, $index_url );
+	}
 
-		wp_send_json_success(
-			array(
-				'remediation' => $result,
-				'message'     => $message,
-				'report'      => $report,
-			)
+	/**
+	 * @param array{trashed:int,places:int,redirects?:int,template_id?:int} $result Remediation stats.
+	 * @return string
+	 */
+	private static function health_remediate_message_landings( array $result ) {
+		$redirects = isset( $result['redirects'] ) ? (int) $result['redirects'] : 0;
+		$index_url = class_exists( 'Radius_Redirect_Service' )
+			? Radius_Redirect_Service::get_service_area_index_url()
+			: '';
+
+		$message = sprintf(
+			/* translators: 1: pages trashed, 2: place count */
+			_n(
+				'Moved %1$d landing page to Trash (%2$d place outside scope).',
+				'Moved %1$d landing pages to Trash (%2$d places outside scope).',
+				(int) $result['places'],
+				'radius'
+			),
+			(int) $result['trashed'],
+			(int) $result['places']
+		);
+		return $message . self::health_remediate_redirect_suffix( $redirects, $index_url );
+	}
+
+	/**
+	 * @param int    $redirects Redirect count.
+	 * @param string $index_url Target URL.
+	 * @return string
+	 */
+	private static function health_remediate_redirect_suffix( $redirects, $index_url ) {
+		if ( $redirects <= 0 || $index_url === '' ) {
+			return '';
+		}
+		return ' ' . sprintf(
+			/* translators: 1: redirect count, 2: service area index URL */
+			_n(
+				'Added %1$d redirect to %2$s.',
+				'Added %1$d redirects to %2$s.',
+				$redirects,
+				'radius'
+			),
+			$redirects,
+			$index_url
 		);
 	}
 

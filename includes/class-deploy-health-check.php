@@ -525,6 +525,85 @@ final class Radius_Deploy_Health_Check {
 	}
 
 	/**
+	 * Missing / extra landing pages for one template vs deploy scope.
+	 *
+	 * @param int $template_id radius_template post ID.
+	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
+	 */
+	public static function get_landing_template_gaps( $template_id ) {
+		$scope             = self::get_expected_scope_place_ids();
+		$deployed_landings = self::get_deployed_place_ids_map( 'radius_landing' );
+		$tid               = (int) $template_id;
+		$expected          = array_fill_keys( $scope['ids'], true );
+		$have              = array();
+		if ( $tid > 0 && isset( $deployed_landings[ $tid ] ) ) {
+			foreach ( $deployed_landings[ $tid ] as $pid ) {
+				$have[ (int) $pid ] = true;
+			}
+		}
+		$missing = array();
+		foreach ( array_keys( $expected ) as $pid ) {
+			if ( empty( $have[ (int) $pid ] ) ) {
+				$missing[] = (int) $pid;
+			}
+		}
+		$extra = array();
+		foreach ( array_keys( $have ) as $pid ) {
+			if ( empty( $expected[ (int) $pid ] ) ) {
+				$extra[] = (int) $pid;
+			}
+		}
+		return array(
+			'template_id'       => $tid,
+			'extra_place_ids'   => $extra,
+			'missing_place_ids' => $missing,
+			'expected_count'    => count( $expected ),
+			'deployed_count'    => count( $have ),
+		);
+	}
+
+	/**
+	 * Move landing pages to Trash for places outside deploy scope (one template).
+	 *
+	 * @param int $template_id radius_template post ID.
+	 * @return array{trashed:int,places:int,template_id:int,redirects:int}
+	 */
+	public static function trash_extra_landings_for_template( $template_id ) {
+		if ( class_exists( 'Radius_Redirect_Service' ) ) {
+			Radius_Redirect_Service::reset_batch_redirect_count();
+		}
+		$tid  = (int) $template_id;
+		$gaps = self::get_landing_template_gaps( $tid );
+		$extra = isset( $gaps['extra_place_ids'] ) && is_array( $gaps['extra_place_ids'] )
+			? $gaps['extra_place_ids']
+			: array();
+		if ( $tid <= 0 || empty( $extra ) ) {
+			return array(
+				'trashed'     => 0,
+				'places'      => 0,
+				'template_id' => $tid,
+				'redirects'   => 0,
+			);
+		}
+		$trashed = 0;
+		foreach ( $extra as $place_id ) {
+			$trashed += Radius_Deploy_Service::trash_all_deployed_for_place_template(
+				$tid,
+				(int) $place_id,
+				'radius_landing'
+			);
+		}
+		$redirects = class_exists( 'Radius_Redirect_Service' ) ? Radius_Redirect_Service::get_batch_redirect_count() : 0;
+
+		return array(
+			'trashed'     => $trashed,
+			'places'      => count( $extra ),
+			'template_id' => $tid,
+			'redirects'   => $redirects,
+		);
+	}
+
+	/**
 	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
 	 * @param array<int,int[]>                                                                  $deployed_sa Deployed map.
 	 * @return array<string,mixed>
@@ -623,21 +702,12 @@ final class Radius_Deploy_Health_Check {
 			return $checks;
 		}
 		foreach ( $templates as $tpl ) {
-			$tid   = (int) $tpl->ID;
-			$title = get_the_title( $tpl );
-			$have  = array();
-			if ( isset( $deployed_landings[ $tid ] ) ) {
-				foreach ( $deployed_landings[ $tid ] as $pid ) {
-					$have[ (int) $pid ] = true;
-				}
-			}
-			$missing = array();
-			foreach ( array_keys( $expected_set ) as $pid ) {
-				if ( empty( $have[ (int) $pid ] ) ) {
-					$missing[] = (int) $pid;
-				}
-			}
-			$deployed_n = count( $have );
+			$tid    = (int) $tpl->ID;
+			$title  = get_the_title( $tpl );
+			$gaps   = self::get_landing_template_gaps( $tid );
+			$missing = $gaps['missing_place_ids'];
+			$extra   = $gaps['extra_place_ids'];
+			$deployed_n = (int) $gaps['deployed_count'];
 			if ( $expected_n < 1 ) {
 				$checks[] = self::make_check(
 					'landing_' . $tid,
@@ -647,7 +717,7 @@ final class Radius_Deploy_Health_Check {
 				);
 				continue;
 			}
-			if ( empty( $missing ) ) {
+			if ( empty( $missing ) && empty( $extra ) ) {
 				$checks[] = self::make_check(
 					'landing_' . $tid,
 					$title,
@@ -666,26 +736,45 @@ final class Radius_Deploy_Health_Check {
 				);
 				continue;
 			}
+			$status = ! empty( $missing ) ? 'fail' : 'warn';
+			$detail = '';
+			if ( ! empty( $extra ) ) {
+				$detail = __(
+					'Extra landings are for places outside your current deploy scope. Use the button below to trash those pages. Each trashed URL gets a 301 redirect to your service area index (e.g. /service-area/).',
+					'radius'
+				);
+			}
+			$extra_fields = array(
+				'template_id'   => $tid,
+				'missing_count' => count( $missing ),
+				'extra_count'   => count( $extra ),
+				'missing_slugs' => self::place_slugs_sample( $missing ),
+				'extra_slugs'   => self::place_slugs_sample( $extra ),
+				'deployed'      => $deployed_n,
+				'expected'      => $expected_n,
+			);
+			if ( ! empty( $missing ) ) {
+				$extra_fields['fix_url'] = admin_url( 'admin.php?page=radius-deploy&tab=landings' );
+			}
+			if ( ! empty( $extra ) ) {
+				$extra_fields['remediation'] = array(
+					'action'      => 'trash_extra_landings',
+					'template_id' => $tid,
+					'count'       => count( $extra ),
+				);
+			}
 			$checks[] = self::make_check(
 				'landing_' . $tid,
 				$title,
-				'fail',
+				$status,
 				sprintf(
-					/* translators: 1: missing count, 2: expected count, 3: deployed count */
-					__( 'Missing landings for %1$d of %2$d places (%3$d deployed).', 'radius' ),
+					/* translators: 1: missing count, 2: extra count */
+					__( 'Missing landings: %1$d. Extra landings (outside scope): %2$d.', 'radius' ),
 					count( $missing ),
-					$expected_n,
-					$deployed_n
+					count( $extra )
 				),
-				'',
-				array(
-					'template_id'   => $tid,
-					'missing_count' => count( $missing ),
-					'missing_slugs' => self::place_slugs_sample( $missing ),
-					'deployed'      => $deployed_n,
-					'expected'      => $expected_n,
-					'fix_url'       => admin_url( 'admin.php?page=radius-deploy&tab=landings' ),
-				)
+				$detail,
+				$extra_fields
 			);
 		}
 		return $checks;
