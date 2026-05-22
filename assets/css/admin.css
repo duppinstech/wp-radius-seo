@@ -1716,6 +1716,13 @@ progress.radius-mw-overall-bar {
 	vertical-align: middle;
 }
 
+.radius-deploy-health-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
 .radius-deploy-health-summary {
 	margin: 1em 0;
 	padding: 12px 14px;

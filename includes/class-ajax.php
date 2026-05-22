@@ -932,6 +932,74 @@ class Radius_Ajax {
 					$template_id
 				);
 				$message = self::health_remediate_message_landings( $result );
+			} elseif ( 'remove_redirect_conflicts' === $action ) {
+				if ( ! class_exists( 'Radius_Health_Url_Conflicts' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Redirect conflict scan unavailable.', 'radius' ) ), 500 );
+					return;
+				}
+				$result  = Radius_Health_Url_Conflicts::remove_all_conflicts();
+				$log_msg = sprintf(
+					'Removed %1$d redirect rule(s) conflicting with deployed URLs (Redirection: %2$d, Yoast: %3$d, Radius: %4$d).',
+					(int) $result['removed'],
+					(int) $result['redirection'],
+					(int) $result['yoast'],
+					(int) $result['radius']
+				);
+				$message = sprintf(
+					/* translators: 1: total removed, 2: redirection count, 3: yoast count, 4: radius count */
+					__( 'Removed %1$d conflicting redirect rule(s) (Redirection: %2$d, Yoast: %3$d, Radius: %4$d).', 'radius' ),
+					(int) $result['removed'],
+					(int) $result['redirection'],
+					(int) $result['yoast'],
+					(int) $result['radius']
+				);
+			} elseif ( 'deactivate_magic_page_plugin' === $action ) {
+				$result  = Radius_Deploy_Health_Check::deactivate_magic_page_plugin();
+				$log_msg = $result['message'];
+				$message = $result['message'];
+				if ( empty( $result['ok'] ) ) {
+					wp_send_json_error( array( 'message' => $message ) );
+					return;
+				}
+			} elseif ( 'fix_all_issues' === $action ) {
+				$steps   = Radius_Deploy_Health_Check::run_all_remediations();
+				$log_msg = 'Health check fix-all completed.';
+				$parts   = array();
+				if ( ! empty( $steps['remove_redirect_conflicts']['removed'] ) ) {
+					$parts[] = sprintf(
+						/* translators: %d: rule count */
+						__( '%d redirect rule(s) removed', 'radius' ),
+						(int) $steps['remove_redirect_conflicts']['removed']
+					);
+				}
+				if ( ! empty( $steps['deactivate_magic_page_plugin']['ok'] ) && ! empty( $steps['deactivate_magic_page_plugin']['basename'] ) ) {
+					$parts[] = __( 'Magic Page plugin deactivated', 'radius' );
+				}
+				if ( ! empty( $steps['trash_extra_service_areas']['trashed'] ) ) {
+					$parts[] = sprintf(
+						/* translators: %d: page count */
+						__( '%d hub page(s) trashed', 'radius' ),
+						(int) $steps['trash_extra_service_areas']['trashed']
+					);
+				}
+				$landing_trashed = 0;
+				foreach ( $steps as $key => $step ) {
+					if ( 0 !== strpos( (string) $key, 'trash_extra_landings_' ) || ! is_array( $step ) ) {
+						continue;
+					}
+					$landing_trashed += (int) ( $step['trashed'] ?? 0 );
+				}
+				if ( $landing_trashed > 0 ) {
+					$parts[] = sprintf(
+						/* translators: %d: page count */
+						__( '%d landing page(s) trashed', 'radius' ),
+						$landing_trashed
+					);
+				}
+				$message = empty( $parts )
+					? __( 'No automated fixes were applied.', 'radius' )
+					: implode( '; ', $parts ) . '.';
+				$result  = array( 'steps' => $steps );
 			} else {
 				wp_send_json_error( array( 'message' => __( 'Unknown remediation action.', 'radius' ) ), 400 );
 				return;

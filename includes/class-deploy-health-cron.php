@@ -83,6 +83,87 @@ final class Radius_Deploy_Health_Cron {
 	/**
 	 * @return bool
 	 */
+	public static function is_email_enabled() {
+		$s = Radius_Settings::get();
+		return ! empty( $s['deploy_health_cron_email'] );
+	}
+
+	/**
+	 * @return string
+	 */
+	public static function get_email_recipient() {
+		$s = Radius_Settings::get();
+		$to  = isset( $s['deploy_health_cron_email_to'] ) ? sanitize_email( (string) $s['deploy_health_cron_email_to'] ) : '';
+		if ( $to !== '' && is_email( $to ) ) {
+			return $to;
+		}
+		return (string) get_option( 'admin_email' );
+	}
+
+	/**
+	 * @param array<string,mixed> $report Health report.
+	 * @return void
+	 */
+	public static function maybe_send_issue_email( array $report ) {
+		if ( ! self::is_email_enabled() ) {
+			return;
+		}
+		$counts = isset( $report['summary'] ) && is_array( $report['summary'] )
+			? array(
+				'fail' => (int) ( $report['summary']['fail'] ?? 0 ),
+				'warn' => (int) ( $report['summary']['warn'] ?? 0 ),
+			)
+			: array( 'fail' => 0, 'warn' => 0 );
+		if ( $counts['fail'] + $counts['warn'] < 1 ) {
+			return;
+		}
+		$to = self::get_email_recipient();
+		if ( $to === '' || ! is_email( $to ) ) {
+			return;
+		}
+		$site     = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
+		$url      = self::health_check_admin_url();
+		$issues   = array();
+		$checks   = isset( $report['checks'] ) && is_array( $report['checks'] ) ? $report['checks'] : array();
+		foreach ( $checks as $check ) {
+			if ( ! is_array( $check ) ) {
+				continue;
+			}
+			$st = isset( $check['status'] ) ? (string) $check['status'] : '';
+			if ( ! in_array( $st, array( 'fail', 'warn' ), true ) ) {
+				continue;
+			}
+			$label = isset( $check['label'] ) ? (string) $check['label'] : '';
+			$sum   = isset( $check['summary'] ) ? (string) $check['summary'] : '';
+			$issues[] = ( $label !== '' ? $label . ': ' : '' ) . $sum;
+			if ( count( $issues ) >= 20 ) {
+				break;
+			}
+		}
+		$body = sprintf(
+			"%1\$s\n\nScheduled Radius deploy health check on %2\$s found %3\$d failure(s) and %4\$d warning(s).\n\n",
+			__( 'Radius SEO — deploy health check', 'radius' ),
+			$site,
+			$counts['fail'],
+			$counts['warn']
+		);
+		if ( ! empty( $issues ) ) {
+			$body .= implode( "\n", $issues ) . "\n\n";
+		}
+		$body .= $url . "\n";
+		$subject = sprintf(
+			/* translators: 1: site name, 2: fail count, 3: warn count */
+			__( '[%1$s] Radius health check: %2$d failure(s), %3$d warning(s)', 'radius' ),
+			$site,
+			$counts['fail'],
+			$counts['warn']
+		);
+		wp_mail( $to, $subject, $body );
+	}
+
+	/**
+	 * @return bool
+	 */
 	public static function is_enabled() {
 		$s = Radius_Settings::get();
 		return ! empty( $s['deploy_health_cron_enabled'] );
@@ -138,6 +219,7 @@ final class Radius_Deploy_Health_Cron {
 		try {
 			$report = Radius_Deploy_Health_Check::run();
 			self::store_report( $report, 'cron' );
+			self::maybe_send_issue_email( $report );
 			if ( class_exists( 'Radius_Operation_Log' ) ) {
 				$counts = self::get_attention_counts();
 				Radius_Operation_Log::info(

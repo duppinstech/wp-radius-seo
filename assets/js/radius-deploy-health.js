@@ -44,9 +44,67 @@
 		return i18n.skip || 'Skipped';
 	}
 
+	function countRemediations(checks) {
+		var n = 0;
+		if (!Array.isArray(checks)) {
+			return 0;
+		}
+		checks.forEach(function (c) {
+			if (c && c.remediation && c.remediation.count > 0 && c.remediation.action) {
+				n += 1;
+			}
+		});
+		return n;
+	}
+
+	function remediateButtonLabel(action, i18n) {
+		if (action === 'trash_extra_service_areas') {
+			return i18n.trashExtraHubs || 'Trash out-of-scope hubs';
+		}
+		if (action === 'trash_extra_landings') {
+			return i18n.trashExtraLandings || 'Trash out-of-scope landings';
+		}
+		if (action === 'remove_redirect_conflicts') {
+			return i18n.removeRedirectConflicts || 'Remove conflicting redirects';
+		}
+		if (action === 'deactivate_magic_page_plugin') {
+			return i18n.deactivateMagicPage || 'Deactivate Magic Page plugin';
+		}
+		return 'Fix';
+	}
+
+	function renderRemediationButton(c, i18n) {
+		var rem = c.remediation;
+		if (!rem || rem.count < 1 || !rem.action) {
+			return '';
+		}
+		var label = remediateButtonLabel(rem.action, i18n);
+		var html =
+			'<p class="radius-deploy-health-remediate">' +
+			'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
+			'data-remediate-action="' +
+			esc(rem.action) +
+			'"';
+		if (rem.template_id) {
+			html += ' data-template-id="' + esc(String(rem.template_id)) + '"';
+		}
+		html +=
+			' data-check-id="' +
+			esc(c.id || '') +
+			'" data-btn-label="' +
+			esc(label) +
+			'">' +
+			esc(label) +
+			' (' +
+			esc(String(rem.count)) +
+			')</button></p>';
+		return html;
+	}
+
 	function renderReport(data) {
 		var summaryEl = document.getElementById('radius-deploy-health-summary');
 		var resultsEl = document.getElementById('radius-deploy-health-results');
+		var fixAllBtn = document.getElementById('radius-deploy-health-fix-all');
 		if (!summaryEl || !resultsEl) {
 			return;
 		}
@@ -101,6 +159,15 @@
 		summaryEl.hidden = false;
 
 		var checks = data && Array.isArray(data.checks) ? data.checks : [];
+		var remediateN = countRemediations(checks);
+		if (fixAllBtn) {
+			fixAllBtn.hidden = remediateN < 1;
+			fixAllBtn.textContent = i18n.fixAllIssues || 'Fix all issues';
+			if (remediateN > 0) {
+				fixAllBtn.textContent += ' (' + remediateN + ')';
+			}
+		}
+
 		var html = '<ul class="radius-deploy-health-list">';
 		checks.forEach(function (c) {
 			var stc = c.status || 'skip';
@@ -121,9 +188,7 @@
 					esc(i18n.missingSlugs || 'Sample missing place slugs') +
 					':</strong> ' +
 					esc(c.missing_slugs.join(', ')) +
-					(c.missing_count > c.missing_slugs.length
-						? ' …'
-						: '') +
+					(c.missing_count > c.missing_slugs.length ? ' …' : '') +
 					'</p>';
 			}
 			if (c.extra_slugs && c.extra_slugs.length) {
@@ -135,43 +200,22 @@
 					(c.extra_count > c.extra_slugs.length ? ' …' : '') +
 					'</p>';
 			}
-			if (c.remediation && c.remediation.count > 0) {
-				if (c.remediation.action === 'trash_extra_service_areas') {
-					html +=
-						'<p class="radius-deploy-health-remediate">' +
-						'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
-						'data-remediate-action="trash_extra_service_areas" data-check-id="' +
-						esc(c.id || 'service_area_coverage') +
-						'" data-btn-label="' +
-						esc(i18n.trashExtraHubs || 'Trash out-of-scope hubs') +
-						'">' +
-						esc(i18n.trashExtraHubs || 'Trash out-of-scope hubs') +
-						' (' +
-						esc(String(c.remediation.count)) +
-						')</button></p>';
-				} else if (c.remediation.action === 'trash_extra_landings') {
-					html +=
-						'<p class="radius-deploy-health-remediate">' +
-						'<button type="button" class="button button-secondary radius-deploy-health-trash-extra" ' +
-						'data-remediate-action="trash_extra_landings" data-template-id="' +
-						esc(String(c.remediation.template_id || c.template_id || '')) +
-						'" data-check-id="' +
-						esc(c.id || '') +
-						'" data-btn-label="' +
-						esc(i18n.trashExtraLandings || 'Trash out-of-scope landings') +
-						'">' +
-						esc(i18n.trashExtraLandings || 'Trash out-of-scope landings') +
-						' (' +
-						esc(String(c.remediation.count)) +
-						')</button></p>';
-				}
+			if (c.conflict_paths && c.conflict_paths.length) {
+				html +=
+					'<p class="description"><strong>' +
+					esc(i18n.conflictPaths || 'Sample conflicting URL paths') +
+					':</strong> ' +
+					esc(c.conflict_paths.join(', ')) +
+					(c.conflict_count > c.conflict_paths.length ? ' …' : '') +
+					'</p>';
 			}
+			html += renderRemediationButton(c, i18n);
 			if (c.fix_url) {
 				html +=
 					'<p><a class="button button-small" href="' +
 					esc(c.fix_url) +
 					'">' +
-					esc(i18n.fix || 'Deploy missing hubs') +
+					esc(i18n.fix || 'Open fix') +
 					'</a></p>';
 			}
 			html += '</li>';
@@ -182,13 +226,66 @@
 
 	function setRunning(on) {
 		var btn = document.getElementById('radius-deploy-health-run');
+		var fixAll = document.getElementById('radius-deploy-health-fix-all');
 		var sp = document.getElementById('radius-deploy-health-spinner');
 		if (btn) {
 			btn.disabled = !!on;
 		}
+		if (fixAll) {
+			fixAll.disabled = !!on;
+		}
 		if (sp) {
 			sp.classList.toggle('is-active', !!on);
 		}
+	}
+
+	function confirmRemediate(action, i18n) {
+		if (action === 'fix_all_issues') {
+			return window.confirm(
+				i18n.fixAllConfirm ||
+					'Run all automated fixes? Manual deploy steps are skipped.'
+			);
+		}
+		if (action === 'trash_extra_service_areas') {
+			return window.confirm(
+				i18n.trashExtraHubsConfirm ||
+					'Move out-of-scope service area hub pages to the Trash?'
+			);
+		}
+		if (action === 'trash_extra_landings') {
+			return window.confirm(
+				i18n.trashExtraLandingsConfirm ||
+					'Move out-of-scope landing pages to the Trash?'
+			);
+		}
+		if (action === 'remove_redirect_conflicts') {
+			return window.confirm(
+				i18n.removeRedirectConflictsConfirm ||
+					'Remove conflicting redirect rules?'
+			);
+		}
+		if (action === 'deactivate_magic_page_plugin') {
+			return window.confirm(
+				i18n.deactivateMagicPageConfirm || 'Deactivate the Magic Page plugin?'
+			);
+		}
+		return true;
+	}
+
+	function runningLabel(action, i18n) {
+		if (action === 'fix_all_issues') {
+			return i18n.fixAllRunning || 'Fixing issues…';
+		}
+		if (action === 'trash_extra_landings') {
+			return i18n.trashExtraLandingsRunning || 'Trashing landings…';
+		}
+		if (action === 'remove_redirect_conflicts') {
+			return i18n.removeRedirectConflictsRunning || 'Removing redirects…';
+		}
+		if (action === 'deactivate_magic_page_plugin') {
+			return i18n.deactivateMagicPageRunning || 'Deactivating…';
+		}
+		return i18n.trashExtraHubsRunning || 'Trashing hubs…';
 	}
 
 	function runCheck() {
@@ -236,36 +333,21 @@
 			return;
 		}
 		var i18n = cfg.i18n || {};
+		if (!confirmRemediate(action, i18n)) {
+			return;
+		}
 		var defaultLabel =
 			triggerBtn && triggerBtn.getAttribute('data-btn-label')
 				? triggerBtn.getAttribute('data-btn-label')
-				: '';
-		if (
-			action === 'trash_extra_service_areas' &&
-			!window.confirm(
-				i18n.trashExtraHubsConfirm ||
-					'Move out-of-scope service area hub pages to the Trash?'
-			)
-		) {
-			return;
-		}
-		if (
-			action === 'trash_extra_landings' &&
-			!window.confirm(
-				i18n.trashExtraLandingsConfirm ||
-					'Move out-of-scope landing pages to the Trash?'
-			)
-		) {
-			return;
-		}
+				: remediateButtonLabel(action, i18n);
 		if (triggerBtn) {
 			triggerBtn.disabled = true;
-			if (action === 'trash_extra_landings') {
-				triggerBtn.textContent =
-					i18n.trashExtraLandingsRunning || 'Trashing landings…';
-			} else {
-				triggerBtn.textContent = i18n.trashExtraHubsRunning || 'Trashing hubs…';
-			}
+			triggerBtn.textContent = runningLabel(action, i18n);
+		}
+		var fixAllBtn = document.getElementById('radius-deploy-health-fix-all');
+		if (fixAllBtn && action === 'fix_all_issues') {
+			fixAllBtn.disabled = true;
+			fixAllBtn.textContent = runningLabel(action, i18n);
 		}
 		var fd = new FormData();
 		fd.append('action', 'radius_deploy_health_remediate');
@@ -281,11 +363,10 @@
 			.then(function (json) {
 				if (triggerBtn) {
 					triggerBtn.disabled = false;
-					triggerBtn.textContent =
-						defaultLabel ||
-						(action === 'trash_extra_landings'
-							? i18n.trashExtraLandings || 'Trash out-of-scope landings'
-							: i18n.trashExtraHubs || 'Trash out-of-scope hubs');
+					triggerBtn.textContent = defaultLabel;
+				}
+				if (fixAllBtn) {
+					fixAllBtn.disabled = false;
 				}
 				var resultsEl = document.getElementById('radius-deploy-health-results');
 				if (!json || !json.success) {
@@ -320,11 +401,10 @@
 			.catch(function (err) {
 				if (triggerBtn) {
 					triggerBtn.disabled = false;
-					triggerBtn.textContent =
-						defaultLabel ||
-						(action === 'trash_extra_landings'
-							? i18n.trashExtraLandings || 'Trash out-of-scope landings'
-							: i18n.trashExtraHubs || 'Trash out-of-scope hubs');
+					triggerBtn.textContent = defaultLabel;
+				}
+				if (fixAllBtn) {
+					fixAllBtn.disabled = false;
 				}
 				var resultsEl = document.getElementById('radius-deploy-health-results');
 				if (resultsEl) {
@@ -346,6 +426,12 @@
 		var btn = document.getElementById('radius-deploy-health-run');
 		if (btn) {
 			btn.addEventListener('click', runCheck);
+		}
+		var fixAllBtn = document.getElementById('radius-deploy-health-fix-all');
+		if (fixAllBtn) {
+			fixAllBtn.addEventListener('click', function () {
+				runRemediate('fix_all_issues', fixAllBtn, '');
+			});
 		}
 		root.addEventListener('click', function (ev) {
 			var t = ev.target;

@@ -43,22 +43,121 @@ final class Radius_Deploy_Health_Check {
 
 		$checks[] = self::check_landings_without_service_area( $scope, $deployed_sa, $deployed_landings );
 		$checks[] = self::check_magic_page_landings_remain();
+		$checks[] = self::check_magic_page_plugin_uninstalled();
+		$checks[] = self::check_deployed_url_redirect_conflicts();
 		$checks[] = self::check_duplicate_deploy_pages();
 		$checks[] = self::check_orphan_deploy_meta();
 
 		$summary = self::summarize_checks( $checks );
 
 		return array(
-			'generated_at' => gmdate( 'c' ),
-			'duration_sec' => round( microtime( true ) - $started, 2 ),
-			'summary'      => $summary,
-			'scope'        => array(
+			'generated_at'      => gmdate( 'c' ),
+			'duration_sec'      => round( microtime( true ) - $started, 2 ),
+			'summary'           => $summary,
+			'remediation_plan'  => self::build_remediation_plan( $checks ),
+			'scope'             => array(
 				'expected_places' => count( $scope['ids'] ),
 				'skipped_no_coords' => $scope['skipped_no_coords'],
 				'removed_blacklist' => $scope['removed_blacklist'],
 				'removed_duplicate' => $scope['removed_duplicate'],
 			),
-			'checks'       => $checks,
+			'checks'            => $checks,
+		);
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $checks Check rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function build_remediation_plan( array $checks ) {
+		$plan = array();
+		foreach ( $checks as $check ) {
+			if ( empty( $check['remediation'] ) || ! is_array( $check['remediation'] ) ) {
+				continue;
+			}
+			$rem = $check['remediation'];
+			if ( empty( $rem['action'] ) ) {
+				continue;
+			}
+			$plan[] = $rem;
+		}
+		return $plan;
+	}
+
+	/**
+	 * Run every automated remediation step (redirect cleanup, trash extras, deactivate Magic Page).
+	 *
+	 * @return array<string,array<string,mixed>>
+	 */
+	public static function run_all_remediations() {
+		$results = array();
+
+		if ( class_exists( 'Radius_Health_Url_Conflicts' ) ) {
+			$results['remove_redirect_conflicts'] = Radius_Health_Url_Conflicts::remove_all_conflicts();
+		}
+
+		if ( class_exists( 'Radius_Legacy_Import_Service' ) && Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
+			$results['deactivate_magic_page_plugin'] = self::deactivate_magic_page_plugin();
+		}
+
+		$hub = self::trash_extra_service_area_hubs();
+		if ( (int) $hub['trashed'] > 0 || (int) $hub['places'] > 0 ) {
+			$results['trash_extra_service_areas'] = $hub;
+		}
+
+		$templates = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => array( 'publish' ),
+				'posts_per_page' => 100,
+				'fields'         => 'ids',
+			)
+		);
+		foreach ( (array) $templates as $tid ) {
+			$tid  = (int) $tid;
+			$gaps = self::get_landing_template_gaps( $tid );
+			if ( empty( $gaps['extra_place_ids'] ) ) {
+				continue;
+			}
+			$key = 'trash_extra_landings_' . $tid;
+			$results[ $key ] = self::trash_extra_landings_for_template( $tid );
+		}
+
+		return $results;
+	}
+
+	/**
+	 * @return array{ok:bool,basename:string,message:string}
+	 */
+	public static function deactivate_magic_page_plugin() {
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return array(
+				'ok'       => false,
+				'basename' => '',
+				'message'  => __( 'You do not have permission to manage plugins.', 'radius' ),
+			);
+		}
+		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return array(
+				'ok'       => false,
+				'basename' => '',
+				'message'  => __( 'Legacy import not available.', 'radius' ),
+			);
+		}
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		$b = Radius_Legacy_Import_Service::get_active_magic_page_plugin_basename();
+		if ( $b === '' ) {
+			return array(
+				'ok'       => true,
+				'basename' => '',
+				'message'  => __( 'Magic Page plugin is not active.', 'radius' ),
+			);
+		}
+		deactivate_plugins( $b, true );
+		return array(
+			'ok'       => true,
+			'basename' => $b,
+			'message'  => __( 'Magic Page plugin deactivated.', 'radius' ),
 		);
 	}
 
@@ -974,6 +1073,122 @@ final class Radius_Deploy_Health_Check {
 				/* translators: %d: page count */
 				_n( '%d deployed page is missing template or place meta.', '%d deployed pages are missing template or place meta.', $orphan, 'radius' ),
 				$orphan
+			)
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private static function check_magic_page_plugin_uninstalled() {
+		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return self::make_check(
+				'magic_page_plugin',
+				__( 'Magic Page plugin', 'radius' ),
+				'skip',
+				__( 'Legacy import not available.', 'radius' )
+			);
+		}
+		if ( Radius_Legacy_Import_Service::is_magic_page_plugin_active() ) {
+			return self::make_check(
+				'magic_page_plugin',
+				__( 'Magic Page plugin', 'radius' ),
+				'fail',
+				__( 'Magic Page plugin is still active.', 'radius' ),
+				__( 'Deactivate or remove Magic Page after migration so it does not conflict with Radius deploy and URLs.', 'radius' ),
+				array(
+					'fix_url'     => admin_url( 'admin.php?page=radius-deploy&tab=migration' ),
+					'remediation' => array(
+						'action' => 'deactivate_magic_page_plugin',
+						'count'  => 1,
+					),
+				)
+			);
+		}
+		$basename = Radius_Legacy_Import_Service::find_magic_page_plugin_basename_for_removal();
+		if ( $basename !== '' ) {
+			return self::make_check(
+				'magic_page_plugin',
+				__( 'Magic Page plugin', 'radius' ),
+				'warn',
+				__( 'Magic Page plugin files are still installed (inactive).', 'radius' ),
+				__( 'Remove the plugin folder from Plugins when you are ready.', 'radius' ),
+				array( 'fix_url' => admin_url( 'plugins.php' ) )
+			);
+		}
+		return self::make_check(
+			'magic_page_plugin',
+			__( 'Magic Page plugin', 'radius' ),
+			'pass',
+			__( 'Magic Page plugin is not active and is not installed.', 'radius' )
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private static function check_deployed_url_redirect_conflicts() {
+		if ( ! class_exists( 'Radius_Health_Url_Conflicts' ) ) {
+			return self::make_check(
+				'url_redirect_conflicts',
+				__( 'Landing URL redirects', 'radius' ),
+				'skip',
+				__( 'Redirect conflict scan unavailable.', 'radius' )
+			);
+		}
+		$scan = Radius_Health_Url_Conflicts::scan();
+		$conflicts = isset( $scan['conflicts'] ) && is_array( $scan['conflicts'] ) ? $scan['conflicts'] : array();
+		$n         = count( $conflicts );
+		$scanned   = isset( $scan['scanned'] ) ? (int) $scan['scanned'] : 0;
+		$capped    = ! empty( $scan['capped'] );
+		if ( $n < 1 ) {
+			$summary = sprintf(
+				/* translators: %d: URLs scanned */
+				__( 'No redirect rules conflict with %d deployed page URL(s).', 'radius' ),
+				$scanned
+			);
+			if ( $capped ) {
+				$summary .= ' ' . __( '(Scan capped — run again or raise radius_health_redirect_scan_max_urls.)', 'radius' );
+			}
+			return self::make_check(
+				'url_redirect_conflicts',
+				__( 'Landing URL redirects', 'radius' ),
+				'pass',
+				$summary
+			);
+		}
+		$sample_paths = array();
+		foreach ( array_slice( $conflicts, 0, self::SAMPLE_LIMIT ) as $row ) {
+			if ( ! empty( $row['path'] ) ) {
+				$sample_paths[] = (string) $row['path'];
+			}
+		}
+		$detail = __(
+			'These published Radius URLs match a redirect source in Redirection, Yoast SEO Premium, or Radius stored rules — visitors may get a 301/302 instead of the page (200). Remove stale migration redirects with the button below.',
+			'radius'
+		);
+		if ( $capped ) {
+			$detail .= ' ' . __( 'Only the first batch of URLs was scanned.', 'radius' );
+		}
+		return self::make_check(
+			'url_redirect_conflicts',
+			__( 'Landing URL redirects', 'radius' ),
+			'fail',
+			sprintf(
+				/* translators: 1: conflict count, 2: scanned count */
+				__( '%1$d deployed URL(s) have conflicting redirect rules (scanned %2$d).', 'radius' ),
+				$n,
+				$scanned
+			),
+			$detail,
+			array(
+				'conflict_count' => $n,
+				'scanned'        => $scanned,
+				'conflict_paths' => $sample_paths,
+				'remediation'    => array(
+					'action' => 'remove_redirect_conflicts',
+					'count'  => $n,
+				),
 			)
 		);
 	}

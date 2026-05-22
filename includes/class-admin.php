@@ -633,6 +633,16 @@ class Radius_Admin {
 						'missingSlugs'  => __( 'Sample missing place slugs', 'radius' ),
 						'scopeFmt'      => __( 'Deploy scope: %d places (inside service areas after prefilter).', 'radius' ),
 						'storedSnapshotHint' => __( 'Saved snapshot from the last scheduled or manual check (issue list may be abbreviated). Run health check for the full report.', 'radius' ),
+						'fixAllIssues' => __( 'Fix all issues', 'radius' ),
+						'fixAllConfirm' => __( 'Run all automated fixes (remove conflicting redirects, deactivate Magic Page if active, trash out-of-scope hubs and landings)? Manual steps such as deploying missing pages are not run.', 'radius' ),
+						'fixAllRunning' => __( 'Fixing issues…', 'radius' ),
+						'removeRedirectConflicts' => __( 'Remove conflicting redirects', 'radius' ),
+						'removeRedirectConflictsConfirm' => __( 'Remove redirect rules in Redirection, Yoast SEO Premium, and Radius that point away from published landing or service-area URLs?', 'radius' ),
+						'removeRedirectConflictsRunning' => __( 'Removing redirects…', 'radius' ),
+						'deactivateMagicPage' => __( 'Deactivate Magic Page plugin', 'radius' ),
+						'deactivateMagicPageConfirm' => __( 'Deactivate the Magic Page plugin?', 'radius' ),
+						'deactivateMagicPageRunning' => __( 'Deactivating…', 'radius' ),
+						'conflictPaths' => __( 'Sample conflicting URL paths', 'radius' ),
 					),
 				)
 			);
@@ -2202,9 +2212,12 @@ class Radius_Admin {
 					<?php esc_html_e( 'A background check runs once per day (WP-Cron). When issues are found, a badge appears on Deploy and an admin notice links here.', 'radius' ); ?>
 				</p>
 			<?php endif; ?>
-			<p>
+			<p class="radius-deploy-health-toolbar">
 				<button type="button" class="button button-primary" id="radius-deploy-health-run">
 					<?php esc_html_e( 'Run health check', 'radius' ); ?>
+				</button>
+				<button type="button" class="button button-secondary" id="radius-deploy-health-fix-all" hidden>
+					<?php esc_html_e( 'Fix all issues', 'radius' ); ?>
 				</button>
 				<span class="spinner" id="radius-deploy-health-spinner" style="float:none;margin-top:0;"></span>
 			</p>
@@ -3096,6 +3109,16 @@ Fast roadside help in {{region}}
 									<?php esc_html_e( 'Run the Deploy health check once per day and show admin badges when failures or warnings are found.', 'radius' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Uses WP-Cron (typically overnight). Requires WP-Cron to fire on your host. Disable if you only want manual checks.', 'radius' ); ?></p>
+								<p style="margin-top:10px;">
+									<label>
+										<input type="checkbox" name="deploy_health_cron_email" value="1" <?php checked( ! empty( $s['deploy_health_cron_email'] ) ); ?> />
+										<?php esc_html_e( 'Email the site admin when the scheduled check finds failures or warnings', 'radius' ); ?>
+									</label>
+								</p>
+								<p>
+									<label for="deploy_health_cron_email_to"><?php esc_html_e( 'Email to (optional)', 'radius' ); ?></label><br />
+									<input type="email" name="deploy_health_cron_email_to" id="deploy_health_cron_email_to" class="regular-text" value="<?php echo esc_attr( (string) ( $s['deploy_health_cron_email_to'] ?? '' ) ); ?>" placeholder="<?php echo esc_attr( (string) get_option( 'admin_email' ) ); ?>" />
+								</p>
 							</td>
 						</tr>
 						<tr>
