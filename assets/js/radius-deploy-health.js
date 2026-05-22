@@ -89,6 +89,15 @@
 				) +
 				'</span>';
 		}
+		if (data && data.stored_only) {
+			summaryEl.innerHTML +=
+				'<br><span class="description">' +
+				esc(
+					i18n.storedSnapshotHint ||
+						'Showing saved results from the last automatic or manual check. Run again for a full report.'
+				) +
+				'</span>';
+		}
 		summaryEl.hidden = false;
 
 		var checks = data && Array.isArray(data.checks) ? data.checks : [];
@@ -356,6 +365,8 @@
 		});
 		if (cfg.autoRun) {
 			runCheck();
+		} else if (cfg.storedReport && cfg.storedReport.summary) {
+			renderReport(cfg.storedReport);
 		}
 	}
 

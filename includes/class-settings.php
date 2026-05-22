@@ -125,6 +125,7 @@ class Radius_Settings {
 			'content_rotation_enabled'        => 1,
 			'content_rotation_interval_days'  => 30,
 			'content_rotation_batch'          => 25,
+			'deploy_health_cron_enabled'      => 1,
 			'dynamic_content_per_request'     => 0,
 			'api_key'                         => '',
 			'api_key_saved_at'                => '',
@@ -452,6 +453,9 @@ class Radius_Settings {
 		}
 		if ( isset( $input['content_rotation_enabled'] ) ) {
 			$out['content_rotation_enabled'] = ! empty( $input['content_rotation_enabled'] ) ? 1 : 0;
+		}
+		if ( isset( $input['deploy_health_cron_enabled'] ) ) {
+			$out['deploy_health_cron_enabled'] = ! empty( $input['deploy_health_cron_enabled'] ) ? 1 : 0;
 		}
 		if ( isset( $input['content_rotation_interval_days'] ) ) {
 			$out['content_rotation_interval_days'] = max( 1, min( 365, absint( $input['content_rotation_interval_days'] ) ) );

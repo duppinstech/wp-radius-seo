@@ -39,6 +39,41 @@ class Radius_Admin {
 	}
 
 	/**
+	 * Rehydrate stored cron/manual snapshot for the health-check UI (checks list is partial).
+	 *
+	 * @return array<string,mixed>|null
+	 */
+	public static function build_stored_health_report_for_js() {
+		if ( ! class_exists( 'Radius_Deploy_Health_Cron' ) ) {
+			return null;
+		}
+		$snap = Radius_Deploy_Health_Cron::get_snapshot();
+		if ( ! $snap || empty( $snap['summary'] ) ) {
+			return null;
+		}
+		$checks = array();
+		if ( ! empty( $snap['issues'] ) && is_array( $snap['issues'] ) ) {
+			foreach ( $snap['issues'] as $issue ) {
+				if ( ! is_array( $issue ) ) {
+					continue;
+				}
+				$checks[] = array(
+					'id'      => isset( $issue['id'] ) ? (string) $issue['id'] : '',
+					'label'   => isset( $issue['label'] ) ? (string) $issue['label'] : '',
+					'status'  => isset( $issue['status'] ) ? (string) $issue['status'] : 'warn',
+					'summary' => isset( $issue['summary'] ) ? (string) $issue['summary'] : '',
+				);
+			}
+		}
+		return array(
+			'generated_at' => isset( $snap['generated_at'] ) ? (string) $snap['generated_at'] : '',
+			'summary'      => $snap['summary'],
+			'checks'       => $checks,
+			'stored_only'  => true,
+		);
+	}
+
+	/**
 	 * @param string $tab Tab slug.
 	 * @return string
 	 */
@@ -575,6 +610,7 @@ class Radius_Admin {
 					'ajaxurl'    => admin_url( 'admin-ajax.php' ),
 					'nonce'      => wp_create_nonce( 'radius_deploy_health_check' ),
 					'autoRun'    => ( isset( $_GET['tab'] ) && 'health-check' === sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) ), // phpcs:ignore WordPress.Security.NonceVerification
+					'storedReport' => class_exists( 'Radius_Deploy_Health_Cron' ) ? self::build_stored_health_report_for_js() : null,
 					'i18n'       => array(
 						'running'       => __( 'Running checks…', 'radius' ),
 						'errorPrefix'   => __( 'Error:', 'radius' ),
@@ -596,6 +632,7 @@ class Radius_Admin {
 						'extraSlugs'    => __( 'Sample out-of-scope place slugs', 'radius' ),
 						'missingSlugs'  => __( 'Sample missing place slugs', 'radius' ),
 						'scopeFmt'      => __( 'Deploy scope: %d places (inside service areas after prefilter).', 'radius' ),
+						'storedSnapshotHint' => __( 'Saved snapshot from the last scheduled or manual check (issue list may be abbreviated). Run health check for the full report.', 'radius' ),
 					),
 				)
 			);
@@ -1740,7 +1777,7 @@ class Radius_Admin {
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=landings' ) ); ?>" class="nav-tab<?php echo 'landings' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Landings', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=service-areas' ) ); ?>" class="nav-tab<?php echo 'service-areas' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Service Areas', 'radius' ); ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=migration' ) ); ?>" class="nav-tab<?php echo 'migration' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Migration', 'radius' ); ?></a>
-			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=health-check' ) ); ?>" class="nav-tab<?php echo 'health-check' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Health check', 'radius' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=health-check' ) ); ?>" class="nav-tab<?php echo 'health-check' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Health check', 'radius' ); ?><?php echo class_exists( 'Radius_Deploy_Health_Cron' ) ? Radius_Deploy_Health_Cron::health_check_tab_badge_html() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=system' ) ); ?>" class="nav-tab<?php echo 'system' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'System', 'radius' ); ?></a>
 		</h2>
 
@@ -2160,6 +2197,11 @@ class Radius_Admin {
 			<p class="description">
 				<?php esc_html_e( 'Validates migration steps, service-area coverage, and landing pages per template against the same place list used when you deploy (places inside your service areas, minus slug-pattern and duplicate-name exclusions).', 'radius' ); ?>
 			</p>
+			<?php if ( class_exists( 'Radius_Deploy_Health_Cron' ) && Radius_Deploy_Health_Cron::is_enabled() ) : ?>
+				<p class="description">
+					<?php esc_html_e( 'A background check runs once per day (WP-Cron). When issues are found, a badge appears on Deploy and an admin notice links here.', 'radius' ); ?>
+				</p>
+			<?php endif; ?>
 			<p>
 				<button type="button" class="button button-primary" id="radius-deploy-health-run">
 					<?php esc_html_e( 'Run health check', 'radius' ); ?>
@@ -3044,6 +3086,16 @@ Fast roadside help in {{region}}
 									<?php esc_html_e( 'Resolve tokens and spintax on every page view for classic (non-Elementor) landings. Uses one batched meta load for template + place data per request.', 'radius' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'When off, visitors see the HTML stored on each landing (updated by deploy and optional scheduled rotation). Per-template: template editor → Landing output behavior.', 'radius' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Deploy health check (cron)', 'radius' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="deploy_health_cron_enabled" value="1" <?php checked( ! empty( $s['deploy_health_cron_enabled'] ) ); ?> />
+									<?php esc_html_e( 'Run the Deploy health check once per day and show admin badges when failures or warnings are found.', 'radius' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Uses WP-Cron (typically overnight). Requires WP-Cron to fire on your host. Disable if you only want manual checks.', 'radius' ); ?></p>
 							</td>
 						</tr>
 						<tr>

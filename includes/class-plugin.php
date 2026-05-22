@@ -53,6 +53,7 @@ class Radius_Plugin {
 		Radius_Ajax::init();
 		Radius_Template_Metabox::init();
 		Radius_Rotation_Cron::init();
+		Radius_Deploy_Health_Cron::init();
 		Radius_Elementor_Compat::init();
 		add_action( 'admin_init', array( $this, 'maybe_flush_rewrite_rules' ), 5 );
 		add_action( 'init', array( $this, 'maybe_upgrade_schema' ), 0 );
@@ -323,6 +324,7 @@ class Radius_Plugin {
 		flush_rewrite_rules();
 		Radius_Elementor_Compat::sync_cpt_option();
 		Radius_Rotation_Cron::reschedule();
+		Radius_Deploy_Health_Cron::on_activate();
 	}
 
 	/**

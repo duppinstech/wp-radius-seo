@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.72
+Stable tag: 1.6.73
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,7 +78,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_place_repair_use_legacy_locations` — return false to skip Magic Page legacy location pre-check during slug repair (default true when the legacy `location` taxonomy has terms).
 * `radius_place_numbered_slug_suffix_min` / `radius_place_numbered_slug_suffix_max` — collision suffix range for missing-base repair (default 1–9).
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
+* `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.73 =
+* **Deploy health cron:** Daily WP-Cron health check (Settings → Content, on by default). Failures/warnings add a count badge on **Deploy**, a badge on the **Health check** tab, and a dismissible admin notice with a link to review. Manual runs update the same snapshot.
 
 = 1.6.72 =
 * **Multisite:** Fix network heavy-op lock falsely blocking the same subsite between import/migration batches (blog ID int vs string strict compare). Normalize lock keys; release lock when a legacy import batch throws.

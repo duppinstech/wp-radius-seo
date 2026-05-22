@@ -1711,6 +1711,11 @@ progress.radius-mw-overall-bar {
 .radius-deploy-health-item__summary {
 	margin: 0 0 4px;
 }
+.radius-nav-badge {
+	margin-left: 4px;
+	vertical-align: middle;
+}
+
 .radius-deploy-health-summary {
 	margin: 1em 0;
 	padding: 12px 14px;

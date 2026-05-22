@@ -859,6 +859,10 @@ class Radius_Ajax {
 			return;
 		}
 
+		if ( class_exists( 'Radius_Deploy_Health_Cron' ) ) {
+			Radius_Deploy_Health_Cron::store_report( $report, 'manual' );
+		}
+
 		if ( class_exists( 'Radius_Operation_Log' ) ) {
 			$sum = isset( $report['summary'] ) && is_array( $report['summary'] ) ? $report['summary'] : array();
 			Radius_Operation_Log::info(
@@ -953,6 +957,9 @@ class Radius_Ajax {
 		}
 
 		$report = Radius_Deploy_Health_Check::run();
+		if ( class_exists( 'Radius_Deploy_Health_Cron' ) ) {
+			Radius_Deploy_Health_Cron::store_report( $report, 'manual' );
+		}
 
 		wp_send_json_success(
 			array(
