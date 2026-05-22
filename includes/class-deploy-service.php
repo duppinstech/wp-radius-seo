@@ -713,6 +713,27 @@ class Radius_Deploy_Service {
 			self::maybe_sync_elementor_rendered_html_for_yoast( $landing_id );
 		}
 
+		$bb_ok = false;
+		if ( ! empty( Radius_Settings::get()['enable_beaver_builder'] )
+			&& class_exists( 'FLBuilderModel' )
+			&& self::post_built_with_beaver_builder( $template_id ) ) {
+			try {
+				self::sync_beaver_builder_layout_to_landing( $landing_id, $template_id, (int) $place_id, $tokens, $seed, $placeholder_removed );
+				$bb_ok = true;
+			} catch ( \Throwable $e ) {
+				return sprintf(
+					/* translators: 1: landing post ID, 2: error message */
+					__( 'Beaver Builder deploy sync failed (landing %1$d): %2$s', 'radius' ),
+					(int) $landing_id,
+					$e->getMessage()
+				);
+			}
+		}
+
+		if ( $bb_ok ) {
+			self::maybe_sync_beaver_builder_rendered_html_for_yoast( $landing_id );
+		}
+
 		self::maybe_ping_yoast_indexable( $landing_id );
 
 		return '';
@@ -827,12 +848,22 @@ class Radius_Deploy_Service {
 		}
 		$s                       = Radius_Settings::get();
 		$allow_elementor_prefix = ! empty( $s['deploy_copy_prefix_elementor'] );
+		$allow_beaver_prefix    = ! empty( $s['deploy_copy_prefix_beaver'] );
+		$bb_managed             = class_exists( 'Radius_Beaver_Builder_Compat' )
+			? array_fill_keys( Radius_Beaver_Builder_Compat::layout_meta_keys_managed_by_deploy(), true )
+			: array();
 		$skip_copy = array_fill_keys( self::meta_keys_never_copy_from_template(), true );
 		foreach ( $keys as $key ) {
 			if ( isset( $skip_copy[ $key ] ) ) {
 				continue;
 			}
+			if ( isset( $bb_managed[ $key ] ) ) {
+				continue;
+			}
 			if ( strpos( $key, '_elementor' ) === 0 && ! $allow_elementor_prefix ) {
+				continue;
+			}
+			if ( strpos( $key, '_fl_builder' ) === 0 && ! $allow_beaver_prefix ) {
 				continue;
 			}
 			$val = get_post_meta( $template_id, $key, true );
@@ -974,6 +1005,141 @@ class Radius_Deploy_Service {
 				$css->update();
 			}
 		}
+	}
+
+	/**
+	 * @param int $post_id Post ID.
+	 * @return bool
+	 */
+	private static function post_built_with_beaver_builder( $post_id ) {
+		return class_exists( 'Radius_Beaver_Builder_Compat' )
+			&& Radius_Beaver_Builder_Compat::post_uses_beaver_builder( (int) $post_id );
+	}
+
+	/**
+	 * Copy Beaver Builder layout from template, apply tokens, regenerate node IDs and asset cache.
+	 *
+	 * @param int                  $landing_id  Landing post ID.
+	 * @param int                  $template_id Template post ID.
+	 * @param int                  $place_id    radius_place term ID.
+	 * @param array<string,string> $tokens      Token map.
+	 * @param int                  $seed        Seed.
+	 * @param int|null             $placeholder_removed Optional.
+	 * @return void
+	 */
+	private static function sync_beaver_builder_layout_to_landing( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null ) {
+		$layout = FLBuilderModel::get_layout_data( 'published', $template_id );
+		if ( empty( $layout ) || ! is_array( $layout ) ) {
+			$enabled = get_post_meta( $template_id, '_fl_builder_enabled', true );
+			if ( $enabled ) {
+				update_post_meta( $landing_id, '_fl_builder_enabled', $enabled );
+			}
+			return;
+		}
+
+		$layout = self::render_value_for_deploy( $layout, $tokens, $seed, (int) $place_id, $placeholder_removed );
+		if ( method_exists( 'FLBuilderModel', 'generate_new_node_ids' ) ) {
+			$layout = FLBuilderModel::generate_new_node_ids( $layout );
+		}
+
+		/**
+		 * Filter Beaver Builder layout nodes after token replacement (before save).
+		 *
+		 * @param array                  $layout      Layout node tree.
+		 * @param int                    $landing_id  Landing post ID.
+		 * @param int                    $template_id Template post ID.
+		 * @param array<string,string>   $tokens      Token map.
+		 */
+		$layout = apply_filters( 'radius_deploy_beaver_builder_layout', $layout, $landing_id, $template_id, $tokens );
+
+		FLBuilderModel::update_layout_data( $layout, 'published', $landing_id );
+		FLBuilderModel::update_layout_data( $layout, 'draft', $landing_id );
+
+		$settings = FLBuilderModel::get_layout_settings( 'published', $template_id );
+		if ( ! empty( $settings ) ) {
+			$settings = self::render_value_for_deploy( $settings, $tokens, $seed, (int) $place_id, $placeholder_removed );
+			FLBuilderModel::update_layout_settings( $settings, 'published', $landing_id );
+			FLBuilderModel::update_layout_settings( $settings, 'draft', $landing_id );
+		}
+
+		$enabled = get_post_meta( $template_id, '_fl_builder_enabled', true );
+		update_post_meta( $landing_id, '_fl_builder_enabled', $enabled ? $enabled : '1' );
+
+		$skip = class_exists( 'Radius_Beaver_Builder_Compat' )
+			? Radius_Beaver_Builder_Compat::layout_meta_keys_managed_by_deploy()
+			: array();
+		$skip[] = '_fl_builder_enabled';
+		$skip   = array_fill_keys( $skip, true );
+
+		$all = get_post_custom( $template_id );
+		if ( is_array( $all ) ) {
+			foreach ( array_keys( $all ) as $meta_key ) {
+				if ( strpos( $meta_key, '_fl_builder' ) !== 0 || isset( $skip[ $meta_key ] ) ) {
+					continue;
+				}
+				$val = get_post_meta( $template_id, $meta_key, true );
+				if ( false === $val ) {
+					continue;
+				}
+				if ( '_fl_builder_template_id' === $meta_key && method_exists( 'FLBuilderModel', 'generate_node_id' ) ) {
+					$val = FLBuilderModel::generate_node_id();
+				} else {
+					$val = self::render_value_for_deploy( $val, $tokens, $seed, (int) $place_id, $placeholder_removed );
+				}
+				update_post_meta( $landing_id, $meta_key, $val );
+			}
+		}
+
+		if ( method_exists( 'FLBuilderModel', 'delete_all_asset_cache' ) ) {
+			FLBuilderModel::delete_all_asset_cache( $landing_id );
+		}
+	}
+
+	/**
+	 * Bake rendered Beaver Builder HTML into post_content for Yoast link indexing (mirrors Elementor path).
+	 *
+	 * @param int $landing_id Post ID.
+	 * @return void
+	 */
+	private static function maybe_sync_beaver_builder_rendered_html_for_yoast( $landing_id ) {
+		$landing_id = (int) $landing_id;
+		if ( $landing_id <= 0 || ! class_exists( 'FLBuilder' ) || ! method_exists( 'FLBuilder', 'render_content_by_id' ) ) {
+			return;
+		}
+		if ( ! self::post_built_with_beaver_builder( $landing_id ) ) {
+			return;
+		}
+
+		ob_start();
+		try {
+			FLBuilder::render_content_by_id( $landing_id );
+		} catch ( \Throwable $e ) {
+			ob_end_clean();
+			return;
+		}
+		$html = (string) ob_get_clean();
+		if ( $html === '' ) {
+			return;
+		}
+
+		/**
+		 * Whether to write Beaver Builder frontend HTML into `post_content` after deploy for Yoast/link indexing.
+		 *
+		 * @param bool   $sync       Default true.
+		 * @param int    $landing_id Post ID.
+		 * @param string $html       Rendered HTML.
+		 */
+		if ( ! apply_filters( 'radius_deploy_beaver_builder_sync_rendered_post_content', true, $landing_id, $html ) ) {
+			return;
+		}
+
+		$marker = '<!-- Created With Beaver Builder -->';
+		wp_update_post(
+			array(
+				'ID'           => $landing_id,
+				'post_content' => $marker . "\n\n" . $html,
+			)
+		);
 	}
 
 	/**

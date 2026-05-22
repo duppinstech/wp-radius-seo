@@ -55,6 +55,7 @@ class Radius_Plugin {
 		Radius_Rotation_Cron::init();
 		Radius_Deploy_Health_Cron::init();
 		Radius_Elementor_Compat::init();
+		Radius_Beaver_Builder_Compat::init();
 		add_action( 'admin_init', array( $this, 'maybe_flush_rewrite_rules' ), 5 );
 		add_action( 'init', array( $this, 'maybe_upgrade_schema' ), 0 );
 		// Priority after Magic Page and similar plugins (default init 10) so radius_service_area
@@ -323,6 +324,7 @@ class Radius_Plugin {
 		$tmp->register_post_types();
 		flush_rewrite_rules();
 		Radius_Elementor_Compat::sync_cpt_option();
+		Radius_Beaver_Builder_Compat::sync_cpt_option();
 		Radius_Rotation_Cron::reschedule();
 		Radius_Deploy_Health_Cron::on_activate();
 	}
@@ -534,6 +536,9 @@ class Radius_Plugin {
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
 			return $content;
 		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
+			return $content;
+		}
 
 		if ( Radius_Render_Context::landing_uses_dynamic_content( $post ) ) {
 			$snap = self::get_dynamic_snapshot( (int) $post->ID );
@@ -572,6 +577,9 @@ class Radius_Plugin {
 			return $content;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
+			return $content;
+		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
 			return $content;
 		}
 		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
@@ -624,6 +632,9 @@ class Radius_Plugin {
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
 			return $title;
 		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
+			return $title;
+		}
 		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
 			return $title;
 		}
@@ -660,6 +671,9 @@ class Radius_Plugin {
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
 			return $title;
 		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
+			return $title;
+		}
 		if ( ! Radius_Render_Context::landing_uses_dynamic_content( $post ) ) {
 			return $title;
 		}
@@ -685,6 +699,9 @@ class Radius_Plugin {
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
 			return $parts;
 		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
+			return $parts;
+		}
 		if ( ! Radius_Render_Context::landing_uses_dynamic_content( $post ) ) {
 			return $parts;
 		}
@@ -708,6 +725,9 @@ class Radius_Plugin {
 			return $parts;
 		}
 		if ( get_post_meta( $post->ID, '_elementor_edit_mode', true ) === 'builder' ) {
+			return $parts;
+		}
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::should_skip_radius_content_filters( (int) $post->ID ) ) {
 			return $parts;
 		}
 		if ( ! current_user_can( 'edit_post', $post->ID ) ) {

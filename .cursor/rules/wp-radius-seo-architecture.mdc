@@ -50,4 +50,5 @@ Source of truth: `includes/class-data-registry.php` (`Radius_Data_Registry`).
 
 - Changing CPT/rewrite: consider `radius_needs_rewrite_flush` and Magic Page URL conflicts (`init` priority already documented in `class-plugin.php`).
 - Elementor: gated by `enable_elementor`; `Radius_Elementor_Compat` + deploy copies Elementor JSON when enabled.
+- Beaver Builder: gated by `enable_beaver_builder`; `Radius_Beaver_Builder_Compat` + deploy copies `_fl_builder_*` layout via `FLBuilderModel` when template has BB layout.
 - Never store new data under `lf_` or `localeforge_*`; extend `Radius_Data_Registry` if adding canonical keys.

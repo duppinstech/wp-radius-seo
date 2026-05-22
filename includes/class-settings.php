@@ -107,6 +107,7 @@ class Radius_Settings {
 			'legacy_import_delta_mode'        => 1,
 			'legacy_import_inter_batch_ms'    => 1200,
 			'enable_elementor'                => 1,
+			'enable_beaver_builder'         => 0,
 			'service_anchors'                 => array(),
 			'site_replacements'               => self::default_site_replacements(),
 			/** @deprecated Use service_area_url_slug; kept for option merge. */
@@ -119,6 +120,7 @@ class Radius_Settings {
 			'integrate_yoast'                 => 1,
 			'deploy_copy_prefix_yoast'        => 1,
 			'deploy_copy_prefix_elementor'    => 0,
+			'deploy_copy_prefix_beaver'       => 0,
 			'deploy_copy_prefix_litespeed'    => 0,
 			'deploy_copy_prefix_rankmath'     => 0,
 			'deploy_copy_prefix_aioseo'       => 0,
@@ -248,6 +250,10 @@ class Radius_Settings {
 				'wordpress-seo-premium/wp-seo-premium.php',
 			),
 			'elementor'  => array( 'elementor/elementor.php' ),
+			'beaver'     => array(
+				'bb-plugin/fl-builder.php',
+				'beaver-builder-lite-version/fl-builder.php',
+			),
 			'litespeed'  => array( 'litespeed-cache/litespeed-cache.php' ),
 			'rankmath'   => array( 'seo-by-rank-math/rank-math.php' ),
 			'aioseo'     => array(
@@ -288,7 +294,7 @@ class Radius_Settings {
 	/**
 	 * Whether a known SEO/build plugin folder exists (Integrations tab “Detected” badge).
 	 *
-	 * @param string $group yoast|elementor|litespeed|rankmath|aioseo.
+	 * @param string $group yoast|elementor|beaver|litespeed|rankmath|aioseo.
 	 * @return bool
 	 */
 	public static function integration_plugin_detected( $group ) {
@@ -306,10 +312,17 @@ class Radius_Settings {
 	 * @return void
 	 */
 	public static function bootstrap_plugin_defaults() {
-		if ( (int) get_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 0 ) >= 2 ) {
+		$defaults_ver = (int) get_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 0 );
+		if ( $defaults_ver >= 3 ) {
 			return;
 		}
 		if ( ! defined( 'WP_PLUGIN_DIR' ) || WP_PLUGIN_DIR === '' ) {
+			return;
+		}
+
+		if ( $defaults_ver >= 2 ) {
+			self::bootstrap_beaver_builder_defaults();
+			update_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 3, false );
 			return;
 		}
 
@@ -330,6 +343,10 @@ class Radius_Settings {
 			$out['deploy_copy_prefix_elementor'] = 1;
 			$out['enable_elementor']             = 1;
 		}
+		if ( self::is_plugin_file_present( isset( $m['beaver'] ) ? $m['beaver'] : array() ) ) {
+			$out['deploy_copy_prefix_beaver'] = 1;
+			$out['enable_beaver_builder']     = 1;
+		}
 		if ( self::is_plugin_file_present( isset( $m['litespeed'] ) ? $m['litespeed'] : array() ) ) {
 			$out['deploy_copy_prefix_litespeed'] = 1;
 		}
@@ -341,10 +358,33 @@ class Radius_Settings {
 		}
 
 		update_option( self::OPTION, $out );
-		update_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 2, false );
+		update_option( self::OPTION_PLUGIN_DEFAULTS_VERSION, 3, false );
 
 		if ( class_exists( 'Radius_Rotation_Cron' ) ) {
 			Radius_Rotation_Cron::reschedule();
+		}
+	}
+
+	/**
+	 * One-time v3: enable Beaver Builder integration when the plugin is on disk.
+	 *
+	 * @return void
+	 */
+	private static function bootstrap_beaver_builder_defaults() {
+		$m = self::integration_plugin_detection_files();
+		if ( ! self::is_plugin_file_present( isset( $m['beaver'] ) ? $m['beaver'] : array() ) ) {
+			return;
+		}
+		$cur = get_option( self::OPTION, array() );
+		if ( ! is_array( $cur ) ) {
+			$cur = array();
+		}
+		$out = wp_parse_args( $cur, self::defaults() );
+		$out['deploy_copy_prefix_beaver'] = 1;
+		$out['enable_beaver_builder']     = 1;
+		update_option( self::OPTION, $out );
+		if ( class_exists( 'Radius_Beaver_Builder_Compat' ) ) {
+			Radius_Beaver_Builder_Compat::sync_cpt_option();
 		}
 	}
 
@@ -414,6 +454,9 @@ class Radius_Settings {
 		if ( isset( $input['enable_elementor'] ) ) {
 			$out['enable_elementor'] = ! empty( $input['enable_elementor'] ) ? 1 : 0;
 		}
+		if ( isset( $input['enable_beaver_builder'] ) ) {
+			$out['enable_beaver_builder'] = ! empty( $input['enable_beaver_builder'] ) ? 1 : 0;
+		}
 		if ( isset( $input['service_anchors'] ) && is_array( $input['service_anchors'] ) ) {
 			$out['service_anchors'] = self::sanitize_anchors( $input['service_anchors'] );
 		}
@@ -444,6 +487,7 @@ class Radius_Settings {
 			array(
 				'deploy_copy_prefix_yoast',
 				'deploy_copy_prefix_elementor',
+				'deploy_copy_prefix_beaver',
 				'deploy_copy_prefix_litespeed',
 				'deploy_copy_prefix_rankmath',
 				'deploy_copy_prefix_aioseo',
@@ -527,6 +571,7 @@ class Radius_Settings {
 		$map = array(
 			'deploy_copy_prefix_yoast'     => '_yoast_wpseo',
 			'deploy_copy_prefix_elementor' => '_elementor',
+			'deploy_copy_prefix_beaver'    => '_fl_builder',
 			'deploy_copy_prefix_litespeed' => '_litespeed',
 			'deploy_copy_prefix_rankmath'  => '_rank_math',
 			'deploy_copy_prefix_aioseo'    => '_aioseo',

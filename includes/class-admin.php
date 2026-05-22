@@ -1805,6 +1805,7 @@ class Radius_Admin {
 						$tid    = (int) $tpl->ID;
 						$deployed = isset( $counts[ $tid ] ) ? (int) $counts[ $tid ] : 0;
 						$is_el  = get_post_meta( $tid, '_elementor_edit_mode', true ) === 'builder';
+						$is_bb  = class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::post_uses_beaver_builder( $tid );
 						$st     = get_post_status( $tid );
 						$mod    = get_the_modified_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $tpl );
 						$edit   = get_edit_post_link( $tid, 'raw' );
@@ -1833,6 +1834,9 @@ class Radius_Admin {
 									<?php endif; ?>
 									<?php if ( $is_el ) : ?>
 										<span class="radius-badge radius-badge-wip"><?php esc_html_e( 'Elementor', 'radius' ); ?></span>
+									<?php endif; ?>
+									<?php if ( $is_bb ) : ?>
+										<span class="radius-badge radius-badge-wip"><?php esc_html_e( 'Beaver Builder', 'radius' ); ?></span>
 									<?php endif; ?>
 								</div>
 							</header>
@@ -1974,6 +1978,7 @@ class Radius_Admin {
 			$sa_frac     = $scope_sa > 0 ? sprintf( '%d / %d', $sa_deployed, $sa_target ) : sprintf( '%d / —', $sa_deployed );
 			$sa_mod      = $sa_tpl_obj ? get_the_modified_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $sa_tpl_obj ) : '';
 			$sa_is_el    = $sa_tpl_ok && get_post_meta( $sa_tid, '_elementor_edit_mode', true ) === 'builder';
+			$sa_is_bb    = $sa_tpl_ok && class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::post_uses_beaver_builder( $sa_tid );
 			$sa_st       = $sa_tpl_obj ? get_post_status( $sa_tpl_obj ) : '';
 			?>
 			<h2 class="radius-deploy-section-title" id="radius-deploy-service-areas"><?php esc_html_e( 'Service areas', 'radius' ); ?></h2>
@@ -1991,9 +1996,14 @@ class Radius_Admin {
 				<article class="radius-deploy-card">
 					<header class="radius-deploy-card__head">
 						<h2 class="radius-deploy-card__title"><?php esc_html_e( 'Service area deploy', 'radius' ); ?></h2>
-						<?php if ( $sa_tpl_ok && $sa_is_el ) : ?>
+						<?php if ( $sa_tpl_ok && ( $sa_is_el || $sa_is_bb ) ) : ?>
 							<div class="radius-deploy-card__badges">
-								<span class="radius-badge radius-badge-wip"><?php esc_html_e( 'Elementor', 'radius' ); ?></span>
+								<?php if ( $sa_is_el ) : ?>
+									<span class="radius-badge radius-badge-wip"><?php esc_html_e( 'Elementor', 'radius' ); ?></span>
+								<?php endif; ?>
+								<?php if ( $sa_is_bb ) : ?>
+									<span class="radius-badge radius-badge-wip"><?php esc_html_e( 'Beaver Builder', 'radius' ); ?></span>
+								<?php endif; ?>
 							</div>
 						<?php endif; ?>
 					</header>
@@ -3253,6 +3263,19 @@ Fast roadside help in {{region}}
 							</td>
 						</tr>
 						<tr>
+							<th><?php esc_html_e( 'Beaver Builder', 'radius' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="enable_beaver_builder" value="1" <?php checked( ! empty( $s['enable_beaver_builder'] ) ); ?> />
+									<?php esc_html_e( 'Register Landings and Templates for Beaver Builder editing and copy layouts on deploy.', 'radius' ); ?>
+								</label>
+								<?php if ( Radius_Settings::integration_plugin_detected( 'beaver' ) ) : ?>
+									<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+								<?php endif; ?>
+								<p class="description"><?php esc_html_e( 'After enabling, save settings once, then open a template built with Beaver Builder and deploy. Layout nodes get new IDs per landing; {{tokens}} and spintax are applied in module settings.', 'radius' ); ?></p>
+							</td>
+						</tr>
+						<tr>
 							<th><?php esc_html_e( 'Yoast SEO', 'radius' ); ?></th>
 							<td>
 								<label>
@@ -3295,6 +3318,17 @@ Fast roadside help in {{region}}
 											<?php esc_html_e( '(in addition to the normal Elementor document copy when the template is built with Elementor)', 'radius' ); ?>
 										</label>
 										<?php if ( Radius_Settings::integration_plugin_detected( 'elementor' ) ) : ?>
+											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
+										<?php endif; ?>
+									</p>
+									<p>
+										<label>
+											<input type="checkbox" name="deploy_copy_prefix_beaver" value="1" <?php checked( ! empty( $s['deploy_copy_prefix_beaver'] ) ); ?> />
+											<?php esc_html_e( 'Beaver Builder — all keys starting with', 'radius' ); ?>
+											<code>_fl_builder</code>
+											<?php esc_html_e( '(in addition to the normal Beaver Builder layout copy when the template uses the builder)', 'radius' ); ?>
+										</label>
+										<?php if ( Radius_Settings::integration_plugin_detected( 'beaver' ) ) : ?>
 											<span class="radius-integration-detected description" style="margin-left:6px;"><?php esc_html_e( 'Detected', 'radius' ); ?></span>
 										<?php endif; ?>
 									</p>

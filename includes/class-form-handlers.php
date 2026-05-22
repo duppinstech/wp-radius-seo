@@ -1035,9 +1035,11 @@ class Radius_Form_Handlers {
 				'legacy_import_skip_existing'    => isset( $_POST['legacy_import_skip_existing'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'legacy_import_inter_batch_ms'   => isset( $_POST['legacy_import_inter_batch_ms'] ) ? absint( $_POST['legacy_import_inter_batch_ms'] ) : 1200, // phpcs:ignore WordPress.Security.NonceVerification
 				'enable_elementor'               => isset( $_POST['enable_elementor'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
+				'enable_beaver_builder'          => isset( $_POST['enable_beaver_builder'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'integrate_yoast'                => isset( $_POST['integrate_yoast'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'deploy_copy_prefix_yoast'       => isset( $_POST['deploy_copy_prefix_yoast'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'deploy_copy_prefix_elementor'   => isset( $_POST['deploy_copy_prefix_elementor'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
+				'deploy_copy_prefix_beaver'      => isset( $_POST['deploy_copy_prefix_beaver'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'deploy_copy_prefix_litespeed'   => isset( $_POST['deploy_copy_prefix_litespeed'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'deploy_copy_prefix_rankmath'    => isset( $_POST['deploy_copy_prefix_rankmath'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
 				'deploy_copy_prefix_aioseo'      => isset( $_POST['deploy_copy_prefix_aioseo'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
@@ -1059,6 +1061,7 @@ class Radius_Form_Handlers {
 		}
 
 		Radius_Elementor_Compat::sync_cpt_option();
+		Radius_Beaver_Builder_Compat::sync_cpt_option();
 		Radius_Rotation_Cron::reschedule();
 
 		$return_tab = isset( $_POST['radius_settings_tab'] ) ? sanitize_key( wp_unslash( $_POST['radius_settings_tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification

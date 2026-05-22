@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.74
+Stable tag: 1.6.75
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -64,6 +64,8 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_deploy_exclude_meta_keys_from_copy` — post meta keys not copied template → landing. **Default empty in 1.6.36+** so Yoast scores (`linkdex`, `content_score`, …) inherited from the legacy Magic Page template flow forward; return a string list to opt back into per-post analysis.
 * `radius_legacy_yoast_meta_skip_keys` — Yoast meta keys NOT copied from a legacy template (default `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`, `_yoast_wpseo_metadesc` because the migration sets those per service line).
 * `radius_deploy_elementor_sync_rendered_post_content` — return `false` to skip writing Elementor’s rendered HTML into `post_content` after deploy.
+* `radius_deploy_beaver_builder_sync_rendered_post_content` — return `false` to skip writing Beaver Builder rendered HTML into `post_content` after deploy.
+* `radius_deploy_beaver_builder_layout` — filter Beaver Builder layout node tree after token replacement on deploy.
 * `radius_template_default_meta_xfield_patterns` — adjust default per-service `meta-title` / `meta-desc` patterns seeded onto service templates.
 * `radius_place_slug_blacklist_fragments` — replace the default slug substring list for “low value” place cleanup and deploy prefilter (array of lowercase strings matched against `radius_place` term slugs).
 * `radius_slug_blacklist_places_chunk_size` — max term IDs deleted per AJAX request when removing slug-pattern matches from the library (default 80, clamped 10–200).
@@ -80,6 +82,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.75 =
+* **Beaver Builder:** Optional integration (Settings → Integrations). Registers Radius CPTs with Beaver Builder, copies layout from template to landing on deploy with {{token}} / spintax in module settings, regenerates node IDs and asset cache, and skips Radius `the_content` filters on BB-built pages. Yoast can receive rendered HTML in `post_content` after deploy (filterable).
 
 = 1.6.74 =
 * **Health check:** Magic Page plugin uninstall check; scan deployed landing/service-area URLs for conflicting redirects in Redirection, Yoast SEO Premium, and Radius rules (with remove button). **Fix all issues** runs automated remediations in one pass. Scheduled check can email the admin when failures/warnings are found (Settings → Content).
