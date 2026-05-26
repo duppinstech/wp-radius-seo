@@ -2521,7 +2521,27 @@ Fast roadside help in {{region}}
 						<?php endif; ?>
 						<hr class="radius-tab-hr" />
 					<?php endif; ?>
-					<p class="description"><?php esc_html_e( 'Guided flow for sites that still have Magic Page data in this database: copy locations, import blueprint templates (including Elementor documents), create roadside/heavy/equipment template drafts from your towing blueprint, then finish spintax and deploy on the other tabs.', 'radius' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Guided flow for sites that still have Magic Page data in this database: copy locations, import blueprint templates (including Elementor documents), publish one Radius template per Magic Page service group (from wp_options _group_meta_fields_*), then finish spintax and deploy on the other tabs.', 'radius' ); ?></p>
+					<?php
+					$mp_groups = class_exists( 'Radius_Legacy_Import_Service' )
+						? Radius_Legacy_Import_Service::discover_magic_page_groups_from_options()
+						: array();
+					if ( ! empty( $mp_groups ) ) :
+						?>
+						<p><strong><?php esc_html_e( 'Detected Magic Page service groups', 'radius' ); ?></strong></p>
+						<ul style="list-style:disc;padding-left:1.25em;margin-top:0;">
+							<?php foreach ( $mp_groups as $g ) : ?>
+								<li>
+									<code><?php echo esc_html( isset( $g['slug'] ) ? (string) $g['slug'] : '' ); ?></code>
+									<?php if ( ! empty( $g['qualifier'] ) ) : ?>
+										<span class="description">— <?php echo esc_html( (string) $g['qualifier'] ); ?></span>
+									<?php endif; ?>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php else : ?>
+						<p class="description"><?php esc_html_e( 'No _group_meta_fields_* options found yet. Automated migration falls back to the classic towing + three variant clone flow.', 'radius' ); ?></p>
+					<?php endif; ?>
 					<ul style="list-style:disc;padding-left:1.25em;">
 						<li>
 							<?php
@@ -2622,9 +2642,9 @@ Fast roadside help in {{region}}
 
 					<hr class="radius-tab-hr" />
 					<h3><?php esc_html_e( 'Step 3 — Service-line template drafts', 'radius' ); ?></h3>
-					<p class="description"><?php esc_html_e( 'Pick the imported towing blueprint, then create three drafts: tags like towing_* become roadside_*, heavy_*, and equipment_* inside Elementor JSON and spintax meta (reuse your existing bracket → {{}} conversion on the Spintax tab when importing global spintax).', 'radius' ); ?></p>
+					<p class="description"><?php esc_html_e( 'When groups are detected above, automated migration publishes one template per group slug. For classic towing sites with a single blueprint, pick the base template and clone variants manually (towing_* → roadside_*, heavy_*, equipment_*).', 'radius' ); ?></p>
 					<p>
-						<label for="radius-migration-base-template"><strong><?php esc_html_e( 'Towing blueprint (radius_template)', 'radius' ); ?></strong></label><br />
+						<label for="radius-migration-base-template"><strong><?php esc_html_e( 'Base blueprint (radius_template)', 'radius' ); ?></strong></label><br />
 						<select id="radius-migration-base-template" class="regular-text">
 							<option value=""><?php esc_html_e( '— Choose template —', 'radius' ); ?></option>
 							<?php foreach ( $templates as $tpl ) : ?>
@@ -2640,7 +2660,7 @@ Fast roadside help in {{region}}
 
 					<hr class="radius-tab-hr" />
 					<h3><?php esc_html_e( 'Automation', 'radius' ); ?></h3>
-					<p class="description"><?php esc_html_e( 'Runs step 1 (locations), step 2 (template import), and step 3 (variants) in order. Choose the towing blueprint above first. Then use Spintax (global option) with prefix filters per template, assign the service-area template under Settings → Areas if needed, and deploy.', 'radius' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Runs step 1 (locations), step 2 (template import), and step 3 (publish per detected group or towing variants) in order. Then use Spintax (global option) with prefix filters per template, assign the service-area template under Settings → Areas if needed, and deploy.', 'radius' ); ?></p>
 					<p>
 						<button type="button" class="button button-primary" id="radius-migration-run-full">
 							<?php esc_html_e( 'Start migration (automated steps)', 'radius' ); ?>

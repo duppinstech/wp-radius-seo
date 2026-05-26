@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.78
+Stable tag: 1.6.80
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -82,6 +82,12 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.80 =
+* **Fix:** Migration wizard landing deploy finds published service templates on non-towing sites — persists a slug→template map after the templates step, resolves templates by `_radius_migration_group_slug` or post slug, and rebuilds the map from published migration templates when `_group_meta_fields_*` options are missing.
+
+= 1.6.79 =
+* **Migration:** Auto-detect Magic Page service groups from `wp_options` (`_group_meta_fields_{slug}`) and publish one Radius template per group (e.g. diesel-mechanic, fleet-maintenance) instead of hardcoding four towing slugs. Classic towing sites still use clone-from-towing when only one blueprint is imported. Wizard deploy order and spintax prefixes follow discovered groups. Filters: `radius_magic_page_discovered_groups`, `radius_migration_templates_plan`, `radius_migration_replace_pairs_from_base_slug`.
 
 = 1.6.78 =
 * **Fix:** Removing a site replacer under Settings → Site replacers now stays removed after save (defaults are no longer re-added on load).

@@ -788,20 +788,60 @@ class Radius_Ajax {
 			@set_time_limit( 180 );
 		}
 
-		$titles = Radius_Legacy_Import_Service::migration_variant_default_titles();
 		$out    = array(
 			'created' => array(),
 			'errors'  => array(),
 		);
+		$groups = Radius_Legacy_Import_Service::discover_magic_page_groups_from_options();
 
-		foreach ( array( 'roadside', 'heavy', 'equipment' ) as $variant ) {
-			$title = isset( $titles[ $variant ] ) ? (string) $titles[ $variant ] : $variant;
-			$r     = Radius_Legacy_Import_Service::duplicate_radius_template_for_migration_variant( $base_id, $title, $variant );
-			if ( is_wp_error( $r ) ) {
-				$out['errors'][] = $r->get_error_message();
-				continue;
+		if ( ! empty( $groups ) ) {
+			$base_slug = '';
+			foreach ( $groups as $g ) {
+				if ( ! empty( $g['slug'] ) && 'towing' === sanitize_title( (string) $g['slug'] ) ) {
+					$base_slug = 'towing';
+					break;
+				}
 			}
-			$out['created'][ $variant ] = (int) $r;
+			if ( $base_slug === '' && ! empty( $groups[0]['slug'] ) ) {
+				$base_slug = sanitize_title( (string) $groups[0]['slug'] );
+			}
+			$base_post = get_post( $base_id );
+			if ( $base_post instanceof WP_Post && $base_post->post_name !== '' ) {
+				$base_slug = $base_post->post_name;
+			}
+
+			foreach ( $groups as $g ) {
+				$slug = isset( $g['slug'] ) ? sanitize_title( (string) $g['slug'] ) : '';
+				if ( $slug === '' || $slug === $base_slug ) {
+					continue;
+				}
+				$existing = Radius_Legacy_Import_Service::find_radius_template_by_legacy_post_slug( $slug );
+				if ( $existing > 0 ) {
+					$out['created'][ $slug ] = $existing;
+					continue;
+				}
+				$title = Radius_Legacy_Import_Service::migration_title_for_group_slug(
+					$slug,
+					isset( $g['legacy_template_id'] ) ? (int) $g['legacy_template_id'] : 0
+				);
+				$r = Radius_Legacy_Import_Service::duplicate_radius_template_for_migration_group( $base_id, $title, $base_slug, $slug );
+				if ( is_wp_error( $r ) ) {
+					$out['errors'][] = $r->get_error_message();
+					continue;
+				}
+				$out['created'][ $slug ] = (int) $r;
+			}
+		} else {
+			$titles = Radius_Legacy_Import_Service::migration_variant_default_titles();
+			foreach ( array( 'roadside', 'heavy', 'equipment' ) as $variant ) {
+				$title = isset( $titles[ $variant ] ) ? (string) $titles[ $variant ] : $variant;
+				$r     = Radius_Legacy_Import_Service::duplicate_radius_template_for_migration_variant( $base_id, $title, $variant );
+				if ( is_wp_error( $r ) ) {
+					$out['errors'][] = $r->get_error_message();
+					continue;
+				}
+				$out['created'][ $variant ] = (int) $r;
+			}
 		}
 
 		wp_send_json_success( $out );

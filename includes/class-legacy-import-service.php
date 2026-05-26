@@ -929,7 +929,7 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Delete radius_template rows created by a previous migration (import or clone) so the wizard can rebuild exactly four service templates.
+	 * Delete radius_template rows created by a previous migration (import or clone) so the wizard can rebuild service templates.
 	 *
 	 * @return int Number of posts deleted.
 	 */
@@ -957,6 +957,7 @@ class Radius_Legacy_Import_Service {
 			)
 		);
 		if ( empty( $ids ) ) {
+			delete_option( self::OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP );
 			return 0;
 		}
 		$n = 0;
@@ -965,6 +966,7 @@ class Radius_Legacy_Import_Service {
 				++$n;
 			}
 		}
+		delete_option( self::OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP );
 		return $n;
 	}
 
@@ -3198,6 +3200,770 @@ class Radius_Legacy_Import_Service {
 		return empty( $found ) ? 0 : (int) $found[0];
 	}
 
+	/** Magic Page option prefix: `_group_meta_fields_{group-slug}` → qualifier / linked template. */
+	public const GROUP_META_FIELDS_OPTION_PREFIX = '_group_meta_fields_';
+
+	/**
+	 * Discover Magic Page service groups from wp_options (`_group_meta_fields_*`).
+	 *
+	 * @return array<int,array{slug:string,qualifier:string,option_name:string,legacy_template_id:int}>
+	 */
+	public static function discover_magic_page_groups_from_options() {
+		global $wpdb;
+
+		$prefix = self::GROUP_META_FIELDS_OPTION_PREFIX;
+		$like   = $wpdb->esc_like( $prefix ) . '%';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name ASC",
+				$like
+			),
+			ARRAY_A
+		);
+
+		$groups = array();
+		foreach ( (array) $rows as $row ) {
+			$name = isset( $row['option_name'] ) ? (string) $row['option_name'] : '';
+			if ( strpos( $name, $prefix ) !== 0 ) {
+				continue;
+			}
+			$slug = sanitize_title( substr( $name, strlen( $prefix ) ) );
+			if ( $slug === '' ) {
+				continue;
+			}
+			$raw_val   = isset( $row['option_value'] ) ? maybe_unserialize( $row['option_value'] ) : '';
+			$qualifier = self::parse_group_meta_fields_option_value( $raw_val );
+			$legacy_id = self::resolve_legacy_template_id_for_group_slug( $slug, $raw_val );
+
+			$groups[] = array(
+				'slug'               => $slug,
+				'qualifier'          => $qualifier,
+				'option_name'        => $name,
+				'legacy_template_id' => $legacy_id,
+			);
+		}
+
+		/**
+		 * Magic Page groups parsed from `_group_meta_fields_{slug}` options.
+		 *
+		 * @param array<int,array{slug:string,qualifier:string,option_name:string,legacy_template_id:int}> $groups
+		 */
+		return apply_filters( 'radius_magic_page_discovered_groups', $groups );
+	}
+
+	/**
+	 * Parse qualifier from a `_group_meta_fields_*` option value (yes, auto, post ID, …).
+	 *
+	 * @param mixed $raw_val Option value.
+	 * @return string
+	 */
+	private static function parse_group_meta_fields_option_value( $raw_val ) {
+		if ( is_numeric( $raw_val ) ) {
+			return 'linked';
+		}
+		if ( is_string( $raw_val ) ) {
+			$v = strtolower( trim( $raw_val ) );
+			if ( $v !== '' ) {
+				return sanitize_key( $v );
+			}
+		}
+		if ( is_array( $raw_val ) ) {
+			foreach ( array( 'qualifier', 'mode', 'value', 0 ) as $k ) {
+				if ( isset( $raw_val[ $k ] ) && is_scalar( $raw_val[ $k ] ) ) {
+					return sanitize_key( (string) $raw_val[ $k ] );
+				}
+			}
+		}
+		return 'yes';
+	}
+
+	/**
+	 * Legacy magicpage post ID for a group slug (option value may be the post ID).
+	 *
+	 * @param string $group_slug    Sanitized group slug.
+	 * @param mixed  $option_value  Raw `_group_meta_fields_*` value.
+	 * @return int
+	 */
+	public static function resolve_legacy_template_id_for_group_slug( $group_slug, $option_value = null ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			return 0;
+		}
+
+		if ( is_numeric( $option_value ) ) {
+			$pid = (int) $option_value;
+			if ( $pid > 0 ) {
+				$p = get_post( $pid );
+				if ( $p && self::legacy_template_post_type() === $p->post_type ) {
+					return $pid;
+				}
+			}
+		}
+
+		$legacy = get_posts(
+			array(
+				'post_type'              => self::legacy_template_post_type(),
+				'name'                   => $group_slug,
+				'post_status'            => 'any',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+		return empty( $legacy[0] ) ? 0 : (int) $legacy[0];
+	}
+
+	/**
+	 * Locate imported radius_template by legacy magicpage post ID (`_radius_imported_from`).
+	 *
+	 * @param int $legacy_post_id Legacy template post ID.
+	 * @return int radius_template post ID or 0.
+	 */
+	public static function find_radius_template_by_legacy_import_id( $legacy_post_id ) {
+		$legacy_post_id = (int) $legacy_post_id;
+		if ( $legacy_post_id <= 0 ) {
+			return 0;
+		}
+		$found = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'any',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					array(
+						'key'   => '_radius_imported_from',
+						'value' => $legacy_post_id,
+					),
+				),
+			)
+		);
+		return empty( $found[0] ) ? 0 : (int) $found[0];
+	}
+
+	/** Option: group slug => radius_template ID (survives `_group_meta_fields_*` cleanup). */
+	public const OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP = 'radius_migration_deploy_template_map';
+
+	/**
+	 * Persist slug → template ID map after the templates migration step.
+	 *
+	 * @param array<string,int> $group_template_ids Group slug => post ID.
+	 * @return void
+	 */
+	public static function persist_migration_deploy_template_map( array $group_template_ids ) {
+		$clean = array();
+		foreach ( $group_template_ids as $slug => $tid ) {
+			$slug = sanitize_title( (string) $slug );
+			$tid  = (int) $tid;
+			if ( $slug !== '' && $tid > 0 ) {
+				$clean[ $slug ] = $tid;
+			}
+		}
+		if ( empty( $clean ) ) {
+			return;
+		}
+		update_option( self::OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP, $clean, false );
+	}
+
+	/**
+	 * Stored deploy map from the last templates pipeline run.
+	 *
+	 * @return array<string,int> Group slug => radius_template post ID.
+	 */
+	public static function get_migration_deploy_template_map() {
+		$map = get_option( self::OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP, array() );
+		if ( ! is_array( $map ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $map as $slug => $tid ) {
+			$slug = sanitize_title( (string) $slug );
+			$tid  = (int) $tid;
+			if ( $slug !== '' && $tid > 0 ) {
+				$out[ $slug ] = $tid;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Find a published radius_template for a Magic Page group slug (post_name or migration meta).
+	 *
+	 * @param string $group_slug Group slug.
+	 * @return int Post ID or 0.
+	 */
+	public static function find_published_radius_template_by_group_slug( $group_slug ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			return 0;
+		}
+
+		$by_name = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'name'                   => $group_slug,
+				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+		if ( ! empty( $by_name[0] ) ) {
+			return (int) $by_name[0];
+		}
+
+		$by_meta = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					array(
+						'key'   => '_radius_migration_group_slug',
+						'value' => $group_slug,
+					),
+				),
+			)
+		);
+		return empty( $by_meta[0] ) ? 0 : (int) $by_meta[0];
+	}
+
+	/**
+	 * Published radius_template IDs for migration wizard landing deploy (map, slug lookup, then migration-sourced fallback).
+	 *
+	 * @return int[]
+	 */
+	public static function get_published_migration_template_ids_for_deploy() {
+		$ids = array();
+		$map = self::get_migration_deploy_template_map();
+
+		foreach ( $map as $slug => $tid ) {
+			$tid  = (int) $tid;
+			$post = $tid > 0 ? get_post( $tid ) : null;
+			if ( $post instanceof WP_Post && 'radius_template' === $post->post_type && 'publish' === $post->post_status ) {
+				$ids[] = $tid;
+				continue;
+			}
+			$resolved = self::find_published_radius_template_by_group_slug( (string) $slug );
+			if ( $resolved > 0 ) {
+				$ids[] = $resolved;
+			}
+		}
+
+		if ( empty( $ids ) ) {
+			foreach ( self::get_migration_wizard_deploy_slugs() as $slug ) {
+				$resolved = self::find_published_radius_template_by_group_slug( $slug );
+				if ( $resolved > 0 ) {
+					$ids[] = $resolved;
+				}
+			}
+		}
+
+		if ( empty( $ids ) ) {
+			$rebuilt = self::rebuild_migration_deploy_template_map_from_site();
+			if ( ! empty( $rebuilt ) ) {
+				$ids = array_values( $rebuilt );
+			}
+		}
+
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+
+		/**
+		 * Published template IDs used when the migration wizard deploys landings.
+		 *
+		 * @param int[] $ids Ordered template post IDs.
+		 */
+		return apply_filters( 'radius_migration_wizard_deploy_template_ids', $ids );
+	}
+
+	/**
+	 * Build and persist slug → template ID map from published migration-sourced templates on the site.
+	 *
+	 * @return array<string,int> Group slug => post ID.
+	 */
+	public static function rebuild_migration_deploy_template_map_from_site() {
+		$posts = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'publish',
+				'posts_per_page'         => -1,
+				'orderby'                => 'title',
+				'order'                  => 'ASC',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => true,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					'relation' => 'OR',
+					array(
+						'key'     => '_radius_imported_from',
+						'compare' => 'EXISTS',
+					),
+					array(
+						'key'     => '_radius_migration_group_slug',
+						'compare' => 'EXISTS',
+					),
+					array(
+						'key'     => '_radius_migration_clone_of',
+						'compare' => 'EXISTS',
+					),
+				),
+			)
+		);
+
+		$map = array();
+		foreach ( (array) $posts as $post ) {
+			if ( ! $post instanceof WP_Post ) {
+				continue;
+			}
+			$slug = (string) get_post_meta( $post->ID, '_radius_migration_group_slug', true );
+			if ( $slug === '' ) {
+				$slug = $post->post_name;
+			}
+			$slug = sanitize_title( $slug );
+			if ( $slug === '' ) {
+				continue;
+			}
+			$map[ $slug ] = (int) $post->ID;
+		}
+
+		if ( ! empty( $map ) ) {
+			self::persist_migration_deploy_template_map( $map );
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Template slugs for migration wizard landing deploy (discovered groups or classic towing fallback).
+	 *
+	 * @return string[]
+	 */
+	public static function get_migration_wizard_deploy_slugs() {
+		$map = self::get_migration_deploy_template_map();
+		if ( ! empty( $map ) ) {
+			/**
+			 * Published template slugs used when the migration wizard deploys landings.
+			 *
+			 * @param string[] $slugs Keys from persisted deploy map.
+			 */
+			return apply_filters( 'radius_migration_wizard_deploy_landing_slugs', array_keys( $map ) );
+		}
+
+		$discovered = array();
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			if ( ! empty( $g['slug'] ) ) {
+				$discovered[] = (string) $g['slug'];
+			}
+		}
+		if ( ! empty( $discovered ) ) {
+			/**
+			 * Published template slugs used when the migration wizard deploys landings.
+			 *
+			 * @param string[] $discovered Slugs from `_group_meta_fields_*` options.
+			 */
+			return apply_filters( 'radius_migration_wizard_deploy_landing_slugs', $discovered );
+		}
+
+		return apply_filters(
+			'radius_migration_wizard_deploy_landing_slugs',
+			array(
+				'towing',
+				'roadside-assistance',
+				'heavy-towing',
+				'heavy-equipment-towing',
+			)
+		);
+	}
+
+	/**
+	 * Service-line key for Yoast / xfields (classic towing lines or group slug).
+	 *
+	 * @param string $group_slug Group / template slug.
+	 * @return string
+	 */
+	public static function migration_service_line_for_group_slug( $group_slug ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		$map        = array(
+			'towing'                 => 'towing',
+			'roadside-assistance'    => 'roadside',
+			'heavy-towing'           => 'heavy',
+			'heavy-equipment-towing' => 'equipment',
+		);
+		if ( isset( $map[ $group_slug ] ) ) {
+			return $map[ $group_slug ];
+		}
+
+		/**
+		 * Service-line key used for Yoast + default xfields when publishing a non-towing group slug.
+		 *
+		 * @param string $group_slug Sanitized group slug (also used as default line).
+		 * @param string $group_slug Same as first argument.
+		 */
+		return (string) apply_filters( 'radius_migration_service_line_for_group_slug', $group_slug, $group_slug );
+	}
+
+	/**
+	 * Spintax import key prefixes for a group (underscore + hyphen variants, towing shortcuts).
+	 *
+	 * @param string $group_slug Group slug.
+	 * @return string[]
+	 */
+	public static function migration_spintax_prefixes_for_group_slug( $group_slug ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			return array();
+		}
+
+		$prefixes = array( $group_slug );
+		$under    = str_replace( '-', '_', $group_slug );
+		if ( $under !== $group_slug ) {
+			$prefixes[] = $under;
+		}
+
+		$legacy_short = array(
+			'towing'                 => array( 'towing' ),
+			'roadside-assistance'    => array( 'roadside' ),
+			'heavy-towing'           => array( 'heavy' ),
+			'heavy-equipment-towing' => array( 'equipment', 'heavy-equipment' ),
+		);
+		if ( isset( $legacy_short[ $group_slug ] ) ) {
+			$prefixes = array_merge( $legacy_short[ $group_slug ], $prefixes );
+		}
+
+		$first = strtok( $group_slug, '-' );
+		if ( is_string( $first ) && $first !== '' && $first !== $group_slug ) {
+			$prefixes[] = $first;
+		}
+
+		$prefixes = array_values( array_unique( array_filter( array_map( 'strval', $prefixes ) ) ) );
+
+		/**
+		 * Spintax row key prefixes when importing global Magic Page spintax into a template.
+		 *
+		 * @param string[] $prefixes   Prefix list.
+		 * @param string   $group_slug Group slug.
+		 */
+		return apply_filters( 'radius_migration_spintax_prefixes_for_group_slug', $prefixes, $group_slug );
+	}
+
+	/**
+	 * Build migration plan: per-group publish, hybrid clone, or classic towing clone.
+	 *
+	 * @param array<int,array<string,mixed>>|null $groups From {@see discover_magic_page_groups_from_options()}.
+	 * @return array<string,mixed>
+	 */
+	public static function build_migration_templates_plan( array $groups = null ) {
+		if ( null === $groups ) {
+			$groups = self::discover_magic_page_groups_from_options();
+		}
+
+		if ( empty( $groups ) ) {
+			$plan = self::build_towing_clone_migration_plan( array() );
+			return apply_filters( 'radius_migration_templates_plan', $plan );
+		}
+
+		$entries     = array();
+		$direct      = 0;
+		$group_slugs = array();
+
+		foreach ( $groups as $g ) {
+			$slug = isset( $g['slug'] ) ? sanitize_title( (string) $g['slug'] ) : '';
+			if ( $slug === '' ) {
+				continue;
+			}
+			$group_slugs[] = $slug;
+
+			$tid = self::find_radius_template_by_legacy_post_slug( $slug );
+			if ( $tid <= 0 && ! empty( $g['legacy_template_id'] ) ) {
+				$tid = self::find_radius_template_by_legacy_import_id( (int) $g['legacy_template_id'] );
+			}
+			if ( $tid > 0 ) {
+				++$direct;
+			}
+
+			$entries[] = array(
+				'group_slug'         => $slug,
+				'qualifier'          => isset( $g['qualifier'] ) ? (string) $g['qualifier'] : 'yes',
+				'template_id'        => $tid,
+				'service_line'       => self::migration_service_line_for_group_slug( $slug ),
+				'legacy_template_id' => isset( $g['legacy_template_id'] ) ? (int) $g['legacy_template_id'] : 0,
+			);
+		}
+
+		$total     = count( $entries );
+		$base_slug = self::infer_migration_base_group_slug( $groups );
+
+		if ( $total > 0 && $direct >= $total ) {
+			foreach ( $entries as $i => $entry ) {
+				$entries[ $i ]['action'] = 'publish_existing';
+			}
+			$plan = array(
+				'mode'      => 'per_group',
+				'base_slug' => $base_slug,
+				'groups'    => $groups,
+				'entries'   => $entries,
+			);
+			return apply_filters( 'radius_migration_templates_plan', $plan );
+		}
+
+		$classic = array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
+		$classic_match = count( array_intersect( $group_slugs, $classic ) );
+		$has_towing    = in_array( 'towing', $group_slugs, true );
+
+		if ( $has_towing && $classic_match >= 3 && $direct <= 1 ) {
+			$plan = self::build_towing_clone_migration_plan( $groups );
+			return apply_filters( 'radius_migration_templates_plan', $plan );
+		}
+
+		foreach ( $entries as $i => $entry ) {
+			$entries[ $i ]['action'] = $entry['template_id'] > 0 ? 'publish_existing' : 'clone_from_base';
+		}
+
+		$plan = array(
+			'mode'      => 'hybrid',
+			'base_slug' => $base_slug,
+			'groups'    => $groups,
+			'entries'   => $entries,
+		);
+		return apply_filters( 'radius_migration_templates_plan', $plan );
+	}
+
+	/**
+	 * Classic towing migration: one imported blueprint + three keyword clones.
+	 *
+	 * @param array<int,array<string,mixed>> $groups Discovered groups (may be empty).
+	 * @return array<string,mixed>
+	 */
+	private static function build_towing_clone_migration_plan( array $groups ) {
+		return array(
+			'mode'      => 'towing_clone',
+			'base_slug' => 'towing',
+			'groups'    => $groups,
+			'entries'   => array(
+				array(
+					'group_slug'   => 'towing',
+					'action'       => 'publish_existing',
+					'variant_key'  => '',
+					'service_line' => 'towing',
+				),
+				array(
+					'group_slug'   => 'roadside-assistance',
+					'action'       => 'clone_variant',
+					'variant_key'  => 'roadside',
+					'service_line' => 'roadside',
+				),
+				array(
+					'group_slug'   => 'heavy-towing',
+					'action'       => 'clone_variant',
+					'variant_key'  => 'heavy',
+					'service_line' => 'heavy',
+				),
+				array(
+					'group_slug'   => 'heavy-equipment-towing',
+					'action'       => 'clone_variant',
+					'variant_key'  => 'equipment',
+					'service_line' => 'equipment',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Base group slug for cloning (filter, towing if present, else first discovered group).
+	 *
+	 * @param array<int,array<string,mixed>> $groups Discovered groups.
+	 * @return string
+	 */
+	public static function infer_migration_base_group_slug( array $groups ) {
+		$filtered = (string) apply_filters( 'radius_migration_base_legacy_slug', '' );
+		if ( $filtered !== '' ) {
+			return sanitize_title( $filtered );
+		}
+		foreach ( $groups as $g ) {
+			if ( ! empty( $g['slug'] ) && 'towing' === sanitize_title( (string) $g['slug'] ) ) {
+				return 'towing';
+			}
+		}
+		if ( ! empty( $groups[0]['slug'] ) ) {
+			return sanitize_title( (string) $groups[0]['slug'] );
+		}
+		return 'towing';
+	}
+
+	/**
+	 * Default draft title for a group template (legacy post title or humanized slug).
+	 *
+	 * @param string $group_slug         Group slug.
+	 * @param int    $legacy_template_id Optional legacy post ID.
+	 * @return string
+	 */
+	public static function migration_title_for_group_slug( $group_slug, $legacy_template_id = 0 ) {
+		$legacy_template_id = (int) $legacy_template_id;
+		if ( $legacy_template_id > 0 ) {
+			$p = get_post( $legacy_template_id );
+			if ( $p instanceof WP_Post && $p->post_title !== '' ) {
+				return $p->post_title;
+			}
+		}
+		$group_slug = sanitize_title( (string) $group_slug );
+		$legacy     = get_posts(
+			array(
+				'post_type'              => self::legacy_template_post_type(),
+				'name'                   => $group_slug,
+				'post_status'            => 'any',
+				'posts_per_page'         => 1,
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+		if ( ! empty( $legacy[0] ) && $legacy[0] instanceof WP_Post && $legacy[0]->post_title !== '' ) {
+			return $legacy[0]->post_title;
+		}
+		return ucwords( str_replace( '-', ' ', $group_slug ) );
+	}
+
+	/**
+	 * Keyword replacement pairs when cloning from one group slug to another.
+	 *
+	 * @param string $base_slug   Source group slug.
+	 * @param string $target_slug Target group slug.
+	 * @return array<string,string>
+	 */
+	public static function migration_replace_pairs_from_base_slug( $base_slug, $target_slug ) {
+		$base_slug   = sanitize_title( (string) $base_slug );
+		$target_slug = sanitize_title( (string) $target_slug );
+		if ( $base_slug === '' || $target_slug === '' || $base_slug === $target_slug ) {
+			return array();
+		}
+
+		if ( 'towing' === $base_slug ) {
+			$variant = self::towing_target_slug_to_variant_key( $target_slug );
+			if ( $variant !== '' ) {
+				return self::migration_variant_replace_pairs( $variant );
+			}
+		}
+
+		$base_u   = str_replace( '-', '_', $base_slug );
+		$target_u = str_replace( '-', '_', $target_slug );
+
+		$pairs = array(
+			'{{' . $base_slug . '-'        => '{{' . $target_slug . '-',
+			'{{' . $base_u . '_'           => '{{' . $target_u . '_',
+			'{{' . $base_slug . '}}'       => '{{' . $target_slug . '}}',
+			'{{' . $base_u . '}}'          => '{{' . $target_u . '}}',
+			'{spintax_' . $base_u . '-'    => '{spintax_' . $target_u . '-',
+			'{spintax_' . $base_u . '_'    => '{spintax_' . $target_u . '_',
+			'spintax_' . $base_u           => 'spintax_' . $target_u,
+			$base_u . '_'                  => $target_u . '_',
+			$base_slug . '-'               => $target_slug . '-',
+		);
+
+		/**
+		 * Token replacement pairs when cloning a template from base group slug to target group slug.
+		 *
+		 * @param array<string,string> $pairs       Needle => replacement (longest needles first in apply).
+		 * @param string               $base_slug   Source slug.
+		 * @param string               $target_slug Target slug.
+		 */
+		return apply_filters( 'radius_migration_replace_pairs_from_base_slug', $pairs, $base_slug, $target_slug );
+	}
+
+	/**
+	 * Map classic variant slugs to roadside|heavy|equipment keys.
+	 *
+	 * @param string $target_slug Target group slug.
+	 * @return string Variant key or empty.
+	 */
+	private static function towing_target_slug_to_variant_key( $target_slug ) {
+		$map = array(
+			'roadside-assistance'    => 'roadside',
+			'heavy-towing'           => 'heavy',
+			'heavy-equipment-towing' => 'equipment',
+		);
+		$target_slug = sanitize_title( (string) $target_slug );
+		return isset( $map[ $target_slug ] ) ? $map[ $target_slug ] : '';
+	}
+
+	/**
+	 * Duplicate a template for a non-towing group using dynamic base→target token swaps.
+	 *
+	 * @param int    $source_id   Source radius_template ID.
+	 * @param string $new_title   New template title.
+	 * @param string $base_slug   Base group slug.
+	 * @param string $target_slug Target group slug.
+	 * @return int|\WP_Error
+	 */
+	public static function duplicate_radius_template_for_migration_group( $source_id, $new_title, $base_slug, $target_slug ) {
+		$source_id   = (int) $source_id;
+		$base_slug   = sanitize_title( (string) $base_slug );
+		$target_slug = sanitize_title( (string) $target_slug );
+		$post        = get_post( $source_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return new WP_Error( 'radius_bad_template', __( 'Invalid source template.', 'radius' ) );
+		}
+		$new_title = is_string( $new_title ) ? trim( $new_title ) : '';
+		if ( $new_title === '' ) {
+			return new WP_Error( 'radius_bad_title', __( 'New template title is required.', 'radius' ) );
+		}
+		$pairs = self::migration_replace_pairs_from_base_slug( $base_slug, $target_slug );
+		if ( empty( $pairs ) ) {
+			return new WP_Error( 'radius_bad_group', __( 'Could not build keyword swaps for this group.', 'radius' ) );
+		}
+
+		$new_id = wp_insert_post(
+			array(
+				'post_type'    => 'radius_template',
+				'post_status'  => 'draft',
+				'post_title'   => $new_title,
+				'post_content' => $post->post_content,
+				'post_excerpt' => $post->post_excerpt,
+			),
+			true
+		);
+		if ( is_wp_error( $new_id ) ) {
+			return $new_id;
+		}
+
+		$exclude_el = self::elementor_meta_keys_present_on_post( $source_id );
+		self::copy_all_template_post_meta( $source_id, (int) $new_id, $exclude_el );
+		self::copy_elementor_document_meta_to_template( $source_id, (int) $new_id );
+		update_post_meta( (int) $new_id, '_radius_migration_clone_of', (int) $source_id );
+		update_post_meta( (int) $new_id, '_radius_migration_group_slug', $target_slug );
+		self::apply_keyword_swaps_to_radius_template( (int) $new_id, $pairs );
+
+		return (int) $new_id;
+	}
+
+	/**
+	 * Store group slug on a published/imported template.
+	 *
+	 * @param int    $template_id radius_template ID.
+	 * @param string $group_slug  Group slug.
+	 * @return void
+	 */
+	private static function mark_migration_group_slug_on_template( $template_id, $group_slug ) {
+		$template_id = (int) $template_id;
+		$group_slug  = sanitize_title( (string) $group_slug );
+		if ( $template_id <= 0 || $group_slug === '' ) {
+			return;
+		}
+		update_post_meta( $template_id, '_radius_migration_group_slug', $group_slug );
+	}
+
 	/**
 	 * First radius_template that was imported from legacy (lowest ID).
 	 *
@@ -3259,12 +4025,14 @@ class Radius_Legacy_Import_Service {
 	 * Set Yoast SEO fields on a service template: focus keyword + SEO title / meta description tokens (resolved at deploy from template `_radius_xfields` / merged token map).
 	 *
 	 * @param int    $template_id  radius_template post ID.
-	 * @param string $service_line towing|roadside|heavy|equipment
+	 * @param string $service_line towing|roadside|heavy|equipment|group slug.
+	 * @param string $group_slug   Optional group slug for dynamic Yoast/xfield tokens.
 	 * @return bool
 	 */
-	public static function apply_migration_template_yoast_meta( $template_id, $service_line ) {
+	public static function apply_migration_template_yoast_meta( $template_id, $service_line, $group_slug = '' ) {
 		$template_id  = (int) $template_id;
 		$service_line = sanitize_key( (string) $service_line );
+		$group_slug   = sanitize_title( (string) $group_slug );
 		if ( $template_id <= 0 || $service_line === '' ) {
 			return false;
 		}
@@ -3301,6 +4069,16 @@ class Radius_Legacy_Import_Service {
 			$service_line
 		);
 
+		if ( ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) && $group_slug !== '' ) {
+			$line_key = $service_line;
+			$label    = str_replace( '-', ' ', $group_slug );
+			$map[ $line_key ] = array(
+				'focuskw'   => $label,
+				'title_tpl' => '{{' . $line_key . '-meta-title}}',
+				'desc_tpl'  => '{{' . $line_key . '-meta-desc}}',
+			);
+		}
+
 		if ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) {
 			return false;
 		}
@@ -3316,10 +4094,48 @@ class Radius_Legacy_Import_Service {
 			update_post_meta( $template_id, '_yoast_wpseo_metadesc', (string) $m['desc_tpl'] );
 		}
 
-		self::seed_default_meta_xfields_on_template( $template_id, $service_line );
+		self::seed_default_meta_xfields_on_template( $template_id, $service_line, $group_slug );
 
 		clean_post_cache( $template_id );
 		return true;
+	}
+
+	/**
+	 * Meta title/desc seed patterns for a service line (known lines or dynamic from group slug).
+	 *
+	 * @param string $service_line Service line key.
+	 * @param string $group_slug   Group slug when line is not in defaults.
+	 * @return array{title:string,desc:string}|null
+	 */
+	public static function migration_meta_xfield_patterns_for_service_line( $service_line, $group_slug = '' ) {
+		$service_line = sanitize_key( (string) $service_line );
+		$patterns     = self::default_template_meta_xfield_patterns();
+		if ( ! empty( $patterns[ $service_line ] ) && is_array( $patterns[ $service_line ] ) ) {
+			return $patterns[ $service_line ];
+		}
+		$group_slug = sanitize_title( (string) $group_slug );
+		$label      = str_replace( '-', ' ', $group_slug !== '' ? $group_slug : $service_line );
+		$dynamic    = array(
+			'title' => sprintf(
+				/* translators: %s: service label */
+				__( '%s in {{place_name}}, {{region}} | {{company-short}}', 'radius' ),
+				ucwords( $label )
+			),
+			'desc'  => sprintf(
+				/* translators: %s: service label */
+				__( 'Contact {{company-short}} for %s in {{place_name}}, {{region}}. Call {{phone-number}}.', 'radius' ),
+				$label
+			),
+		);
+		/**
+		 * Default meta xfield title/desc when seeding a non-classic service line.
+		 *
+		 * @param array{title:string,desc:string} $dynamic
+		 * @param string                          $service_line
+		 * @param string                          $group_slug
+		 */
+		$f = apply_filters( 'radius_migration_dynamic_meta_xfield_patterns', $dynamic, $service_line, $group_slug );
+		return is_array( $f ) ? $f : $dynamic;
 	}
 
 	/**
@@ -3360,20 +4176,20 @@ class Radius_Legacy_Import_Service {
 	 * Add `<line>-meta-title` / `-meta-desc` rows to a service template’s `_radius_xfields` if missing.
 	 *
 	 * @param int    $template_id  radius_template post ID.
-	 * @param string $service_line towing|roadside|heavy|equipment.
+	 * @param string $service_line towing|roadside|heavy|equipment|group slug.
+	 * @param string $group_slug   Optional group slug for dynamic patterns.
 	 * @return bool True if a row was added.
 	 */
-	public static function seed_default_meta_xfields_on_template( $template_id, $service_line ) {
+	public static function seed_default_meta_xfields_on_template( $template_id, $service_line, $group_slug = '' ) {
 		$template_id  = (int) $template_id;
 		$service_line = sanitize_key( (string) $service_line );
 		if ( $template_id <= 0 || $service_line === '' ) {
 			return false;
 		}
-		$patterns = self::default_template_meta_xfield_patterns();
-		if ( empty( $patterns[ $service_line ] ) ) {
+		$pat = self::migration_meta_xfield_patterns_for_service_line( $service_line, $group_slug );
+		if ( empty( $pat ) || ! is_array( $pat ) ) {
 			return false;
 		}
-		$pat        = $patterns[ $service_line ];
 		$title_key  = $service_line . '-meta-title';
 		$desc_key   = $service_line . '-meta-desc';
 
@@ -3423,12 +4239,21 @@ class Radius_Legacy_Import_Service {
 	 * @return int Templates updated.
 	 */
 	public static function backfill_default_meta_xfields_on_service_templates() {
-		$slug_to_line = array(
-			'towing'                 => 'towing',
-			'roadside-assistance'    => 'roadside',
-			'heavy-towing'           => 'heavy',
-			'heavy-equipment-towing' => 'equipment',
-		);
+		$slug_to_line = array();
+		foreach ( self::get_migration_wizard_deploy_slugs() as $slug ) {
+			$slug = sanitize_title( (string) $slug );
+			if ( $slug !== '' ) {
+				$slug_to_line[ $slug ] = self::migration_service_line_for_group_slug( $slug );
+			}
+		}
+		if ( empty( $slug_to_line ) ) {
+			$slug_to_line = array(
+				'towing'                 => 'towing',
+				'roadside-assistance'    => 'roadside',
+				'heavy-towing'           => 'heavy',
+				'heavy-equipment-towing' => 'equipment',
+			);
+		}
 		$updated = 0;
 		foreach ( $slug_to_line as $slug => $line ) {
 			$posts = get_posts(
@@ -3446,7 +4271,7 @@ class Radius_Legacy_Import_Service {
 			if ( empty( $posts[0] ) ) {
 				continue;
 			}
-			if ( self::seed_default_meta_xfields_on_template( (int) $posts[0], $line ) ) {
+			if ( self::seed_default_meta_xfields_on_template( (int) $posts[0], $line, $slug ) ) {
 				++$updated;
 			}
 		}
@@ -3546,8 +4371,12 @@ class Radius_Legacy_Import_Service {
 			'templates_updated' => 0,
 			'rows_copied'       => 0,
 		);
-		$slugs = array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
+		$slugs = self::get_migration_wizard_deploy_slugs();
+		if ( empty( $slugs ) ) {
+			$slugs = array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
+		}
 		foreach ( $slugs as $slug ) {
+			$slug  = sanitize_title( (string) $slug );
 			$posts = get_posts(
 				array(
 					'post_type'              => 'radius_template',
@@ -3610,20 +4439,23 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Import Magic Page templates, publish base + variants with fixed slugs, import global spintax by prefix per template.
+	 * Import Magic Page templates, publish per discovered group (or classic towing clones), spintax in continue step.
 	 *
 	 * @return array<string,mixed>
 	 */
 	public static function automated_migration_templates_pipeline() {
 		$out = array(
-			'import'           => null,
-			'base_id'          => 0,
-			'variant_ids'      => array(),
-			'slugs'            => array(),
-			'spintax'          => array(),
-			'errors'           => array(),
+			'import'                  => null,
+			'base_id'                 => 0,
+			'variant_ids'             => array(),
+			'group_template_ids'      => array(),
+			'migration_groups'        => array(),
+			'migration_plan_mode'     => '',
+			'slugs'                   => array(),
+			'spintax'                 => array(),
+			'errors'                  => array(),
 			'service_template_labels' => array(),
-			'templates_pruned' => 0,
+			'templates_pruned'        => 0,
 		);
 
 		$out['templates_pruned'] = self::delete_migration_sourced_radius_templates();
@@ -3633,6 +4465,57 @@ class Radius_Legacy_Import_Service {
 		if ( ! empty( $imp['errors'] ) ) {
 			$out['errors'] = array_merge( $out['errors'], $imp['errors'] );
 		}
+
+		$groups = self::discover_magic_page_groups_from_options();
+		$out['migration_groups'] = $groups;
+		$plan  = self::build_migration_templates_plan( $groups );
+		$out['migration_plan_mode'] = isset( $plan['mode'] ) ? (string) $plan['mode'] : '';
+
+		if ( isset( $plan['mode'] ) && 'towing_clone' === $plan['mode'] ) {
+			$pipeline = self::automated_migration_templates_pipeline_towing_clone();
+		} else {
+			$pipeline = self::automated_migration_templates_pipeline_by_groups( $plan );
+		}
+
+		$out = array_merge( $out, $pipeline );
+
+		if ( ! empty( $out['group_template_ids'] ) && is_array( $out['group_template_ids'] ) ) {
+			self::persist_migration_deploy_template_map( $out['group_template_ids'] );
+		}
+
+		$titles = isset( $pipeline['titles'] ) && is_array( $pipeline['titles'] ) ? $pipeline['titles'] : self::migration_variant_default_titles();
+
+		set_transient(
+			self::templates_pipeline_resume_transient_key(),
+			array(
+				'base_id'            => isset( $out['base_id'] ) ? (int) $out['base_id'] : 0,
+				'variant_ids'        => isset( $out['variant_ids'] ) && is_array( $out['variant_ids'] ) ? $out['variant_ids'] : array(),
+				'group_template_ids' => isset( $out['group_template_ids'] ) && is_array( $out['group_template_ids'] ) ? $out['group_template_ids'] : array(),
+				'groups'             => $groups,
+				'titles'             => $titles,
+				'out_partial'        => $out,
+			),
+			30 * MINUTE_IN_SECONDS
+		);
+
+		$out['pipeline_continue_required'] = true;
+		return $out;
+	}
+
+	/**
+	 * Classic towing migration: one blueprint + three keyword-cloned variants.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function automated_migration_templates_pipeline_towing_clone() {
+		$out = array(
+			'base_id'            => 0,
+			'variant_ids'        => array(),
+			'group_template_ids' => array(),
+			'slugs'              => array(),
+			'errors'             => array(),
+			'titles'             => self::migration_variant_default_titles(),
+		);
 
 		$base_slug = (string) apply_filters( 'radius_migration_base_legacy_slug', 'towing' );
 		$base_id   = self::find_radius_template_by_legacy_post_slug( $base_slug );
@@ -3667,11 +4550,12 @@ class Radius_Legacy_Import_Service {
 			$out['errors'][] = __( 'Could not publish the base template with slug “towing”.', 'radius' );
 		}
 		$out['slugs']['towing'] = $slug_base;
+		self::mark_migration_group_slug_on_template( $base_id, $slug_base );
+		$out['group_template_ids'][ $slug_base ] = $base_id;
 		if ( get_post( $base_id ) ) {
-			self::apply_migration_template_yoast_meta( $base_id, 'towing' );
+			self::apply_migration_template_yoast_meta( $base_id, 'towing', $slug_base );
 		}
 
-		$titles   = self::migration_variant_default_titles();
 		$slug_map = apply_filters(
 			'radius_migration_automated_variant_slugs',
 			array(
@@ -3683,13 +4567,13 @@ class Radius_Legacy_Import_Service {
 
 		$variant_ids = array();
 		foreach ( array( 'roadside', 'heavy', 'equipment' ) as $variant ) {
-			$title = isset( $titles[ $variant ] ) ? (string) $titles[ $variant ] : $variant;
+			$title = isset( $out['titles'][ $variant ] ) ? (string) $out['titles'][ $variant ] : $variant;
 			$r     = self::duplicate_radius_template_for_migration_variant( $base_id, $title, $variant );
 			if ( is_wp_error( $r ) ) {
 				$out['errors'][] = $r->get_error_message();
 				continue;
 			}
-			$vid = (int) $r;
+			$vid  = (int) $r;
 			$slug = isset( $slug_map[ $variant ] ) ? sanitize_title( (string) $slug_map[ $variant ] ) : $variant;
 			if ( ! self::migration_publish_radius_template( $vid, $slug ) ) {
 				$out['errors'][] = sprintf(
@@ -3698,26 +4582,132 @@ class Radius_Legacy_Import_Service {
 					$variant
 				);
 			}
+			self::mark_migration_group_slug_on_template( $vid, $slug );
+			$out['group_template_ids'][ $slug ] = $vid;
 			if ( get_post( $vid ) ) {
-				self::apply_migration_template_yoast_meta( $vid, $variant );
+				self::apply_migration_template_yoast_meta( $vid, $variant, $slug );
 			}
 			$variant_ids[ $variant ] = $vid;
-			$out['slugs'][ $variant ] = $slug;
+			$out['slugs'][ $variant ]  = $slug;
 		}
 		$out['variant_ids'] = $variant_ids;
 
-		set_transient(
-			self::templates_pipeline_resume_transient_key(),
-			array(
-				'base_id'     => $base_id,
-				'variant_ids' => $variant_ids,
-				'titles'      => $titles,
-				'out_partial' => $out,
-			),
-			30 * MINUTE_IN_SECONDS
+		return $out;
+	}
+
+	/**
+	 * Publish one radius_template per Magic Page group (imported blueprint per slug).
+	 *
+	 * @param array<string,mixed> $plan From {@see build_migration_templates_plan()}.
+	 * @return array<string,mixed>
+	 */
+	private static function automated_migration_templates_pipeline_by_groups( array $plan ) {
+		$out = array(
+			'base_id'            => 0,
+			'variant_ids'        => array(),
+			'group_template_ids' => array(),
+			'slugs'              => array(),
+			'errors'             => array(),
+			'titles'             => array(),
 		);
 
-		$out['pipeline_continue_required'] = true;
+		$entries   = isset( $plan['entries'] ) && is_array( $plan['entries'] ) ? $plan['entries'] : array();
+		$base_slug = isset( $plan['base_slug'] ) ? sanitize_title( (string) $plan['base_slug'] ) : self::infer_migration_base_group_slug( array() );
+
+		if ( empty( $entries ) ) {
+			$out['errors'][] = __( 'No Magic Page service groups found in wp_options. Add _group_meta_fields_* rows or run on a site with Magic Page configured.', 'radius' );
+			return $out;
+		}
+
+		$base_id = self::find_radius_template_by_legacy_post_slug( $base_slug );
+		if ( $base_id <= 0 ) {
+			$base_id = self::first_imported_radius_template_id();
+		}
+
+		foreach ( $entries as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$slug         = isset( $entry['group_slug'] ) ? sanitize_title( (string) $entry['group_slug'] ) : '';
+			$action       = isset( $entry['action'] ) ? (string) $entry['action'] : 'publish_existing';
+			$service_line = isset( $entry['service_line'] ) ? sanitize_key( (string) $entry['service_line'] ) : self::migration_service_line_for_group_slug( $slug );
+			$legacy_id    = isset( $entry['legacy_template_id'] ) ? (int) $entry['legacy_template_id'] : 0;
+			if ( $slug === '' ) {
+				continue;
+			}
+
+			$tid = isset( $entry['template_id'] ) ? (int) $entry['template_id'] : 0;
+			if ( $tid <= 0 ) {
+				$tid = self::find_radius_template_by_legacy_post_slug( $slug );
+			}
+			if ( $tid <= 0 && $legacy_id > 0 ) {
+				$tid = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			}
+
+			if ( $tid <= 0 && 'clone_from_base' === $action && $base_id > 0 && $slug !== $base_slug ) {
+				$title = self::migration_title_for_group_slug( $slug, $legacy_id );
+				$r     = self::duplicate_radius_template_for_migration_group( $base_id, $title, $base_slug, $slug );
+				if ( is_wp_error( $r ) ) {
+					$out['errors'][] = $r->get_error_message();
+					continue;
+				}
+				$tid = (int) $r;
+			}
+
+			if ( $tid <= 0 ) {
+				$out['errors'][] = sprintf(
+					/* translators: %s: group slug */
+					__( 'No imported Radius template for group “%s”.', 'radius' ),
+					$slug
+				);
+				continue;
+			}
+
+			if ( $slug === $base_slug ) {
+				$base_id = $tid;
+				self::normalize_imported_towing_migration_template_tokens( $tid );
+			}
+
+			$title = self::migration_title_for_group_slug( $slug, $legacy_id );
+			if ( $title !== '' ) {
+				wp_update_post(
+					array(
+						'ID'         => $tid,
+						'post_title' => $title,
+					)
+				);
+				clean_post_cache( $tid );
+			}
+			$out['titles'][ $slug ] = $title;
+
+			if ( ! self::migration_publish_radius_template( $tid, $slug ) ) {
+				$out['errors'][] = sprintf(
+					/* translators: %s: group slug */
+					__( 'Could not publish template for group “%s”.', 'radius' ),
+					$slug
+				);
+			}
+			self::mark_migration_group_slug_on_template( $tid, $slug );
+			$out['group_template_ids'][ $slug ] = $tid;
+			$out['slugs'][ $slug ]              = $slug;
+			if ( get_post( $tid ) ) {
+				self::apply_migration_template_yoast_meta( $tid, $service_line, $slug );
+			}
+
+			if ( $slug === $base_slug ) {
+				$out['base_id'] = $tid;
+			} else {
+				$out['variant_ids'][ $slug ] = $tid;
+			}
+		}
+
+		if ( $out['base_id'] <= 0 && ! empty( $out['group_template_ids'] ) ) {
+			$first_slug = array_key_first( $out['group_template_ids'] );
+			if ( is_string( $first_slug ) && isset( $out['group_template_ids'][ $first_slug ] ) ) {
+				$out['base_id'] = (int) $out['group_template_ids'][ $first_slug ];
+			}
+		}
+
 		return $out;
 	}
 
@@ -3766,14 +4756,37 @@ class Radius_Legacy_Import_Service {
 		$titles      = isset( $resume['titles'] ) && is_array( $resume['titles'] ) ? $resume['titles'] : array();
 		$out         = isset( $resume['out_partial'] ) && is_array( $resume['out_partial'] ) ? $resume['out_partial'] : array();
 
+		$group_template_ids = isset( $resume['group_template_ids'] ) && is_array( $resume['group_template_ids'] )
+			? $resume['group_template_ids']
+			: ( isset( $out['group_template_ids'] ) && is_array( $out['group_template_ids'] ) ? $out['group_template_ids'] : array() );
+
+		$prefix_map = array();
+		if ( ! empty( $group_template_ids ) ) {
+			foreach ( $group_template_ids as $group_slug => $tid ) {
+				$tid = (int) $tid;
+				if ( $tid <= 0 ) {
+					continue;
+				}
+				$prefix_map[ $tid ] = self::migration_spintax_prefixes_for_group_slug( (string) $group_slug );
+			}
+		} else {
+			$prefix_map = array(
+				$base_id => array( 'towing' ),
+			);
+			if ( isset( $variant_ids['roadside'] ) ) {
+				$prefix_map[ (int) $variant_ids['roadside'] ] = array( 'roadside' );
+			}
+			if ( isset( $variant_ids['heavy'] ) ) {
+				$prefix_map[ (int) $variant_ids['heavy'] ] = array( 'heavy' );
+			}
+			if ( isset( $variant_ids['equipment'] ) ) {
+				$prefix_map[ (int) $variant_ids['equipment'] ] = array( 'equipment' );
+			}
+		}
+
 		$prefix_map = apply_filters(
 			'radius_migration_automated_spintax_prefix_map',
-			array(
-				$base_id                                         => array( 'towing' ),
-				isset( $variant_ids['roadside'] ) ? (int) $variant_ids['roadside'] : 0 => array( 'roadside' ),
-				isset( $variant_ids['heavy'] ) ? (int) $variant_ids['heavy'] : 0 => array( 'heavy' ),
-				isset( $variant_ids['equipment'] ) ? (int) $variant_ids['equipment'] : 0 => array( 'equipment' ),
-			),
+			$prefix_map,
 			$base_id,
 			$variant_ids
 		);
@@ -3815,19 +4828,37 @@ class Radius_Legacy_Import_Service {
 			);
 		}
 
-		$labels = array(
-			array(
+		$labels = array();
+		if ( ! empty( $group_template_ids ) ) {
+			foreach ( $group_template_ids as $group_slug => $vid ) {
+				$vid  = (int) $vid;
+				$post = $vid > 0 ? get_post( $vid ) : null;
+				$lbl  = isset( $titles[ $group_slug ] ) ? (string) $titles[ $group_slug ] : '';
+				if ( $lbl === '' && $post instanceof WP_Post && $post->post_title !== '' ) {
+					$lbl = $post->post_title;
+				}
+				if ( $lbl === '' ) {
+					$lbl = (string) $group_slug;
+				}
+				$labels[] = array(
+					'key'   => (string) $group_slug,
+					'label' => $lbl,
+					'id'    => $vid,
+				);
+			}
+		} else {
+			$labels[] = array(
 				'key'   => 'towing',
 				'label' => $base_label,
 				'id'    => $base_id,
-			),
-		);
-		foreach ( $variant_ids as $vk => $vid ) {
-			$labels[] = array(
-				'key'   => $vk,
-				'label' => isset( $titles[ $vk ] ) ? $titles[ $vk ] : $vk,
-				'id'    => (int) $vid,
 			);
+			foreach ( $variant_ids as $vk => $vid ) {
+				$labels[] = array(
+					'key'   => $vk,
+					'label' => isset( $titles[ $vk ] ) ? $titles[ $vk ] : $vk,
+					'id'    => (int) $vid,
+				);
+			}
 		}
 		$out['service_template_labels'] = $labels;
 

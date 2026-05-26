@@ -33,6 +33,7 @@ final class Radius_Data_Registry {
 	public const META_ROTATION_MODE         = '_radius_rotation_mode';
 	public const META_IMPORTED_FROM           = '_radius_imported_from';
 	public const META_MIGRATION_CLONE_OF      = '_radius_migration_clone_of';
+	public const META_MIGRATION_GROUP_SLUG    = '_radius_migration_group_slug';
 	public const META_IMPORTED_FROM_TERM      = '_radius_imported_from_term';
 
 	public const TERM_META_COUNTRY    = 'radius_country';

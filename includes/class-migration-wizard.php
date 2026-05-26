@@ -278,6 +278,10 @@ final class Radius_Migration_Wizard {
 	}
 
 	private static function landing_template_ids_ordered() {
+		if ( class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return Radius_Legacy_Import_Service::get_published_migration_template_ids_for_deploy();
+		}
+
 		$slugs = apply_filters(
 			'radius_migration_wizard_deploy_landing_slugs',
 			array(
@@ -326,7 +330,14 @@ final class Radius_Migration_Wizard {
 			return false;
 		}
 		$n = (int) $c->publish + (int) $c->draft + (int) $c->future + (int) $c->private;
-		if ( $n >= 4 ) {
+		$expected = 4;
+		if ( class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			$slugs = Radius_Legacy_Import_Service::get_migration_wizard_deploy_slugs();
+			if ( is_array( $slugs ) && count( $slugs ) > 0 ) {
+				$expected = count( $slugs );
+			}
+		}
+		if ( $n >= $expected ) {
 			return true;
 		}
 		if ( $n < 1 ) {
@@ -749,6 +760,14 @@ final class Radius_Migration_Wizard {
 				self::clear_recorded_steps( $list );
 				wp_send_json_success( array( 'steps' => self::build_steps_status() ) );
 				return;
+			case 'discover_groups':
+				wp_send_json_success(
+					array(
+						'groups'       => Radius_Legacy_Import_Service::discover_magic_page_groups_from_options(),
+						'deploy_slugs' => Radius_Legacy_Import_Service::get_migration_wizard_deploy_slugs(),
+					)
+				);
+				return;
 			case 'templates_pipeline':
 				if ( function_exists( 'set_time_limit' ) ) {
 					// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
@@ -773,6 +792,7 @@ final class Radius_Migration_Wizard {
 				$res = Radius_Legacy_Import_Service::automated_migration_templates_pipeline_continue();
 				$tpl_ok = ! empty( $res['base_id'] )
 					|| ! empty( $res['variant_ids'] )
+					|| ! empty( $res['group_template_ids'] )
 					|| self::infer_templates_ready();
 				if ( $tpl_ok && empty( $res['pipeline_continue_expired'] ) ) {
 					self::record_step_done(
