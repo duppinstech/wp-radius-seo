@@ -3126,8 +3126,9 @@ Fast roadside help in {{region}}
 									</label>
 								</p>
 								<p>
-									<label for="deploy_health_cron_email_to"><?php esc_html_e( 'Email to (optional)', 'radius' ); ?></label><br />
+									<label for="deploy_health_cron_email_to"><?php esc_html_e( 'Email to (optional override)', 'radius' ); ?></label><br />
 									<input type="email" name="deploy_health_cron_email_to" id="deploy_health_cron_email_to" class="regular-text" value="<?php echo esc_attr( (string) ( $s['deploy_health_cron_email_to'] ?? '' ) ); ?>" placeholder="<?php echo esc_attr( (string) get_option( 'admin_email' ) ); ?>" />
+									<span class="description"><?php esc_html_e( 'Leave blank to use the WordPress admin email. When set, scheduled health-check emails go here instead (useful when you are not the site admin).', 'radius' ); ?></span>
 								</p>
 							</td>
 						</tr>

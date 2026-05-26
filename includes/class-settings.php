@@ -506,7 +506,7 @@ class Radius_Settings {
 		if ( isset( $input['deploy_health_cron_email'] ) ) {
 			$out['deploy_health_cron_email'] = ! empty( $input['deploy_health_cron_email'] ) ? 1 : 0;
 		}
-		if ( isset( $input['deploy_health_cron_email_to'] ) ) {
+		if ( array_key_exists( 'deploy_health_cron_email_to', $input ) ) {
 			$out['deploy_health_cron_email_to'] = sanitize_email( (string) $input['deploy_health_cron_email_to'] );
 		}
 		if ( isset( $input['content_rotation_interval_days'] ) ) {

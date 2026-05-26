@@ -1053,6 +1053,9 @@ class Radius_Form_Handlers {
 				'content_rotation_interval_days' => isset( $_POST['content_rotation_interval_days'] ) ? absint( $_POST['content_rotation_interval_days'] ) : 30, // phpcs:ignore WordPress.Security.NonceVerification
 				'content_rotation_batch'         => isset( $_POST['content_rotation_batch'] ) ? absint( $_POST['content_rotation_batch'] ) : 25, // phpcs:ignore WordPress.Security.NonceVerification
 				'dynamic_content_per_request'    => isset( $_POST['dynamic_content_per_request'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
+				'deploy_health_cron_enabled'     => isset( $_POST['deploy_health_cron_enabled'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
+				'deploy_health_cron_email'       => isset( $_POST['deploy_health_cron_email'] ) ? 1 : 0, // phpcs:ignore WordPress.Security.NonceVerification
+				'deploy_health_cron_email_to'    => isset( $_POST['deploy_health_cron_email_to'] ) ? sanitize_email( wp_unslash( (string) $_POST['deploy_health_cron_email_to'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
 			)
 		);
 
@@ -1063,6 +1066,9 @@ class Radius_Form_Handlers {
 		Radius_Elementor_Compat::sync_cpt_option();
 		Radius_Beaver_Builder_Compat::sync_cpt_option();
 		Radius_Rotation_Cron::reschedule();
+		if ( class_exists( 'Radius_Deploy_Health_Cron' ) ) {
+			Radius_Deploy_Health_Cron::reschedule();
+		}
 
 		$return_tab = isset( $_POST['radius_settings_tab'] ) ? sanitize_key( wp_unslash( $_POST['radius_settings_tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( ! in_array( $return_tab, array( 'license', 'general', 'areas', 'site_replacements', 'content', 'database', 'integrations' ), true ) ) {
