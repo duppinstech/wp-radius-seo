@@ -551,9 +551,13 @@ final class Radius_Deploy_Health_Check {
 	 *
 	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
 	 */
-	public static function get_service_area_coverage_gaps() {
-		$scope      = self::get_expected_scope_place_ids();
-		$deployed_sa = self::get_deployed_place_ids_map( 'radius_service_area' );
+	public static function get_service_area_coverage_gaps( array $scope = null, array $deployed_sa = null ) {
+		if ( ! is_array( $scope ) || ! isset( $scope['ids'] ) ) {
+			$scope = self::get_expected_scope_place_ids();
+		}
+		if ( ! is_array( $deployed_sa ) ) {
+			$deployed_sa = self::get_deployed_place_ids_map( 'radius_service_area' );
+		}
 		$tid        = (int) ( Radius_Settings::get()['service_area_template_id'] ?? 0 );
 		$expected   = array_fill_keys( $scope['ids'], true );
 		$have       = array();
@@ -629,10 +633,14 @@ final class Radius_Deploy_Health_Check {
 	 * @param int $template_id radius_template post ID.
 	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
 	 */
-	public static function get_landing_template_gaps( $template_id ) {
-		$scope             = self::get_expected_scope_place_ids();
-		$deployed_landings = self::get_deployed_place_ids_map( 'radius_landing' );
-		$tid               = (int) $template_id;
+	public static function get_landing_template_gaps( $template_id, array $scope = null, array $deployed_landings = null ) {
+		if ( ! is_array( $scope ) || ! isset( $scope['ids'] ) ) {
+			$scope = self::get_expected_scope_place_ids();
+		}
+		if ( ! is_array( $deployed_landings ) ) {
+			$deployed_landings = self::get_deployed_place_ids_map( 'radius_landing' );
+		}
+		$tid = (int) $template_id;
 		$expected          = array_fill_keys( $scope['ids'], true );
 		$have              = array();
 		if ( $tid > 0 && isset( $deployed_landings[ $tid ] ) ) {
@@ -708,7 +716,7 @@ final class Radius_Deploy_Health_Check {
 	 * @return array<string,mixed>
 	 */
 	private static function check_service_area_coverage( array $scope, array $deployed_sa ) {
-		$gaps           = self::get_service_area_coverage_gaps();
+		$gaps           = self::get_service_area_coverage_gaps( $scope, $deployed_sa );
 		$missing        = $gaps['missing_place_ids'];
 		$extra_places   = $gaps['extra_place_ids'];
 		$tid            = (int) $gaps['template_id'];
@@ -803,7 +811,7 @@ final class Radius_Deploy_Health_Check {
 		foreach ( $templates as $tpl ) {
 			$tid    = (int) $tpl->ID;
 			$title  = get_the_title( $tpl );
-			$gaps   = self::get_landing_template_gaps( $tid );
+			$gaps   = self::get_landing_template_gaps( $tid, $scope, $deployed_landings );
 			$missing = $gaps['missing_place_ids'];
 			$extra   = $gaps['extra_place_ids'];
 			$deployed_n = (int) $gaps['deployed_count'];
@@ -1136,10 +1144,24 @@ final class Radius_Deploy_Health_Check {
 				__( 'Redirect conflict scan unavailable.', 'radius' )
 			);
 		}
+		/**
+		 * Include redirect-plugin conflict scan in deploy health check (can be heavy on large sites).
+		 *
+		 * @param bool $include Default true.
+		 */
+		if ( ! apply_filters( 'radius_deploy_health_include_redirect_scan', true ) ) {
+			return self::make_check(
+				'url_redirect_conflicts',
+				__( 'Landing URL redirects', 'radius' ),
+				'skip',
+				__( 'Redirect conflict scan skipped (filtered off).', 'radius' )
+			);
+		}
 		$scan = Radius_Health_Url_Conflicts::scan();
 		$conflicts = isset( $scan['conflicts'] ) && is_array( $scan['conflicts'] ) ? $scan['conflicts'] : array();
 		$n         = count( $conflicts );
 		$scanned   = isset( $scan['scanned'] ) ? (int) $scan['scanned'] : 0;
+		$total     = isset( $scan['total'] ) ? (int) $scan['total'] : $scanned;
 		$capped    = ! empty( $scan['capped'] );
 		if ( $n < 1 ) {
 			$summary = sprintf(
@@ -1147,8 +1169,13 @@ final class Radius_Deploy_Health_Check {
 				__( 'No redirect rules conflict with %d deployed page URL(s).', 'radius' ),
 				$scanned
 			);
-			if ( $capped ) {
-				$summary .= ' ' . __( '(Scan capped — run again or raise radius_health_redirect_scan_max_urls.)', 'radius' );
+			if ( $capped && $total > $scanned ) {
+				$summary .= ' ' . sprintf(
+					/* translators: 1: scanned count, 2: total published deploy pages */
+					__( '(Sampled %1$d of %2$d published pages — raise radius_health_redirect_scan_max_urls for a wider scan.)', 'radius' ),
+					$scanned,
+					$total
+				);
 			}
 			return self::make_check(
 				'url_redirect_conflicts',

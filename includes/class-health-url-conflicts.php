@@ -15,28 +15,59 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Radius_Health_Url_Conflicts {
 
 	/**
+	 * Published landing / service-area rows for redirect scans (paths derived from slugs, not get_permalink).
+	 *
+	 * @param int $limit Max rows (0 = use filter default in scan()).
 	 * @return array<int,array{post_id:int,post_type:string,path:string,url:string}>
 	 */
-	public static function get_deployed_pages() {
-		$pages = array();
+	public static function get_deployed_pages( $limit = 0 ) {
+		global $wpdb;
+
+		$limit = (int) $limit;
+		if ( $limit <= 0 ) {
+			$limit = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
+			$limit = max( 50, min( 5000, $limit ) );
+		}
+
+		$sa_slug   = class_exists( 'Radius_Settings' ) ? Radius_Settings::get_service_area_url_slug() : 'service-area';
+		$pages     = array();
+		$per_type  = max( 25, (int) ceil( $limit / 2 ) );
+
 		foreach ( array( 'radius_landing', 'radius_service_area' ) as $pt ) {
-			$q = new WP_Query(
-				array(
-					'post_type'              => $pt,
-					'post_status'            => 'publish',
-					'posts_per_page'         => -1,
-					'fields'                 => 'ids',
-					'no_found_rows'          => true,
-					'update_post_meta_cache' => false,
-					'update_post_term_cache' => false,
-				)
+			if ( count( $pages ) >= $limit ) {
+				break;
+			}
+			$remaining = min( $per_type, $limit - count( $pages ) );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT ID, post_name FROM {$wpdb->posts}
+					WHERE post_type = %s AND post_status = 'publish' AND post_name != ''
+					ORDER BY ID ASC
+					LIMIT %d",
+					$pt,
+					$remaining
+				),
+				ARRAY_A
 			);
-			foreach ( (array) $q->posts as $pid ) {
-				$pid = (int) $pid;
-				$url  = get_permalink( $pid );
+			if ( ! is_array( $rows ) ) {
+				continue;
+			}
+			foreach ( $rows as $row ) {
+				$pid  = (int) $row['ID'];
+				$slug = (string) $row['post_name'];
+				if ( $pid <= 0 || $slug === '' ) {
+					continue;
+				}
+				if ( 'radius_service_area' === $pt ) {
+					$rel = user_trailingslashit( $sa_slug . '/' . $slug );
+				} else {
+					$rel = user_trailingslashit( $slug );
+				}
+				$url  = home_url( $rel );
 				$path = class_exists( 'Radius_Redirect_Service' )
 					? Radius_Redirect_Service::url_to_path( $url )
-					: '';
+					: '/' . trim( $rel, '/' ) . '/';
 				if ( $path === '' ) {
 					continue;
 				}
@@ -44,10 +75,11 @@ final class Radius_Health_Url_Conflicts {
 					'post_id'   => $pid,
 					'post_type' => $pt,
 					'path'      => $path,
-					'url'       => (string) $url,
+					'url'       => $url,
 				);
 			}
 		}
+
 		return $pages;
 	}
 
@@ -55,13 +87,11 @@ final class Radius_Health_Url_Conflicts {
 	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,capped:bool}
 	 */
 	public static function scan() {
-		$pages = self::get_deployed_pages();
-		$max   = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
-		$max   = max( 50, min( 5000, $max ) );
-		$capped = count( $pages ) > $max;
-		if ( $capped ) {
-			$pages = array_slice( $pages, 0, $max );
-		}
+		$max    = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
+		$max    = max( 50, min( 5000, $max ) );
+		$total  = self::count_published_deployed_posts();
+		$capped = $total > $max;
+		$pages  = self::get_deployed_pages( $max );
 
 		$sources = self::load_redirect_source_index();
 		$conflicts = array();
@@ -84,8 +114,25 @@ final class Radius_Health_Url_Conflicts {
 		return array(
 			'conflicts' => $conflicts,
 			'scanned'   => count( $pages ),
+			'total'     => $total,
 			'capped'    => $capped,
 		);
+	}
+
+	/**
+	 * Count published radius_landing + radius_service_area posts (for scan cap messaging).
+	 *
+	 * @return int
+	 */
+	public static function count_published_deployed_posts() {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$n = $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$wpdb->posts}
+			WHERE post_type IN ('radius_landing','radius_service_area')
+			AND post_status = 'publish'"
+		);
+		return is_numeric( $n ) ? (int) $n : 0;
 	}
 
 	/**

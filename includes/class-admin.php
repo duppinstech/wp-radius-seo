@@ -609,11 +609,12 @@ class Radius_Admin {
 				array(
 					'ajaxurl'    => admin_url( 'admin-ajax.php' ),
 					'nonce'      => wp_create_nonce( 'radius_deploy_health_check' ),
-					'autoRun'    => ( isset( $_GET['tab'] ) && 'health-check' === sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) ), // phpcs:ignore WordPress.Security.NonceVerification
+					'autoRun'    => false,
 					'storedReport' => class_exists( 'Radius_Deploy_Health_Cron' ) ? self::build_stored_health_report_for_js() : null,
 					'i18n'       => array(
 						'running'       => __( 'Running checks…', 'radius' ),
 						'errorPrefix'   => __( 'Error:', 'radius' ),
+						'htmlNotJson'   => __( 'The server returned an HTML error page instead of JSON — usually a timeout, security block, or PHP fatal error. Check your host error log or Radius → Logs, then try again. Large sites may need radius_health_redirect_scan_max_urls lowered or radius_deploy_health_include_redirect_scan disabled.', 'radius' ),
 						'runAgain'      => __( 'Run health check', 'radius' ),
 						'overallPass'   => __( 'All checks passed.', 'radius' ),
 						'overallWarn'   => __( 'Checks passed with warnings — review items below.', 'radius' ),

@@ -272,6 +272,27 @@
 		return true;
 	}
 
+	function parseAjaxJson(r) {
+		return r.text().then(function (text) {
+			var raw = text == null ? '' : String(text);
+			if (raw.trim() === '') {
+				throw new Error('Empty response (connection reset or server timeout).');
+			}
+			if (raw.trim().charAt(0) === '<') {
+				var i18n = cfg.i18n || {};
+				throw new Error(
+					i18n.htmlNotJson ||
+						'Server returned HTML instead of JSON (timeout, security block, or PHP error).'
+				);
+			}
+			try {
+				return JSON.parse(raw);
+			} catch (e) {
+				throw new Error('Invalid JSON: ' + e.message);
+			}
+		});
+	}
+
 	function runningLabel(action, i18n) {
 		if (action === 'fix_all_issues') {
 			return i18n.fixAllRunning || 'Fixing issues…';
@@ -297,9 +318,7 @@
 		fd.append('action', 'radius_deploy_health_check');
 		fd.append('nonce', cfg.nonce);
 		fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' })
-			.then(function (r) {
-				return r.json();
-			})
+			.then(parseAjaxJson)
 			.then(function (json) {
 				setRunning(false);
 				if (!json || !json.success) {
@@ -357,9 +376,7 @@
 			fd.append('template_id', String(templateId));
 		}
 		fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' })
-			.then(function (r) {
-				return r.json();
-			})
+			.then(parseAjaxJson)
 			.then(function (json) {
 				if (triggerBtn) {
 					triggerBtn.disabled = false;
