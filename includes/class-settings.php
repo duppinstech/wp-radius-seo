@@ -153,39 +153,39 @@ class Radius_Settings {
 		if ( ! isset( $v['site_replacements'] ) || ! is_array( $v['site_replacements'] ) || $v['site_replacements'] === array() ) {
 			$v['site_replacements'] = self::default_site_replacements();
 		} else {
-			$v['site_replacements'] = self::merge_site_replacements_with_defaults( $v['site_replacements'] );
+			$v['site_replacements'] = self::normalize_stored_site_replacements( $v['site_replacements'] );
 		}
 		return $v;
 	}
 
 	/**
-	 * Ensure partial saved rows still include every default key; drop template-only Yoast/meta rows from global storage.
+	 * Normalize rows saved in the option (no re-injection of default keys — removals stay removed).
 	 *
 	 * @param array<int,mixed> $stored_rows Rows from the option.
 	 * @return array<int,array<string,mixed>>
 	 */
-	private static function merge_site_replacements_with_defaults( array $stored_rows ) {
-		$by_key = array();
+	private static function normalize_stored_site_replacements( array $stored_rows ) {
+		$out  = array();
+		$seen = array();
 		foreach ( $stored_rows as $row ) {
-			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
-				$k = sanitize_key( (string) $row['key'] );
-				if ( self::is_template_level_site_replacer_key( $k ) ) {
-					continue;
-				}
-				$by_key[ $k ] = $row;
-			}
-		}
-		$out = array();
-		foreach ( self::default_site_replacements() as $def ) {
-			$k = sanitize_key( (string) $def['key'] );
-			if ( $k === '' ) {
+			if ( ! is_array( $row ) || empty( $row['key'] ) ) {
 				continue;
 			}
-			$out[] = isset( $by_key[ $k ] ) ? $by_key[ $k ] : $def;
-			unset( $by_key[ $k ] );
-		}
-		foreach ( $by_key as $extra ) {
-			$out[] = $extra;
+			$k = sanitize_key( (string) $row['key'] );
+			if ( $k === '' || isset( $seen[ $k ] ) ) {
+				continue;
+			}
+			if ( self::is_template_level_site_replacer_key( $k ) ) {
+				continue;
+			}
+			$seen[ $k ] = true;
+			if ( ! isset( $row['values'] ) || ! is_array( $row['values'] ) ) {
+				$row['values'] = isset( $row['value'] ) ? array( (string) $row['value'] ) : array( '' );
+			}
+			if ( ! isset( $row['area_overrides'] ) || ! is_array( $row['area_overrides'] ) ) {
+				$row['area_overrides'] = array();
+			}
+			$out[] = $row;
 		}
 		return $out;
 	}
