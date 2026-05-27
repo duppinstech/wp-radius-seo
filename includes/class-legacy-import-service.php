@@ -1914,6 +1914,185 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Classic Magic Page towing migration slugs (one blueprint + three keyword clones).
+	 *
+	 * @return string[]
+	 */
+	public static function classic_migration_group_slugs() {
+		return array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
+	}
+
+	/**
+	 * Whether discovered groups are exactly the classic four towing lines (no custom groups).
+	 *
+	 * @param array<int,array<string,mixed>> $groups Discovered groups.
+	 * @return bool
+	 */
+	public static function migration_site_uses_classic_towing_clones( array $groups ) {
+		$slugs = array();
+		foreach ( $groups as $g ) {
+			if ( empty( $g['slug'] ) ) {
+				continue;
+			}
+			$slugs[] = sanitize_title( (string) $g['slug'] );
+		}
+		$slugs = array_values( array_unique( array_filter( $slugs ) ) );
+		sort( $slugs );
+		$expected = self::classic_migration_group_slugs();
+		sort( $expected );
+		return $slugs === $expected;
+	}
+
+	/**
+	 * Import one legacy magicpage blueprint as a radius_template (draft).
+	 *
+	 * @param int    $legacy_post_id Legacy magicpage post ID.
+	 * @param string $group_slug     Magic Page group slug from `_group_meta_fields_*`.
+	 * @return int|\WP_Error radius_template ID or error.
+	 */
+	public static function import_legacy_magicpage_template_as_radius( $legacy_post_id, $group_slug = '' ) {
+		$legacy_post_id = (int) $legacy_post_id;
+		if ( $legacy_post_id <= 0 ) {
+			return new WP_Error( 'radius_bad_legacy', __( 'Invalid legacy template ID.', 'radius' ) );
+		}
+
+		$existing = self::find_radius_template_by_legacy_import_id( $legacy_post_id );
+		if ( $existing > 0 ) {
+			$group_slug = sanitize_title( (string) $group_slug );
+			if ( $group_slug !== '' ) {
+				self::mark_migration_group_slug_on_template( $existing, $group_slug );
+			}
+			return $existing;
+		}
+
+		$p = get_post( $legacy_post_id );
+		if ( ! $p instanceof WP_Post || self::legacy_template_post_type() !== $p->post_type ) {
+			return new WP_Error(
+				'radius_missing_legacy',
+				sprintf(
+					/* translators: %d: post ID */
+					__( 'Legacy template post %d was not found.', 'radius' ),
+					$legacy_post_id
+				)
+			);
+		}
+
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			$map = self::legacy_template_id_to_group_slug_map();
+			if ( isset( $map[ $legacy_post_id ] ) ) {
+				$group_slug = (string) $map[ $legacy_post_id ];
+			} else {
+				$group_slug = self::group_slug_for_legacy_template_post( $p );
+			}
+		}
+
+		$title_for_import = (string) apply_filters(
+			'radius_migration_imported_template_title',
+			self::convert_legacy_magic_page_tokens_to_curly( (string) $p->post_title ),
+			$p
+		);
+
+		$new_id = wp_insert_post(
+			array(
+				'post_type'    => 'radius_template',
+				'post_status'  => 'draft',
+				'post_title'   => $title_for_import,
+				'post_content' => $p->post_content,
+				'post_excerpt' => $p->post_excerpt,
+			),
+			true
+		);
+		if ( is_wp_error( $new_id ) ) {
+			return $new_id;
+		}
+
+		$new_id = (int) $new_id;
+		update_post_meta( $new_id, '_radius_imported_from', $legacy_post_id );
+		if ( $group_slug !== '' ) {
+			self::mark_migration_group_slug_on_template( $new_id, $group_slug );
+		}
+		self::copy_elementor_document_meta_to_template( $legacy_post_id, $new_id );
+		self::copy_yoast_meta_from_legacy_template_to_radius_template( $legacy_post_id, $new_id );
+		self::finalize_imported_magic_page_radius_template( $new_id );
+
+		return $new_id;
+	}
+
+	/**
+	 * Import radius_template rows for each Magic Page group (one legacy blueprint per group).
+	 *
+	 * @param array<int,array<string,mixed>> $groups From {@see discover_magic_page_groups_from_options()}.
+	 * @return array{imported:int,skipped:int,errors:string[],group_ids:array<string,int>}
+	 */
+	public static function import_templates_for_migration_groups( array $groups ) {
+		$out = array(
+			'imported'  => 0,
+			'skipped'   => 0,
+			'errors'    => array(),
+			'group_ids' => array(),
+		);
+
+		if ( ! self::detect_legacy_templates() ) {
+			$out['errors'][] = __( 'No legacy template post type found.', 'radius' );
+			return $out;
+		}
+
+		if ( empty( $groups ) ) {
+			$bulk = self::import_templates();
+			$out['imported'] = (int) $bulk['imported'];
+			$out['skipped']  = (int) $bulk['skipped'];
+			$out['errors']   = isset( $bulk['errors'] ) && is_array( $bulk['errors'] ) ? $bulk['errors'] : array();
+			return $out;
+		}
+
+		$seen_legacy = array();
+		foreach ( $groups as $g ) {
+			$slug = isset( $g['slug'] ) ? sanitize_title( (string) $g['slug'] ) : '';
+			if ( $slug === '' ) {
+				continue;
+			}
+
+			$legacy_id = isset( $g['legacy_template_id'] ) ? (int) $g['legacy_template_id'] : 0;
+			if ( $legacy_id <= 0 ) {
+				$legacy_id = self::resolve_legacy_template_id_for_group_slug( $slug );
+			}
+			if ( $legacy_id <= 0 ) {
+				$out['errors'][] = sprintf(
+					/* translators: %s: group slug */
+					__( 'No legacy Magic Page template linked for group “%s”.', 'radius' ),
+					$slug
+				);
+				continue;
+			}
+			if ( isset( $seen_legacy[ $legacy_id ] ) ) {
+				$out['group_ids'][ $slug ] = (int) $seen_legacy[ $legacy_id ];
+				++$out['skipped'];
+				continue;
+			}
+
+			$before  = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			$result  = self::import_legacy_magicpage_template_as_radius( $legacy_id, $slug );
+			if ( is_wp_error( $result ) ) {
+				$out['errors'][] = $result->get_error_message();
+				continue;
+			}
+
+			$tid = (int) $result;
+			$seen_legacy[ $legacy_id ] = $tid;
+			$out['group_ids'][ $slug ] = $tid;
+
+			if ( $before > 0 ) {
+				++$out['skipped'];
+			} else {
+				++$out['imported'];
+			}
+		}
+
+		return $out;
+	}
+
+	/**
 	 * Copy legacy blueprint posts into radius_template (draft first).
 	 *
 	 * @return array{imported:int,skipped:int,errors:string[]}
@@ -1943,26 +2122,12 @@ class Radius_Legacy_Import_Service {
 		$legacy_id_to_group_slug = self::legacy_template_id_to_group_slug_map();
 
 		foreach ( $posts as $p ) {
-			$legacy_id = (int) $p->ID;
-			$dup       = get_posts(
-				array(
-					'post_type'      => 'radius_template',
-					'post_status'    => 'any',
-					'posts_per_page' => 1,
-					'fields'         => 'ids',
-					'meta_query'     => array(
-						array(
-							'key'   => '_radius_imported_from',
-							'value' => $legacy_id,
-						),
-					),
-				)
-			);
-			if ( ! empty( $dup ) ) {
-				$existing_id = (int) $dup[0];
-				$group_slug  = isset( $legacy_id_to_group_slug[ $legacy_id ] )
-					? (string) $legacy_id_to_group_slug[ $legacy_id ]
-					: self::group_slug_for_legacy_template_post( $p );
+			$legacy_id   = (int) $p->ID;
+			$group_slug  = isset( $legacy_id_to_group_slug[ $legacy_id ] )
+				? (string) $legacy_id_to_group_slug[ $legacy_id ]
+				: self::group_slug_for_legacy_template_post( $p );
+			$existing_id = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			if ( $existing_id > 0 ) {
 				if ( $group_slug !== '' ) {
 					self::mark_migration_group_slug_on_template( $existing_id, $group_slug );
 				}
@@ -1970,41 +2135,16 @@ class Radius_Legacy_Import_Service {
 				continue;
 			}
 
-			$title_for_import = (string) apply_filters(
-				'radius_migration_imported_template_title',
-				self::convert_legacy_magic_page_tokens_to_curly( (string) $p->post_title ),
-				$p
-			);
-
-			$new_id = wp_insert_post(
-				array(
-					'post_type'    => 'radius_template',
-					'post_status'  => 'draft',
-					'post_title'   => $title_for_import,
-					'post_content' => $p->post_content,
-					'post_excerpt' => $p->post_excerpt,
-				),
-				true
-			);
-			if ( is_wp_error( $new_id ) ) {
-				$code = $new_id->get_error_code();
+			$result = self::import_legacy_magicpage_template_as_radius( $legacy_id, $group_slug );
+			if ( is_wp_error( $result ) ) {
+				$code = $result->get_error_code();
 				if ( 'duplicate' === $code || 'existing_post_slug' === $code || strpos( $code, 'duplicate' ) !== false ) {
 					++$out['skipped'];
 					continue;
 				}
-				$out['errors'][] = $new_id->get_error_message();
+				$out['errors'][] = $result->get_error_message();
 				continue;
 			}
-			update_post_meta( (int) $new_id, '_radius_imported_from', $legacy_id );
-			$group_slug = isset( $legacy_id_to_group_slug[ $legacy_id ] )
-				? (string) $legacy_id_to_group_slug[ $legacy_id ]
-				: self::group_slug_for_legacy_template_post( $p );
-			if ( $group_slug !== '' ) {
-				self::mark_migration_group_slug_on_template( (int) $new_id, $group_slug );
-			}
-			self::copy_elementor_document_meta_to_template( $legacy_id, (int) $new_id );
-			self::copy_yoast_meta_from_legacy_template_to_radius_template( $legacy_id, (int) $new_id );
-			self::finalize_imported_magic_page_radius_template( (int) $new_id );
 			++$out['imported'];
 		}
 
@@ -3765,6 +3905,22 @@ class Radius_Legacy_Import_Service {
 	 * @return string[]
 	 */
 	public static function get_migration_wizard_deploy_slugs() {
+		$discovered = array();
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			if ( ! empty( $g['slug'] ) ) {
+				$discovered[] = sanitize_title( (string) $g['slug'] );
+			}
+		}
+		$discovered = array_values( array_unique( array_filter( $discovered ) ) );
+		if ( ! empty( $discovered ) ) {
+			/**
+			 * Published template slugs used when the migration wizard deploys landings.
+			 *
+			 * @param string[] $discovered Slugs from `_group_meta_fields_*` options.
+			 */
+			return apply_filters( 'radius_migration_wizard_deploy_landing_slugs', $discovered );
+		}
+
 		$map = self::get_migration_deploy_template_map();
 		if ( ! empty( $map ) ) {
 			/**
@@ -3773,21 +3929,6 @@ class Radius_Legacy_Import_Service {
 			 * @param string[] $slugs Keys from persisted deploy map.
 			 */
 			return apply_filters( 'radius_migration_wizard_deploy_landing_slugs', array_keys( $map ) );
-		}
-
-		$discovered = array();
-		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
-			if ( ! empty( $g['slug'] ) ) {
-				$discovered[] = (string) $g['slug'];
-			}
-		}
-		if ( ! empty( $discovered ) ) {
-			/**
-			 * Published template slugs used when the migration wizard deploys landings.
-			 *
-			 * @param string[] $discovered Slugs from `_group_meta_fields_*` options.
-			 */
-			return apply_filters( 'radius_migration_wizard_deploy_landing_slugs', $discovered );
 		}
 
 		return apply_filters(
@@ -3919,34 +4060,24 @@ class Radius_Legacy_Import_Service {
 		$total     = count( $entries );
 		$base_slug = self::infer_migration_base_group_slug( $groups );
 
-		if ( $total > 0 && $direct >= $total ) {
-			foreach ( $entries as $i => $entry ) {
-				$entries[ $i ]['action'] = 'publish_existing';
-			}
-			$plan = array(
-				'mode'      => 'per_group',
-				'base_slug' => $base_slug,
-				'groups'    => $groups,
-				'entries'   => $entries,
-			);
-			return apply_filters( 'radius_migration_templates_plan', $plan );
-		}
-
-		$classic = array( 'towing', 'roadside-assistance', 'heavy-towing', 'heavy-equipment-towing' );
-		$classic_match = count( array_intersect( $group_slugs, $classic ) );
-		$has_towing    = in_array( 'towing', $group_slugs, true );
-
-		if ( $has_towing && $classic_match >= 3 && $direct <= 1 ) {
+		// Classic towing sites only: one blueprint + three keyword clones (exactly four group options).
+		if ( $total > 0 && self::migration_site_uses_classic_towing_clones( $groups ) && $direct <= 1 ) {
 			$plan = self::build_towing_clone_migration_plan( $groups );
 			return apply_filters( 'radius_migration_templates_plan', $plan );
 		}
 
+		// Custom / multi-group sites: one published radius_template per `_group_meta_fields_*` row (own legacy blueprint).
 		foreach ( $entries as $i => $entry ) {
-			$entries[ $i ]['action'] = $entry['template_id'] > 0 ? 'publish_existing' : 'clone_from_base';
+			$legacy_id = isset( $entry['legacy_template_id'] ) ? (int) $entry['legacy_template_id'] : 0;
+			if ( $legacy_id > 0 || (int) $entry['template_id'] > 0 ) {
+				$entries[ $i ]['action'] = 'publish_existing';
+			} else {
+				$entries[ $i ]['action'] = 'clone_from_base';
+			}
 		}
 
 		$plan = array(
-			'mode'      => 'hybrid',
+			'mode'      => 'per_group',
 			'base_slug' => $base_slug,
 			'groups'    => $groups,
 			'entries'   => $entries,
@@ -4673,14 +4804,15 @@ class Radius_Legacy_Import_Service {
 
 		$out['templates_pruned'] = self::delete_migration_sourced_radius_templates();
 
-		$imp = self::import_templates();
+		$groups = self::discover_magic_page_groups_from_options();
+		$out['migration_groups'] = $groups;
+
+		$imp = self::import_templates_for_migration_groups( $groups );
 		$out['import'] = $imp;
 		if ( ! empty( $imp['errors'] ) ) {
 			$out['errors'] = array_merge( $out['errors'], $imp['errors'] );
 		}
 
-		$groups = self::discover_magic_page_groups_from_options();
-		$out['migration_groups'] = $groups;
 		$plan  = self::build_migration_templates_plan( $groups );
 		$plan  = self::refresh_migration_plan_entry_template_ids( $plan );
 		$out['migration_plan_mode'] = isset( $plan['mode'] ) ? (string) $plan['mode'] : '';
@@ -4857,6 +4989,15 @@ class Radius_Legacy_Import_Service {
 			}
 			if ( $tid <= 0 && $legacy_id > 0 ) {
 				$tid = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			}
+
+			if ( $tid <= 0 && $legacy_id > 0 ) {
+				$imported = self::import_legacy_magicpage_template_as_radius( $legacy_id, $slug );
+				if ( is_wp_error( $imported ) ) {
+					$out['errors'][] = $imported->get_error_message();
+				} else {
+					$tid = (int) $imported;
+				}
 			}
 
 			if ( $tid <= 0 && 'clone_from_base' === $action && $base_id > 0 && $slug !== $base_slug ) {
