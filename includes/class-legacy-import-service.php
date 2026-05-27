@@ -3233,7 +3233,11 @@ class Radius_Legacy_Import_Service {
 		if ( ! empty( $import_opts['key_prefixes'] ) && is_array( $import_opts['key_prefixes'] ) ) {
 			$prefixes = $import_opts['key_prefixes'];
 		}
-		$rows = self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
+		if ( ! empty( $import_opts['rows'] ) && is_array( $import_opts['rows'] ) ) {
+			$rows = $import_opts['rows'];
+		} else {
+			$rows = self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
+		}
 		if ( empty( $rows ) ) {
 			$n_raw = self::magic_page_spintax_raw_row_count();
 			if ( $n_raw > 0 && ! empty( $prefixes ) ) {
@@ -3663,14 +3667,38 @@ class Radius_Legacy_Import_Service {
 	 * @return string
 	 */
 	public static function magic_page_group_meta_title( $group_slug ) {
+		return self::magic_page_group_xfield_value( $group_slug, 'meta-title' );
+	}
+
+	/**
+	 * Meta description for a service group from Magic Page `_magic_page_xfields` (`{slug}-meta-desc`).
+	 *
+	 * @param string $group_slug Sanitized group slug.
+	 * @return string
+	 */
+	public static function magic_page_group_meta_desc( $group_slug ) {
+		return self::magic_page_group_xfield_value( $group_slug, 'meta-desc' );
+	}
+
+	/**
+	 * Read one group-scoped xfield from Magic Page global options (`{slug}-meta-title`, etc.).
+	 *
+	 * @param string $group_slug Group slug.
+	 * @param string $suffix     Field suffix, e.g. meta-title, meta-desc.
+	 * @return string Converted Radius token syntax.
+	 */
+	public static function magic_page_group_xfield_value( $group_slug, $suffix ) {
 		$group_slug = sanitize_title( (string) $group_slug );
-		if ( $group_slug === '' ) {
+		$suffix     = sanitize_key( str_replace( '_', '-', (string) $suffix ) );
+		if ( $group_slug === '' || $suffix === '' ) {
 			return '';
 		}
 
-		$candidates = array(
-			$group_slug . '-meta-title',
-			str_replace( '-', '_', $group_slug ) . '-meta-title',
+		$suffix_hyphen = str_replace( '_', '-', $suffix );
+		$candidates    = array(
+			$group_slug . '-' . $suffix_hyphen,
+			str_replace( '-', '_', $group_slug ) . '-' . $suffix_hyphen,
+			str_replace( '-', '_', $group_slug ) . '_' . str_replace( '-', '_', $suffix_hyphen ),
 		);
 		$candidates = array_values( array_unique( array_filter( $candidates ) ) );
 
@@ -3696,18 +3724,297 @@ class Radius_Legacy_Import_Service {
 				if ( $text !== '' ) {
 					$text = self::convert_legacy_magic_page_tokens_to_curly( $text );
 					/**
-					 * Page title for a service group from Magic Page xfields.
+					 * Magic Page xfield text for a service group (meta-title, meta-desc, …).
 					 *
-					 * @param string $text       Resolved title text.
+					 * @param string $text       Resolved text.
 					 * @param string $group_slug Group slug.
+					 * @param string $suffix     Field suffix (meta-title, meta-desc).
 					 * @param string $key        Matched xfield key.
 					 */
-					return (string) apply_filters( 'radius_migration_group_meta_title', $text, $group_slug, $key );
+					return (string) apply_filters( 'radius_migration_group_xfield_value', $text, $group_slug, $suffix, $key );
 				}
 			}
 		}
 
-		return (string) apply_filters( 'radius_migration_group_meta_title', '', $group_slug, '' );
+		return (string) apply_filters( 'radius_migration_group_xfield_value', '', $group_slug, $suffix, '' );
+	}
+
+	/**
+	 * Write this group's Magic Page meta-title / meta-desc into template `_radius_xfields` (Yoast tokens).
+	 *
+	 * @param int    $template_id radius_template ID.
+	 * @param string $group_slug  Group slug.
+	 * @param bool   $overwrite   Replace existing rows for these keys.
+	 * @return bool True when at least one row was written.
+	 */
+	public static function import_magic_page_group_meta_xfields_into_template( $template_id, $group_slug, $overwrite = true ) {
+		$template_id = (int) $template_id;
+		$group_slug  = sanitize_title( (string) $group_slug );
+		if ( $template_id <= 0 || $group_slug === '' ) {
+			return false;
+		}
+
+		$service_line = self::migration_service_line_for_group_slug( $group_slug );
+		$title_key    = sanitize_key( $service_line . '-meta-title' );
+		$desc_key     = sanitize_key( $service_line . '-meta-desc' );
+		$title_val    = self::magic_page_group_meta_title( $group_slug );
+		$desc_val     = self::magic_page_group_meta_desc( $group_slug );
+
+		$incoming = array();
+		if ( $title_val !== '' ) {
+			$incoming[ $title_key ] = $title_val;
+		}
+		if ( $desc_val !== '' ) {
+			$incoming[ $desc_key ] = $desc_val;
+		}
+		if ( empty( $incoming ) ) {
+			return false;
+		}
+
+		$raw = get_post_meta( $template_id, '_radius_xfields', true );
+		if ( is_string( $raw ) ) {
+			$raw = json_decode( $raw, true );
+		}
+		if ( ! is_array( $raw ) ) {
+			$raw = array();
+		}
+
+		$by_key = array();
+		foreach ( $raw as $row ) {
+			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
+				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
+			}
+		}
+
+		$changed = false;
+		foreach ( $incoming as $sk => $val ) {
+			if ( $sk === '' || $val === '' ) {
+				continue;
+			}
+			if ( ! $overwrite && isset( $by_key[ $sk ] ) ) {
+				continue;
+			}
+			$by_key[ $sk ] = array(
+				'key'            => $sk,
+				'values'         => array( (string) $val ),
+				'area_overrides' => array(),
+			);
+			$changed       = true;
+		}
+
+		if ( ! $changed ) {
+			return false;
+		}
+
+		$enc = wp_json_encode( array_values( $by_key ) );
+		if ( $enc === false ) {
+			return false;
+		}
+		update_post_meta( $template_id, '_radius_xfields', wp_slash( $enc ) );
+		clean_post_cache( $template_id );
+		return true;
+	}
+
+	/**
+	 * Bracket → `{{}}`, Elementor JSON, and `{spintax_*}` normalization after import or clone.
+	 *
+	 * @param int    $template_id radius_template ID.
+	 * @param string $group_slug  Magic Page group slug (for spintax prefix rewrite).
+	 * @return void
+	 */
+	public static function finalize_migration_radius_template( $template_id, $group_slug = '' ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return;
+		}
+		self::finalize_imported_magic_page_radius_template( $template_id );
+		$prefixes = $group_slug !== ''
+			? self::migration_spintax_prefixes_for_group_slug( $group_slug )
+			: array( 'towing' );
+		self::normalize_migration_template_spintax_braces( $template_id, $prefixes );
+	}
+
+	/**
+	 * Rewrite `{spintax_{prefix}…}` placeholders to `{{prefix…}}` for listed prefixes.
+	 *
+	 * @param int      $template_id radius_template ID.
+	 * @param string[] $prefixes    Prefix list (towing, heavy, cargo, …).
+	 * @return void
+	 */
+	public static function normalize_migration_template_spintax_braces( $template_id, array $prefixes ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return;
+		}
+		$post = get_post( $template_id );
+		if ( ! $post || 'radius_template' !== $post->post_type ) {
+			return;
+		}
+
+		$prefixes = array_values( array_unique( array_filter( array_map( 'strval', $prefixes ) ) ) );
+		if ( empty( $prefixes ) ) {
+			$prefixes = array( 'towing' );
+		}
+		usort(
+			$prefixes,
+			static function ( $a, $b ) {
+				return strlen( $b ) - strlen( $a );
+			}
+		);
+
+		$cb = static function ( $text ) use ( $prefixes ) {
+			$text = (string) $text;
+			foreach ( $prefixes as $px ) {
+				$px = strtolower( preg_replace( '/[^a-z0-9_-]/', '', (string) $px ) );
+				if ( $px === '' ) {
+					continue;
+				}
+				$px_u = str_replace( '-', '_', $px );
+				$text = (string) preg_replace( '/\{spintax_' . preg_quote( $px, '/' ) . '-([^\}]*)\}/i', '{{' . $px . '-$1}}', $text );
+				$text = (string) preg_replace( '/\{spintax_' . preg_quote( $px_u, '/' ) . '_([^\}]*)\}/i', '{{' . $px_u . '_$1}}', $text );
+				$text = (string) preg_replace( '/\{spintax_' . preg_quote( $px, '/' ) . '\}/i', '{{' . $px . '}}', $text );
+				$text = (string) preg_replace( '/\{spintax_' . preg_quote( $px_u, '/' ) . '\}/i', '{{' . $px_u . '}}', $text );
+			}
+			return $text;
+		};
+
+		$json_keys = apply_filters(
+			'radius_migration_template_json_meta_keys',
+			array( '_elementor_data', '_elementor_page_settings', '_radius_spintax_blocks', '_radius_xfields', '_radius_slot_variations' )
+		);
+		$page_settings_key = '_elementor_page_settings';
+
+		foreach ( $json_keys as $jk ) {
+			if ( ! is_string( $jk ) || $jk === '' ) {
+				continue;
+			}
+			$raw = get_post_meta( $template_id, $jk, true );
+			if ( $raw === '' || false === $raw ) {
+				continue;
+			}
+			if ( $page_settings_key === $jk ) {
+				$decoded = self::elementor_meta_decode_to_array( $raw );
+				if ( null === $decoded ) {
+					continue;
+				}
+				$changed = self::deep_map_strings_in_mixed( $decoded, $cb );
+				update_post_meta( $template_id, $jk, $changed );
+				continue;
+			}
+			if ( is_string( $raw ) ) {
+				$decoded = json_decode( $raw, true );
+				if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+					$changed = self::deep_map_strings_in_mixed( $decoded, $cb );
+					$enc     = wp_json_encode( $changed );
+					if ( false !== $enc ) {
+						update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+					}
+				} else {
+					$new = $cb( $raw );
+					if ( $new !== $raw ) {
+						update_post_meta( $template_id, $jk, $new );
+					}
+				}
+				continue;
+			}
+			if ( is_array( $raw ) ) {
+				$changed = self::deep_map_strings_in_mixed( $raw, $cb );
+				$enc     = wp_json_encode( $changed );
+				if ( false !== $enc ) {
+					update_post_meta( $template_id, $jk, wp_slash( $enc ) );
+				}
+			}
+		}
+
+		$title   = $cb( (string) $post->post_title );
+		$content = $cb( (string) $post->post_content );
+		$excerpt = $cb( (string) $post->post_excerpt );
+		if ( $title !== $post->post_title || $content !== $post->post_content || $excerpt !== $post->post_excerpt ) {
+			wp_update_post(
+				array(
+					'ID'           => $template_id,
+					'post_title'   => $title,
+					'post_content' => $content,
+					'post_excerpt' => $excerpt,
+				)
+			);
+			clean_post_cache( $template_id );
+		}
+	}
+
+	/**
+	 * Spintax rows for a migration group (prefix filter, then shared/global fallback with token remap).
+	 *
+	 * @param string $group_slug Group slug.
+	 * @param string $base_slug  Legacy blueprint slug (usually towing).
+	 * @return array<int,array{key:string,label:string,variations:string[]}>
+	 */
+	public static function migration_spintax_rows_for_group_slug( $group_slug, $base_slug = 'towing' ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		$base_slug  = sanitize_title( (string) $base_slug );
+		if ( $group_slug === '' ) {
+			return array();
+		}
+
+		$prefixes = self::migration_spintax_prefixes_for_group_slug( $group_slug );
+		$rows     = self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
+		if ( ! empty( $rows ) ) {
+			return $rows;
+		}
+
+		$all = self::magic_page_spintax_rows( array() );
+		if ( empty( $all ) ) {
+			return array();
+		}
+
+		if ( $base_slug === '' ) {
+			$base_slug = 'towing';
+		}
+		if ( $group_slug === $base_slug ) {
+			return $all;
+		}
+
+		$pairs = self::migration_replace_pairs_from_base_slug( $base_slug, $group_slug );
+		if ( empty( $pairs ) ) {
+			return $all;
+		}
+
+		return self::remap_magic_page_spintax_rows( $all, $pairs );
+	}
+
+	/**
+	 * Apply string replacement pairs to spintax row keys and variation texts.
+	 *
+	 * @param array<int,array{key:string,label:string,variations:string[]}> $rows  Source rows.
+	 * @param array<string,string>                                         $pairs Needle => replacement.
+	 * @return array<int,array{key:string,label:string,variations:string[]}>
+	 */
+	private static function remap_magic_page_spintax_rows( array $rows, array $pairs ) {
+		$out = array();
+		foreach ( $rows as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$key = isset( $row['key'] ) ? sanitize_key( (string) self::deep_replace_in_mixed( (string) $row['key'], $pairs ) ) : '';
+			if ( $key === '' ) {
+				continue;
+			}
+			$vars = array();
+			if ( ! empty( $row['variations'] ) && is_array( $row['variations'] ) ) {
+				foreach ( $row['variations'] as $v ) {
+					$vars[] = (string) self::deep_replace_in_mixed( (string) $v, $pairs );
+				}
+			}
+			$new_row = array(
+				'key'        => $key,
+				'variations' => $vars,
+			);
+			if ( ! empty( $row['label'] ) ) {
+				$new_row['label'] = (string) self::deep_replace_in_mixed( (string) $row['label'], $pairs );
+			}
+			$out[] = $new_row;
+		}
+		return $out;
 	}
 
 	/**
@@ -3793,6 +4100,11 @@ class Radius_Legacy_Import_Service {
 			return $imported;
 		}
 		$tid = (int) $imported;
+		self::finalize_migration_radius_template( $tid, $slug );
+		self::import_magic_page_group_meta_xfields_into_template( $tid, $slug, true );
+		if ( $title === '' ) {
+			$title = self::magic_page_group_meta_title( $slug );
+		}
 		if ( $title !== '' ) {
 			wp_update_post(
 				array(
@@ -4542,6 +4854,7 @@ class Radius_Legacy_Import_Service {
 		update_post_meta( (int) $new_id, '_radius_migration_clone_of', (int) $source_id );
 		update_post_meta( (int) $new_id, '_radius_migration_group_slug', $target_slug );
 		self::apply_keyword_swaps_to_radius_template( (int) $new_id, $pairs );
+		self::finalize_migration_radius_template( (int) $new_id, $target_slug );
 
 		return (int) $new_id;
 	}
@@ -4812,9 +5125,10 @@ class Radius_Legacy_Import_Service {
 			if ( $sk === '' || isset( $by_key[ $sk ] ) ) {
 				continue;
 			}
+			$val = self::convert_legacy_magic_page_tokens_to_curly( (string) $val );
 			$by_key[ $sk ] = array(
 				'key'            => $sk,
-				'values'         => array( (string) $val ),
+				'values'         => array( $val ),
 				'area_overrides' => array(),
 			);
 			$added = true;
@@ -5286,8 +5600,10 @@ class Radius_Legacy_Import_Service {
 
 			if ( $slug === $base_slug ) {
 				$base_id = $tid;
-				self::normalize_imported_towing_migration_template_tokens( $tid );
 			}
+
+			self::finalize_migration_radius_template( $tid, $slug );
+			$imported_xfields = self::import_magic_page_group_meta_xfields_into_template( $tid, $slug, true );
 
 			$title = ! empty( $group_row['meta_title'] )
 				? (string) $group_row['meta_title']
@@ -5302,7 +5618,9 @@ class Radius_Legacy_Import_Service {
 				clean_post_cache( $tid );
 			}
 			$out['titles'][ $slug ] = $title;
-			self::seed_default_meta_xfields_on_template( $tid, $service_line, $slug );
+			if ( ! $imported_xfields ) {
+				self::seed_default_meta_xfields_on_template( $tid, $service_line, $slug );
+			}
 
 			if ( ! self::migration_publish_radius_template( $tid, $slug ) ) {
 				$out['errors'][] = sprintf(
@@ -5417,6 +5735,19 @@ class Radius_Legacy_Import_Service {
 			$variant_ids
 		);
 
+		$base_slug_for_spintax = 'towing';
+		if ( ! empty( $group_template_ids ) ) {
+			$discovered = self::discover_magic_page_groups_from_options();
+			$base_slug_for_spintax = self::infer_migration_base_group_slug( $discovered );
+		}
+
+		$slug_by_tid = array();
+		if ( ! empty( $group_template_ids ) ) {
+			foreach ( $group_template_ids as $group_slug => $tid ) {
+				$slug_by_tid[ (int) $tid ] = (string) $group_slug;
+			}
+		}
+
 		foreach ( $prefix_map as $tid => $prefixes ) {
 			$tid = (int) $tid;
 			if ( $tid <= 0 || ! is_array( $prefixes ) || empty( $prefixes ) ) {
@@ -5425,14 +5756,22 @@ class Radius_Legacy_Import_Service {
 			if ( ! get_post( $tid ) ) {
 				continue;
 			}
-			$sp = self::import_magic_page_spintax_into_templates(
+			$group_slug = isset( $slug_by_tid[ $tid ] ) ? (string) $slug_by_tid[ $tid ] : '';
+			$rows       = $group_slug !== ''
+				? self::migration_spintax_rows_for_group_slug( $group_slug, $base_slug_for_spintax )
+				: self::magic_page_spintax_rows( array( 'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ) ) );
+			$sp         = self::import_magic_page_spintax_into_templates(
 				'one',
 				$tid,
 				true,
 				true,
 				false,
-				array( 'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ) )
+				array(
+					'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ),
+					'rows'         => $rows,
+				)
 			);
+			self::finalize_migration_radius_template( $tid, $group_slug );
 			$out['spintax'][ $tid ] = $sp;
 			if ( ! empty( $sp['errors'] ) ) {
 				$out['errors'] = array_merge( $out['errors'], $sp['errors'] );
