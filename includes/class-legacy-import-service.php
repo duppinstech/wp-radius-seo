@@ -1940,8 +1940,11 @@ class Radius_Legacy_Import_Service {
 			)
 		);
 
+		$legacy_id_to_group_slug = self::legacy_template_id_to_group_slug_map();
+
 		foreach ( $posts as $p ) {
-			$dup = get_posts(
+			$legacy_id = (int) $p->ID;
+			$dup       = get_posts(
 				array(
 					'post_type'      => 'radius_template',
 					'post_status'    => 'any',
@@ -1950,12 +1953,19 @@ class Radius_Legacy_Import_Service {
 					'meta_query'     => array(
 						array(
 							'key'   => '_radius_imported_from',
-							'value' => (int) $p->ID,
+							'value' => $legacy_id,
 						),
 					),
 				)
 			);
 			if ( ! empty( $dup ) ) {
+				$existing_id = (int) $dup[0];
+				$group_slug  = isset( $legacy_id_to_group_slug[ $legacy_id ] )
+					? (string) $legacy_id_to_group_slug[ $legacy_id ]
+					: self::group_slug_for_legacy_template_post( $p );
+				if ( $group_slug !== '' ) {
+					self::mark_migration_group_slug_on_template( $existing_id, $group_slug );
+				}
 				++$out['skipped'];
 				continue;
 			}
@@ -1985,14 +1995,175 @@ class Radius_Legacy_Import_Service {
 				$out['errors'][] = $new_id->get_error_message();
 				continue;
 			}
-			update_post_meta( (int) $new_id, '_radius_imported_from', (int) $p->ID );
-			self::copy_elementor_document_meta_to_template( (int) $p->ID, (int) $new_id );
-			self::copy_yoast_meta_from_legacy_template_to_radius_template( (int) $p->ID, (int) $new_id );
+			update_post_meta( (int) $new_id, '_radius_imported_from', $legacy_id );
+			$group_slug = isset( $legacy_id_to_group_slug[ $legacy_id ] )
+				? (string) $legacy_id_to_group_slug[ $legacy_id ]
+				: self::group_slug_for_legacy_template_post( $p );
+			if ( $group_slug !== '' ) {
+				self::mark_migration_group_slug_on_template( (int) $new_id, $group_slug );
+			}
+			self::copy_elementor_document_meta_to_template( $legacy_id, (int) $new_id );
+			self::copy_yoast_meta_from_legacy_template_to_radius_template( $legacy_id, (int) $new_id );
 			self::finalize_imported_magic_page_radius_template( (int) $new_id );
 			++$out['imported'];
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Map legacy magicpage post ID → Magic Page group slug from `_group_meta_fields_*` options.
+	 *
+	 * @return array<int,string>
+	 */
+	public static function legacy_template_id_to_group_slug_map() {
+		$map = array();
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			$legacy_id = isset( $g['legacy_template_id'] ) ? (int) $g['legacy_template_id'] : 0;
+			$slug      = isset( $g['slug'] ) ? sanitize_title( (string) $g['slug'] ) : '';
+			if ( $legacy_id > 0 && $slug !== '' ) {
+				$map[ $legacy_id ] = $slug;
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * Group slug for a legacy template post (post_name), when it matches a discovered group.
+	 *
+	 * @param \WP_Post|object $legacy_post Legacy template post.
+	 * @return string
+	 */
+	private static function group_slug_for_legacy_template_post( $legacy_post ) {
+		if ( ! $legacy_post instanceof WP_Post ) {
+			return '';
+		}
+		$slug = sanitize_title( (string) $legacy_post->post_name );
+		if ( $slug === '' ) {
+			return '';
+		}
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			if ( ! empty( $g['slug'] ) && $slug === sanitize_title( (string) $g['slug'] ) ) {
+				return $slug;
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Whether every migration wizard deploy slug has a published radius_template.
+	 *
+	 * @return bool
+	 */
+	public static function migration_deploy_slugs_have_published_templates() {
+		$slugs = self::get_migration_wizard_deploy_slugs();
+		if ( empty( $slugs ) ) {
+			return false;
+		}
+
+		$group_by_slug = array();
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			if ( empty( $g['slug'] ) ) {
+				continue;
+			}
+			$group_by_slug[ sanitize_title( (string) $g['slug'] ) ] = $g;
+		}
+
+		foreach ( $slugs as $slug ) {
+			$slug = sanitize_title( (string) $slug );
+			if ( $slug === '' ) {
+				return false;
+			}
+			$group = isset( $group_by_slug[ $slug ] )
+				? $group_by_slug[ $slug ]
+				: array(
+					'slug'               => $slug,
+					'legacy_template_id' => 0,
+				);
+			if ( self::find_published_radius_template_for_magic_page_group( $group ) <= 0 ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Resolve base template ID for the templates pipeline resume payload.
+	 *
+	 * @param array<string,mixed> $pipeline_out Pipeline partial result.
+	 * @return int
+	 */
+	public static function resolve_templates_pipeline_base_id( array $pipeline_out ) {
+		if ( ! empty( $pipeline_out['base_id'] ) ) {
+			return (int) $pipeline_out['base_id'];
+		}
+		if ( ! empty( $pipeline_out['group_template_ids'] ) && is_array( $pipeline_out['group_template_ids'] ) ) {
+			$first = reset( $pipeline_out['group_template_ids'] );
+			return (int) $first;
+		}
+		if ( ! empty( $pipeline_out['out_partial'] ) && is_array( $pipeline_out['out_partial'] ) ) {
+			return self::resolve_templates_pipeline_base_id( $pipeline_out['out_partial'] );
+		}
+		return 0;
+	}
+
+	/**
+	 * Re-resolve radius_template IDs on a migration plan after import_templates().
+	 *
+	 * @param array<string,mixed> $plan Migration plan.
+	 * @return array<string,mixed>
+	 */
+	public static function refresh_migration_plan_entry_template_ids( array $plan ) {
+		if ( empty( $plan['entries'] ) || ! is_array( $plan['entries'] ) ) {
+			return $plan;
+		}
+
+		foreach ( $plan['entries'] as $i => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$slug      = isset( $entry['group_slug'] ) ? sanitize_title( (string) $entry['group_slug'] ) : '';
+			$legacy_id = isset( $entry['legacy_template_id'] ) ? (int) $entry['legacy_template_id'] : 0;
+			if ( $slug === '' ) {
+				continue;
+			}
+
+			$tid = isset( $entry['template_id'] ) ? (int) $entry['template_id'] : 0;
+			if ( $tid <= 0 ) {
+				$tid = self::find_radius_template_by_legacy_post_slug( $slug );
+			}
+			if ( $tid <= 0 && $legacy_id > 0 ) {
+				$tid = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			}
+
+			$plan['entries'][ $i ]['template_id'] = $tid;
+			if ( $tid > 0 ) {
+				$plan['entries'][ $i ]['action'] = 'publish_existing';
+			}
+		}
+
+		return $plan;
+	}
+
+	/**
+	 * Whether the templates pipeline resume transient has enough state to continue.
+	 *
+	 * @param array<string,mixed> $resume Transient payload.
+	 * @return bool
+	 */
+	public static function templates_pipeline_resume_is_valid( array $resume ) {
+		if ( empty( $resume['out_partial'] ) || ! is_array( $resume['out_partial'] ) ) {
+			return false;
+		}
+		if ( self::resolve_templates_pipeline_base_id( $resume ) > 0 ) {
+			return true;
+		}
+		if ( ! empty( $resume['group_template_ids'] ) && is_array( $resume['group_template_ids'] ) ) {
+			return true;
+		}
+		$partial = $resume['out_partial'];
+		return ! empty( $partial['group_template_ids'] ) && is_array( $partial['group_template_ids'] );
 	}
 
 	/**
@@ -4511,6 +4682,7 @@ class Radius_Legacy_Import_Service {
 		$groups = self::discover_magic_page_groups_from_options();
 		$out['migration_groups'] = $groups;
 		$plan  = self::build_migration_templates_plan( $groups );
+		$plan  = self::refresh_migration_plan_entry_template_ids( $plan );
 		$out['migration_plan_mode'] = isset( $plan['mode'] ) ? (string) $plan['mode'] : '';
 
 		if ( isset( $plan['mode'] ) && 'towing_clone' === $plan['mode'] ) {
@@ -4520,6 +4692,7 @@ class Radius_Legacy_Import_Service {
 		}
 
 		$out = array_merge( $out, $pipeline );
+		$out['base_id'] = self::resolve_templates_pipeline_base_id( $out );
 
 		if ( ! empty( $out['group_template_ids'] ) && is_array( $out['group_template_ids'] ) ) {
 			self::persist_migration_deploy_template_map( $out['group_template_ids'] );
@@ -4530,7 +4703,7 @@ class Radius_Legacy_Import_Service {
 		set_transient(
 			self::templates_pipeline_resume_transient_key(),
 			array(
-				'base_id'            => isset( $out['base_id'] ) ? (int) $out['base_id'] : 0,
+				'base_id'            => (int) $out['base_id'],
 				'variant_ids'        => isset( $out['variant_ids'] ) && is_array( $out['variant_ids'] ) ? $out['variant_ids'] : array(),
 				'group_template_ids' => isset( $out['group_template_ids'] ) && is_array( $out['group_template_ids'] ) ? $out['group_template_ids'] : array(),
 				'groups'             => $groups,
@@ -4770,7 +4943,7 @@ class Radius_Legacy_Import_Service {
 	 */
 	public static function automated_migration_templates_pipeline_continue() {
 		$resume = get_transient( self::templates_pipeline_resume_transient_key() );
-		if ( ! is_array( $resume ) || empty( $resume['base_id'] ) || empty( $resume['out_partial'] ) || ! is_array( $resume['out_partial'] ) ) {
+		if ( ! is_array( $resume ) || ! self::templates_pipeline_resume_is_valid( $resume ) ) {
 			return array(
 				'errors'                     => array(
 					__( 'No in-progress templates pipeline (session expired). Run the templates step again.', 'radius' ),
@@ -4780,6 +4953,8 @@ class Radius_Legacy_Import_Service {
 				'pipeline_continue_expired' => true,
 			);
 		}
+
+		$resume['base_id'] = self::resolve_templates_pipeline_base_id( $resume );
 
 		$out = self::automated_migration_templates_pipeline_finish_from_resume( $resume );
 		delete_transient( self::templates_pipeline_resume_transient_key() );
@@ -4793,7 +4968,7 @@ class Radius_Legacy_Import_Service {
 	 * @return array<string,mixed>
 	 */
 	private static function automated_migration_templates_pipeline_finish_from_resume( array $resume ) {
-		$base_id     = (int) $resume['base_id'];
+		$base_id     = self::resolve_templates_pipeline_base_id( $resume );
 		$variant_ids = isset( $resume['variant_ids'] ) && is_array( $resume['variant_ids'] ) ? $resume['variant_ids'] : array();
 		$titles      = isset( $resume['titles'] ) && is_array( $resume['titles'] ) ? $resume['titles'] : array();
 		$out         = isset( $resume['out_partial'] ) && is_array( $resume['out_partial'] ) ? $resume['out_partial'] : array();

@@ -325,6 +325,17 @@ final class Radius_Migration_Wizard {
 	 * @return bool
 	 */
 	public static function infer_templates_ready() {
+		if ( class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			$groups = Radius_Legacy_Import_Service::discover_magic_page_groups_from_options();
+			if ( ! empty( $groups ) && Radius_Legacy_Import_Service::migration_deploy_slugs_have_published_templates() ) {
+				return true;
+			}
+			$map = Radius_Legacy_Import_Service::get_migration_deploy_template_map();
+			if ( ! empty( $map ) && Radius_Legacy_Import_Service::migration_deploy_slugs_have_published_templates() ) {
+				return true;
+			}
+		}
+
 		$c = wp_count_posts( 'radius_template' );
 		if ( ! is_object( $c ) ) {
 			return false;
@@ -790,11 +801,15 @@ final class Radius_Migration_Wizard {
 					@ignore_user_abort( true );
 				}
 				$res = Radius_Legacy_Import_Service::automated_migration_templates_pipeline_continue();
-				$tpl_ok = ! empty( $res['base_id'] )
-					|| ! empty( $res['variant_ids'] )
-					|| ! empty( $res['group_template_ids'] )
-					|| self::infer_templates_ready();
-				if ( $tpl_ok && empty( $res['pipeline_continue_expired'] ) ) {
+				$tpl_ok = empty( $res['pipeline_continue_expired'] )
+					&& (
+						Radius_Legacy_Import_Service::migration_deploy_slugs_have_published_templates()
+						|| ! empty( $res['base_id'] )
+						|| ! empty( $res['variant_ids'] )
+						|| ! empty( $res['group_template_ids'] )
+						|| self::infer_templates_ready()
+					);
+				if ( $tpl_ok ) {
 					self::record_step_done(
 						'templates',
 						__( 'Templates step finished (import, slugs, variants, spintax prefixes).', 'radius' ),
