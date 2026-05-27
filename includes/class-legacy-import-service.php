@@ -3289,12 +3289,16 @@ class Radius_Legacy_Import_Service {
 				continue;
 			}
 
-			$blocks = get_post_meta( $tid, '_radius_spintax_blocks', true );
-			if ( is_string( $blocks ) ) {
-				$blocks = json_decode( $blocks, true );
-			}
-			if ( ! is_array( $blocks ) ) {
+			if ( ! empty( $import_opts['replace_all_blocks'] ) ) {
 				$blocks = array();
+			} else {
+				$blocks = get_post_meta( $tid, '_radius_spintax_blocks', true );
+				if ( is_string( $blocks ) ) {
+					$blocks = json_decode( $blocks, true );
+				}
+				if ( ! is_array( $blocks ) ) {
+					$blocks = array();
+				}
 			}
 
 			$by_key = array();
@@ -3695,12 +3699,15 @@ class Radius_Legacy_Import_Service {
 		}
 
 		$suffix_hyphen = str_replace( '_', '-', $suffix );
-		$candidates    = array(
-			$group_slug . '-' . $suffix_hyphen,
-			str_replace( '-', '_', $group_slug ) . '-' . $suffix_hyphen,
-			str_replace( '-', '_', $group_slug ) . '_' . str_replace( '-', '_', $suffix_hyphen ),
-		);
-		$candidates = array_values( array_unique( array_filter( $candidates ) ) );
+		$candidates    = array();
+		foreach ( self::migration_meta_key_prefixes_for_group_slug( $group_slug ) as $px ) {
+			$candidates[] = $px . '-' . $suffix_hyphen;
+			$candidates[] = str_replace( '-', '_', $px ) . '-' . $suffix_hyphen;
+			$candidates[] = str_replace( '-', '_', $px ) . '_' . str_replace( '-', '_', $suffix_hyphen );
+		}
+		$candidates[] = $group_slug . '-' . $suffix_hyphen;
+		$candidates[] = str_replace( '-', '_', $group_slug ) . '-' . $suffix_hyphen;
+		$candidates   = array_values( array_unique( array_filter( $candidates ) ) );
 
 		$opt_names = apply_filters(
 			'radius_magic_page_xfields_option_names',
@@ -3717,26 +3724,91 @@ class Radius_Legacy_Import_Service {
 			}
 			$map = self::parse_magic_page_xfields_option( get_option( $opt_name, null ) );
 			foreach ( $candidates as $key ) {
-				if ( ! isset( $map[ $key ] ) ) {
+				$entry = null;
+				if ( isset( $map[ $key ] ) ) {
+					$entry = $map[ $key ];
+				} else {
+					$lookup = sanitize_key( (string) $key );
+					if ( $lookup !== '' && isset( $map[ $lookup ] ) ) {
+						$entry = $map[ $lookup ];
+						$key   = $lookup;
+					}
+				}
+				if ( null === $entry ) {
 					continue;
 				}
-				$text = self::magic_page_xfield_entry_to_string( $map[ $key ] );
+				$text = self::magic_page_xfield_entry_to_string( $entry );
 				if ( $text !== '' ) {
 					$text = self::convert_legacy_magic_page_tokens_to_curly( $text );
-					/**
-					 * Magic Page xfield text for a service group (meta-title, meta-desc, …).
-					 *
-					 * @param string $text       Resolved text.
-					 * @param string $group_slug Group slug.
-					 * @param string $suffix     Field suffix (meta-title, meta-desc).
-					 * @param string $key        Matched xfield key.
-					 */
 					return (string) apply_filters( 'radius_migration_group_xfield_value', $text, $group_slug, $suffix, $key );
+				}
+			}
+			// Prefix scan: e.g. `cargo-meta-title` for group `cargo-services`.
+			$suffix_tail = '-' . $suffix_hyphen;
+			foreach ( $map as $field_key => $entry ) {
+				$fk = sanitize_key( (string) $field_key );
+				if ( $fk === '' || substr( $fk, -strlen( $suffix_tail ) ) !== $suffix_tail ) {
+					continue;
+				}
+				if ( ! self::magic_page_field_key_matches_group_prefix( $fk, self::migration_meta_key_prefixes_for_group_slug( $group_slug ) ) ) {
+					continue;
+				}
+				$text = self::magic_page_xfield_entry_to_string( $entry );
+				if ( $text !== '' ) {
+					$text = self::convert_legacy_magic_page_tokens_to_curly( $text );
+					return (string) apply_filters( 'radius_migration_group_xfield_value', $text, $group_slug, $suffix, (string) $field_key );
 				}
 			}
 		}
 
 		return (string) apply_filters( 'radius_migration_group_xfield_value', '', $group_slug, $suffix, '' );
+	}
+
+	/**
+	 * All Magic Page xfields whose keys start with this group's prefix(es).
+	 *
+	 * @param string        $group_slug     Group slug.
+	 * @param array<string> $all_prefixes Optional union of every group's prefixes on the site.
+	 * @return array<string,string> Map of sanitized key => converted value.
+	 */
+	public static function magic_page_xfields_for_group_slug( $group_slug, array $all_prefixes = array() ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			return array();
+		}
+		$prefixes = self::migration_meta_key_prefixes_for_group_slug( $group_slug );
+
+		$opt_names = apply_filters(
+			'radius_magic_page_xfields_option_names',
+			array( '_magic_page_xfields' )
+		);
+		if ( ! is_array( $opt_names ) ) {
+			$opt_names = array( '_magic_page_xfields' );
+		}
+
+		$out = array();
+		foreach ( $opt_names as $opt_name ) {
+			$opt_name = (string) $opt_name;
+			if ( $opt_name === '' ) {
+				continue;
+			}
+			$map = self::parse_magic_page_xfields_option( get_option( $opt_name, null ) );
+			foreach ( $map as $field_key => $entry ) {
+				$fk = sanitize_key( (string) $field_key );
+				if ( $fk === '' || isset( $out[ $fk ] ) ) {
+					continue;
+				}
+				if ( ! self::magic_page_field_key_matches_group_prefix( $fk, $prefixes, $all_prefixes ) ) {
+					continue;
+				}
+				$text = self::magic_page_xfield_entry_to_string( $entry );
+				if ( $text === '' ) {
+					continue;
+				}
+				$out[ $fk ] = self::convert_legacy_magic_page_tokens_to_curly( $text );
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -3754,55 +3826,47 @@ class Radius_Legacy_Import_Service {
 			return false;
 		}
 
+		$all_prefixes = array();
+		foreach ( self::discover_magic_page_groups_from_options() as $g ) {
+			if ( empty( $g['slug'] ) ) {
+				continue;
+			}
+			$all_prefixes = array_merge( $all_prefixes, self::migration_meta_key_prefixes_for_group_slug( (string) $g['slug'] ) );
+		}
+		$all_prefixes = array_values( array_unique( array_filter( $all_prefixes ) ) );
+
+		$scoped = self::magic_page_xfields_for_group_slug( $group_slug, $all_prefixes );
+		if ( empty( $scoped ) ) {
+			return false;
+		}
+
 		$service_line = self::migration_service_line_for_group_slug( $group_slug );
 		$title_key    = sanitize_key( $service_line . '-meta-title' );
 		$desc_key     = sanitize_key( $service_line . '-meta-desc' );
 		$title_val    = self::magic_page_group_meta_title( $group_slug );
 		$desc_val     = self::magic_page_group_meta_desc( $group_slug );
 
-		$incoming = array();
-		if ( $title_val !== '' ) {
-			$incoming[ $title_key ] = $title_val;
-		}
-		if ( $desc_val !== '' ) {
-			$incoming[ $desc_key ] = $desc_val;
-		}
-		if ( empty( $incoming ) ) {
-			return false;
-		}
-
-		$raw = get_post_meta( $template_id, '_radius_xfields', true );
-		if ( is_string( $raw ) ) {
-			$raw = json_decode( $raw, true );
-		}
-		if ( ! is_array( $raw ) ) {
-			$raw = array();
-		}
-
 		$by_key = array();
-		foreach ( $raw as $row ) {
-			if ( is_array( $row ) && ! empty( $row['key'] ) ) {
-				$by_key[ sanitize_key( (string) $row['key'] ) ] = $row;
-			}
-		}
-
-		$changed = false;
-		foreach ( $incoming as $sk => $val ) {
-			if ( $sk === '' || $val === '' ) {
+		foreach ( $scoped as $fk => $val ) {
+			if ( $fk === '' || $val === '' ) {
 				continue;
 			}
-			if ( ! $overwrite && isset( $by_key[ $sk ] ) ) {
-				continue;
+			$store_key = $fk;
+			if ( $title_val !== '' && ( substr( $fk, -strlen( 'meta-title' ) ) === 'meta-title' || false !== strpos( $fk, 'metatitle' ) ) ) {
+				$store_key = $title_key;
+				$val       = $title_val;
+			} elseif ( $desc_val !== '' && ( substr( $fk, -strlen( 'meta-desc' ) ) === 'meta-desc' || false !== strpos( $fk, 'metadesc' ) ) ) {
+				$store_key = $desc_key;
+				$val       = $desc_val;
 			}
-			$by_key[ $sk ] = array(
-				'key'            => $sk,
+			$by_key[ sanitize_key( $store_key ) ] = array(
+				'key'            => sanitize_key( $store_key ),
 				'values'         => array( (string) $val ),
 				'area_overrides' => array(),
 			);
-			$changed       = true;
 		}
 
-		if ( ! $changed ) {
+		if ( empty( $by_key ) ) {
 			return false;
 		}
 
@@ -3950,36 +4014,14 @@ class Radius_Legacy_Import_Service {
 	 * @return array<int,array{key:string,label:string,variations:string[]}>
 	 */
 	public static function migration_spintax_rows_for_group_slug( $group_slug, $base_slug = 'towing' ) {
+		unset( $base_slug );
 		$group_slug = sanitize_title( (string) $group_slug );
-		$base_slug  = sanitize_title( (string) $base_slug );
 		if ( $group_slug === '' ) {
 			return array();
 		}
 
 		$prefixes = self::migration_spintax_prefixes_for_group_slug( $group_slug );
-		$rows     = self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
-		if ( ! empty( $rows ) ) {
-			return $rows;
-		}
-
-		$all = self::magic_page_spintax_rows( array() );
-		if ( empty( $all ) ) {
-			return array();
-		}
-
-		if ( $base_slug === '' ) {
-			$base_slug = 'towing';
-		}
-		if ( $group_slug === $base_slug ) {
-			return $all;
-		}
-
-		$pairs = self::migration_replace_pairs_from_base_slug( $base_slug, $group_slug );
-		if ( empty( $pairs ) ) {
-			return $all;
-		}
-
-		return self::remap_magic_page_spintax_rows( $all, $pairs );
+		return self::magic_page_spintax_rows( array( 'key_prefixes' => $prefixes ) );
 	}
 
 	/**
@@ -4082,13 +4124,18 @@ class Radius_Legacy_Import_Service {
 		$by_legacy = self::find_radius_template_by_legacy_import_id( $legacy_id );
 		if ( $by_legacy > 0 ) {
 			$owner_slug = (string) get_post_meta( $by_legacy, '_radius_migration_group_slug', true );
-			if ( $owner_slug === '' || $owner_slug === $slug ) {
+			$base_slug  = self::migration_token_swap_base_slug_for_legacy( $legacy_id, 'towing' );
+			if ( $owner_slug === $slug ) {
+				$legacy_radius_cache[ $legacy_id ] = $by_legacy;
+				return $by_legacy;
+			}
+			if ( $owner_slug === '' && $slug === $base_slug ) {
 				self::mark_migration_group_slug_on_template( $by_legacy, $slug );
 				$legacy_radius_cache[ $legacy_id ] = $by_legacy;
 				return $by_legacy;
 			}
-			$swap_base = self::migration_token_swap_base_slug_for_legacy( $legacy_id, $owner_slug );
-			$dup = self::duplicate_radius_template_for_migration_group( $by_legacy, $title, $swap_base, $slug );
+			$swap_base = $owner_slug !== '' ? $owner_slug : $base_slug;
+			$dup       = self::duplicate_radius_template_for_migration_group( $by_legacy, $title, $swap_base, $slug );
 			if ( is_wp_error( $dup ) ) {
 				return $dup;
 			}
@@ -4268,6 +4315,54 @@ class Radius_Legacy_Import_Service {
 			array(
 				'post_type'              => 'radius_template',
 				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					array(
+						'key'   => '_radius_migration_group_slug',
+						'value' => $group_slug,
+					),
+				),
+			)
+		);
+		return empty( $by_meta[0] ) ? 0 : (int) $by_meta[0];
+	}
+
+	/**
+	 * Find a radius_template for a group slug (any status) via post_name or migration meta.
+	 *
+	 * @param string $group_slug Group slug.
+	 * @return int Post ID or 0.
+	 */
+	public static function find_radius_template_by_migration_group_slug_any_status( $group_slug ) {
+		$group_slug = sanitize_title( (string) $group_slug );
+		if ( $group_slug === '' ) {
+			return 0;
+		}
+
+		$by_name = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'name'                   => $group_slug,
+				'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+		if ( ! empty( $by_name[0] ) ) {
+			return (int) $by_name[0];
+		}
+
+		$by_meta = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
 				'posts_per_page'         => 1,
 				'fields'                 => 'ids',
 				'no_found_rows'          => true,
@@ -4466,6 +4561,16 @@ class Radius_Legacy_Import_Service {
 	 * @return string[]
 	 */
 	public static function migration_spintax_prefixes_for_group_slug( $group_slug ) {
+		return self::migration_meta_key_prefixes_for_group_slug( $group_slug );
+	}
+
+	/**
+	 * Key prefixes for Magic Page xfields / spintax (cargo-services → cargo, tractor-trailer-towing → trailer, …).
+	 *
+	 * @param string $group_slug Group slug from `_group_meta_fields_*`.
+	 * @return string[] Lowercase prefix strings for `substr( $key, 0, strlen( $px ) ) === $px` matching.
+	 */
+	public static function migration_meta_key_prefixes_for_group_slug( $group_slug ) {
 		$group_slug = sanitize_title( (string) $group_slug );
 		if ( $group_slug === '' ) {
 			return array();
@@ -4482,6 +4587,9 @@ class Radius_Legacy_Import_Service {
 			'roadside-assistance'    => array( 'roadside' ),
 			'heavy-towing'           => array( 'heavy' ),
 			'heavy-equipment-towing' => array( 'equipment', 'heavy-equipment' ),
+			'cargo-services'         => array( 'cargo' ),
+			'semi-towing'            => array( 'semi' ),
+			'tractor-trailer-towing' => array( 'trailer', 'tractor-trailer', 'tractor' ),
 		);
 		if ( isset( $legacy_short[ $group_slug ] ) ) {
 			$prefixes = array_merge( $legacy_short[ $group_slug ], $prefixes );
@@ -4493,14 +4601,75 @@ class Radius_Legacy_Import_Service {
 		}
 
 		$prefixes = array_values( array_unique( array_filter( array_map( 'strval', $prefixes ) ) ) );
+		usort(
+			$prefixes,
+			static function ( $a, $b ) {
+				return strlen( $b ) - strlen( $a );
+			}
+		);
 
 		/**
-		 * Spintax row key prefixes when importing global Magic Page spintax into a template.
+		 * Prefixes used to match Magic Page xfield / spintax keys for a service group.
 		 *
-		 * @param string[] $prefixes   Prefix list.
+		 * @param string[] $prefixes   Prefix list (longest first).
 		 * @param string   $group_slug Group slug.
 		 */
-		return apply_filters( 'radius_migration_spintax_prefixes_for_group_slug', $prefixes, $group_slug );
+		return apply_filters( 'radius_migration_meta_key_prefixes_for_group_slug', $prefixes, $group_slug );
+	}
+
+	/**
+	 * Whether a sanitized xfield/spintax key belongs to a group prefix (and not another group's prefix).
+	 *
+	 * @param string   $field_key   Sanitized key.
+	 * @param string[] $prefixes    This group's prefixes.
+	 * @param string[] $all_prefixes All groups' prefixes (optional; avoids cross-group leakage).
+	 * @return bool
+	 */
+	private static function magic_page_field_key_matches_group_prefix( $field_key, array $prefixes, array $all_prefixes = array() ) {
+		$field_key = sanitize_key( (string) $field_key );
+		if ( $field_key === '' || empty( $prefixes ) ) {
+			return false;
+		}
+		$matched_own = false;
+		foreach ( $prefixes as $px ) {
+			$px = strtolower( (string) $px );
+			if ( $px === '' ) {
+				continue;
+			}
+			if ( strlen( $field_key ) >= strlen( $px ) && substr( $field_key, 0, strlen( $px ) ) === $px ) {
+				$matched_own = true;
+				break;
+			}
+		}
+		if ( ! $matched_own ) {
+			return false;
+		}
+		if ( empty( $all_prefixes ) ) {
+			return true;
+		}
+		foreach ( $all_prefixes as $other_px ) {
+			$other_px = strtolower( (string) $other_px );
+			if ( $other_px === '' ) {
+				continue;
+			}
+			$is_own = false;
+			foreach ( $prefixes as $own_px ) {
+				if ( $other_px === strtolower( (string) $own_px ) ) {
+					$is_own = true;
+					break;
+				}
+			}
+			if ( $is_own ) {
+				continue;
+			}
+			if ( strlen( $other_px ) > strlen( $field_key ) ) {
+				continue;
+			}
+			if ( substr( $field_key, 0, strlen( $other_px ) ) === $other_px ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -4530,9 +4699,13 @@ class Radius_Legacy_Import_Service {
 			}
 			$group_slugs[] = $slug;
 
-			$tid = self::find_radius_template_by_legacy_post_slug( $slug );
-			if ( $tid <= 0 && ! empty( $g['legacy_template_id'] ) ) {
-				$tid = self::find_radius_template_by_legacy_import_id( (int) $g['legacy_template_id'] );
+			// Only reuse a template already assigned to this group — never the shared legacy import row (same magicpage ID for every group).
+			$tid = self::find_published_radius_template_by_group_slug( $slug );
+			if ( $tid <= 0 ) {
+				$tid = self::find_radius_template_by_migration_group_slug_any_status( $slug );
+			}
+			if ( $tid <= 0 ) {
+				$tid = self::find_radius_template_by_legacy_post_slug( $slug );
 			}
 			if ( $tid > 0 ) {
 				++$direct;
@@ -4848,13 +5021,17 @@ class Radius_Legacy_Import_Service {
 			return $new_id;
 		}
 
-		$exclude_el = self::elementor_meta_keys_present_on_post( $source_id );
+		$exclude_el = array_merge(
+			self::elementor_meta_keys_present_on_post( $source_id ),
+			array( '_radius_xfields', '_radius_spintax_blocks' )
+		);
 		self::copy_all_template_post_meta( $source_id, (int) $new_id, $exclude_el );
 		self::copy_elementor_document_meta_to_template( $source_id, (int) $new_id );
 		update_post_meta( (int) $new_id, '_radius_migration_clone_of', (int) $source_id );
 		update_post_meta( (int) $new_id, '_radius_migration_group_slug', $target_slug );
 		self::apply_keyword_swaps_to_radius_template( (int) $new_id, $pairs );
 		self::finalize_migration_radius_template( (int) $new_id, $target_slug );
+		self::import_magic_page_group_meta_xfields_into_template( (int) $new_id, $target_slug, true );
 
 		return (int) $new_id;
 	}
@@ -4873,6 +5050,27 @@ class Radius_Legacy_Import_Service {
 			return;
 		}
 		update_post_meta( $template_id, '_radius_migration_group_slug', $group_slug );
+	}
+
+	/**
+	 * Whether a radius_template post is the dedicated row for a Magic Page group (not a shared legacy import reused by mistake).
+	 *
+	 * @param int    $template_id radius_template ID.
+	 * @param string $group_slug  Expected group slug.
+	 * @return bool
+	 */
+	private static function radius_template_belongs_to_migration_group( $template_id, $group_slug ) {
+		$template_id = (int) $template_id;
+		$group_slug  = sanitize_title( (string) $group_slug );
+		if ( $template_id <= 0 || $group_slug === '' ) {
+			return false;
+		}
+		$owner = sanitize_title( (string) get_post_meta( $template_id, '_radius_migration_group_slug', true ) );
+		if ( $owner !== '' ) {
+			return $owner === $group_slug;
+		}
+		$post = get_post( $template_id );
+		return ( $post instanceof WP_Post && $post->post_name === $group_slug );
 	}
 
 	/**
@@ -5569,6 +5767,9 @@ class Radius_Legacy_Import_Service {
 			}
 
 			$tid = isset( $entry['template_id'] ) ? (int) $entry['template_id'] : 0;
+			if ( $tid > 0 && ! self::radius_template_belongs_to_migration_group( $tid, $slug ) ) {
+				$tid = 0;
+			}
 			if ( $tid <= 0 ) {
 				$ensured = self::ensure_radius_template_for_migration_group( $group_row, $legacy_radius_cache );
 				if ( is_wp_error( $ensured ) ) {
@@ -5605,9 +5806,13 @@ class Radius_Legacy_Import_Service {
 			self::finalize_migration_radius_template( $tid, $slug );
 			$imported_xfields = self::import_magic_page_group_meta_xfields_into_template( $tid, $slug, true );
 
-			$title = ! empty( $group_row['meta_title'] )
-				? (string) $group_row['meta_title']
-				: self::migration_title_for_group_slug( $slug, $legacy_id );
+			$title = self::magic_page_group_meta_title( $slug );
+			if ( $title === '' && ! empty( $group_row['meta_title'] ) ) {
+				$title = (string) $group_row['meta_title'];
+			}
+			if ( $title === '' ) {
+				$title = self::migration_title_for_group_slug( $slug, $legacy_id );
+			}
 			if ( $title !== '' ) {
 				wp_update_post(
 					array(
@@ -5760,15 +5965,16 @@ class Radius_Legacy_Import_Service {
 			$rows       = $group_slug !== ''
 				? self::migration_spintax_rows_for_group_slug( $group_slug, $base_slug_for_spintax )
 				: self::magic_page_spintax_rows( array( 'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ) ) );
-			$sp         = self::import_magic_page_spintax_into_templates(
+			$sp = self::import_magic_page_spintax_into_templates(
 				'one',
 				$tid,
 				true,
 				true,
 				false,
 				array(
-					'key_prefixes' => array_values( array_filter( array_map( 'strval', $prefixes ) ) ),
-					'rows'         => $rows,
+					'key_prefixes'       => array_values( array_filter( array_map( 'strval', $prefixes ) ) ),
+					'rows'               => $rows,
+					'replace_all_blocks' => true,
 				)
 			);
 			self::finalize_migration_radius_template( $tid, $group_slug );

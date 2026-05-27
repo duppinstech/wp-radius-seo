@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.85
+Stable tag: 1.6.86
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -84,6 +84,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.86 =
+* **Fix:** Migration creates five separate published templates (one per `_group_meta_fields_*` group) instead of reusing one legacy import ID for every row. Xfields and spintax are scoped by group prefix (`cargo-meta-title`, `heavy-towing-*`, `trailer-*`, …). Template titles use the matching meta-title xfield; clones no longer copy another group’s xfields/spintax blocks.
 
 = 1.6.85 =
 * **Fix:** Migration templates step converts `[location]` / `[meta_*]` / `[xfield_*]` to `{{…}}` on every cloned service template (not only the first import). Each group’s `{slug}-meta-title` and `-meta-desc` are written into `_radius_xfields` from `_magic_page_xfields`. Global spintax (including generic H1/H2 rows) imports per template with towing→group remap when prefix filters match nothing.
