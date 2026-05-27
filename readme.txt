@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.83
+Stable tag: 1.6.84
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,7 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_magic_page_anchor_row_legacy_term_keys` — keys tried on each saved row to find the legacy location term ID.
 * `radius_migration_radius_template_legacy_location_ids` — filter location term IDs gathered from imported `radius_template` posts for anchor migration.
 * `radius_magic_page_xfields_option_names` — `wp_option` names holding Magic Page global xfields (`key` => `value` buckets), default `_magic_page_xfields`.
+* `radius_migration_group_meta_title` — filter page title read from Magic Page xfields (`{group-slug}-meta-title`) when building per-group templates.
 * `radius_integration_plugin_detection_files` — map of integration group = plugin file path(s) under `wp-content/plugins` used for default deploy-prefix checkboxes and the **Detected** labels (filterable).
 * `radius_deploy_exclude_meta_keys_from_copy` — post meta keys not copied template → landing. **Default empty in 1.6.36+** so Yoast scores (`linkdex`, `content_score`, …) inherited from the legacy Magic Page template flow forward; return a string list to opt back into per-post analysis.
 * `radius_legacy_yoast_meta_skip_keys` — Yoast meta keys NOT copied from a legacy template (default `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`, `_yoast_wpseo_metadesc` because the migration sets those per service line).
@@ -82,6 +83,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.84 =
+* **Fix:** Migration wizard builds one published `radius_template` per `_group_meta_fields_*` group when Magic Page only has one shared blueprint (e.g. towing). Titles come from each group’s `{slug}-meta-title` in `_magic_page_xfields`; additional groups clone from that blueprint with towing→group token swaps. Towing/base group is processed first.
 
 = 1.6.83 =
 * **Fix:** Migration wizard creates one published `radius_template` per `_group_meta_fields_*` group (custom service lines like load-shift-correction, semi-truck-towing, towing-company). Imports each group’s legacy magicpage blueprint by option post ID; classic towing clone mode only when the four standard group slugs are present and nothing else.
