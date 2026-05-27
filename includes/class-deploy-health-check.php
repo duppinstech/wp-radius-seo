@@ -27,6 +27,7 @@ final class Radius_Deploy_Health_Check {
 		$checks  = array();
 
 		$checks[] = self::check_migration_steps();
+		$checks[] = self::check_group_meta_fields_templates();
 		$checks[] = self::check_service_anchors();
 		$checks[] = self::check_site_replacers();
 		$checks[] = self::check_place_library();
@@ -372,6 +373,163 @@ final class Radius_Deploy_Health_Check {
 			),
 			implode( ', ', $incomplete ),
 			array( 'incomplete_steps' => $incomplete )
+		);
+	}
+
+	/**
+	 * Each Magic Page `_group_meta_fields_{slug}` option must have a published Radius template for its legacy blueprint.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function check_group_meta_fields_templates() {
+		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return self::make_check(
+				'group_meta_fields_templates',
+				__( 'Magic Page service templates', 'radius' ),
+				'skip',
+				__( 'Legacy import not available.', 'radius' )
+			);
+		}
+
+		$groups = Radius_Legacy_Import_Service::discover_magic_page_groups_from_options();
+		/**
+		 * Magic Page groups validated by the group_meta_fields_templates health check.
+		 *
+		 * @param array<int,array{slug:string,qualifier:string,option_name:string,legacy_template_id:int}> $groups
+		 */
+		$groups = apply_filters( 'radius_deploy_health_group_meta_fields_groups', $groups );
+
+		if ( empty( $groups ) ) {
+			return self::make_check(
+				'group_meta_fields_templates',
+				__( 'Magic Page service templates', 'radius' ),
+				'skip',
+				__( 'No _group_meta_fields_* options found — check bypassed.', 'radius' )
+			);
+		}
+
+		$missing       = array();
+		$unpublished   = array();
+		$matched       = array();
+
+		foreach ( $groups as $g ) {
+			$slug = isset( $g['slug'] ) ? sanitize_title( (string) $g['slug'] ) : '';
+			if ( $slug === '' ) {
+				continue;
+			}
+
+			$legacy_id = isset( $g['legacy_template_id'] ) ? (int) $g['legacy_template_id'] : 0;
+			$tid       = Radius_Legacy_Import_Service::find_published_radius_template_for_magic_page_group( $g );
+
+			if ( $tid > 0 ) {
+				$matched[] = array(
+					'slug'                => $slug,
+					'template_id'         => $tid,
+					'legacy_template_id'  => $legacy_id,
+					'option_name'         => isset( $g['option_name'] ) ? (string) $g['option_name'] : '',
+				);
+				continue;
+			}
+
+			$draft_id = 0;
+			if ( $legacy_id > 0 ) {
+				$candidate = Radius_Legacy_Import_Service::find_radius_template_by_legacy_import_id( $legacy_id );
+				if ( $candidate > 0 && 'publish' !== get_post_status( $candidate ) ) {
+					$draft_id = $candidate;
+				}
+			}
+			if ( $draft_id <= 0 ) {
+				$candidate = Radius_Legacy_Import_Service::find_radius_template_by_legacy_post_slug( $slug );
+				if ( $candidate > 0 && 'publish' !== get_post_status( $candidate ) ) {
+					$draft_id = $candidate;
+				}
+			}
+
+			$row = array(
+				'slug'               => $slug,
+				'legacy_template_id' => $legacy_id,
+				'option_name'        => isset( $g['option_name'] ) ? (string) $g['option_name'] : '',
+			);
+
+			if ( $draft_id > 0 ) {
+				$row['template_id'] = $draft_id;
+				$unpublished[]      = $row;
+				continue;
+			}
+
+			$missing[] = $row;
+		}
+
+		$group_count = count( $matched ) + count( $missing ) + count( $unpublished );
+		if ( empty( $missing ) && empty( $unpublished ) ) {
+			return self::make_check(
+				'group_meta_fields_templates',
+				__( 'Magic Page service templates', 'radius' ),
+				'pass',
+				sprintf(
+					/* translators: %d: group count */
+					_n(
+						'Published Radius template exists for the %d Magic Page service group (_group_meta_fields_*).',
+						'Published Radius templates exist for all %d Magic Page service groups (_group_meta_fields_*).',
+						$group_count,
+						'radius'
+					),
+					$group_count
+				),
+				'',
+				array(
+					'group_count' => $group_count,
+					'groups'      => $matched,
+				)
+			);
+		}
+
+		$lines = array();
+		foreach ( array_merge( $missing, $unpublished ) as $row ) {
+			$slug      = (string) $row['slug'];
+			$legacy_id = (int) $row['legacy_template_id'];
+			$line      = $slug;
+			if ( $legacy_id > 0 ) {
+				$legacy_title = get_the_title( $legacy_id );
+				$line        .= sprintf(
+					' (legacy #%1$d%2$s)',
+					$legacy_id,
+					$legacy_title !== '' ? ': ' . $legacy_title : ''
+				);
+			}
+			if ( ! empty( $row['template_id'] ) ) {
+				$line .= sprintf(
+					/* translators: %s: post status */
+					__( ' — Radius template exists but is not published (%s)', 'radius' ),
+					(string) get_post_status( (int) $row['template_id'] )
+				);
+			}
+			$lines[] = $line;
+		}
+
+		$fail_count = count( $missing ) + count( $unpublished );
+		return self::make_check(
+			'group_meta_fields_templates',
+			__( 'Magic Page service templates', 'radius' ),
+			'fail',
+			sprintf(
+				/* translators: 1: missing count, 2: total groups */
+				_n(
+					'%1$d of %2$d Magic Page service group is missing a published Radius template.',
+					'%1$d of %2$d Magic Page service groups are missing a published Radius template.',
+					$fail_count,
+					'radius'
+				),
+				$fail_count,
+				$group_count
+			),
+			implode( '; ', array_slice( $lines, 0, self::SAMPLE_LIMIT ) ),
+			array(
+				'fix_url'            => admin_url( 'admin.php?page=radius-deploy&tab=migration' ),
+				'missing_groups'     => $missing,
+				'unpublished_groups' => $unpublished,
+				'group_count'        => $group_count,
+			)
 		);
 	}
 

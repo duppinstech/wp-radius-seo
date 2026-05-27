@@ -3394,6 +3394,48 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Published radius_template for one row from {@see discover_magic_page_groups_from_options()}.
+	 *
+	 * @param array{slug?:string,legacy_template_id?:int} $group Group row.
+	 * @return int Post ID or 0.
+	 */
+	public static function find_published_radius_template_for_magic_page_group( array $group ) {
+		$slug = isset( $group['slug'] ) ? sanitize_title( (string) $group['slug'] ) : '';
+		if ( $slug === '' ) {
+			return 0;
+		}
+
+		$map = self::get_migration_deploy_template_map();
+		if ( ! empty( $map[ $slug ] ) ) {
+			$tid  = (int) $map[ $slug ];
+			$post = $tid > 0 ? get_post( $tid ) : null;
+			if ( $post instanceof WP_Post && 'radius_template' === $post->post_type && 'publish' === $post->post_status ) {
+				return $tid;
+			}
+		}
+
+		$tid = self::find_published_radius_template_by_group_slug( $slug );
+		if ( $tid > 0 ) {
+			return $tid;
+		}
+
+		$legacy_id = isset( $group['legacy_template_id'] ) ? (int) $group['legacy_template_id'] : 0;
+		if ( $legacy_id > 0 ) {
+			$tid = self::find_radius_template_by_legacy_import_id( $legacy_id );
+			if ( $tid > 0 && 'publish' === get_post_status( $tid ) ) {
+				return $tid;
+			}
+		}
+
+		$tid = self::find_radius_template_by_legacy_post_slug( $slug );
+		if ( $tid > 0 && 'publish' === get_post_status( $tid ) ) {
+			return $tid;
+		}
+
+		return 0;
+	}
+
+	/**
 	 * Find a published radius_template for a Magic Page group slug (post_name or migration meta).
 	 *
 	 * @param string $group_slug Group slug.
