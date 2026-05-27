@@ -3840,27 +3840,14 @@ class Radius_Legacy_Import_Service {
 			return false;
 		}
 
-		$service_line = self::migration_service_line_for_group_slug( $group_slug );
-		$title_key    = sanitize_key( $service_line . '-meta-title' );
-		$desc_key     = sanitize_key( $service_line . '-meta-desc' );
-		$title_val    = self::magic_page_group_meta_title( $group_slug );
-		$desc_val     = self::magic_page_group_meta_desc( $group_slug );
-
 		$by_key = array();
 		foreach ( $scoped as $fk => $val ) {
 			if ( $fk === '' || $val === '' ) {
 				continue;
 			}
-			$store_key = $fk;
-			if ( $title_val !== '' && ( substr( $fk, -strlen( 'meta-title' ) ) === 'meta-title' || false !== strpos( $fk, 'metatitle' ) ) ) {
-				$store_key = $title_key;
-				$val       = $title_val;
-			} elseif ( $desc_val !== '' && ( substr( $fk, -strlen( 'meta-desc' ) ) === 'meta-desc' || false !== strpos( $fk, 'metadesc' ) ) ) {
-				$store_key = $desc_key;
-				$val       = $desc_val;
-			}
-			$by_key[ sanitize_key( $store_key ) ] = array(
-				'key'            => sanitize_key( $store_key ),
+			$sk = sanitize_key( (string) $fk );
+			$by_key[ $sk ] = array(
+				'key'            => $sk,
 				'values'         => array( (string) $val ),
 				'area_overrides' => array(),
 			);
@@ -3896,6 +3883,198 @@ class Radius_Legacy_Import_Service {
 			? self::migration_spintax_prefixes_for_group_slug( $group_slug )
 			: array( 'towing' );
 		self::normalize_migration_template_spintax_braces( $template_id, $prefixes );
+	}
+
+	/**
+	 * Read `_radius_xfields` on a template into a key => value map.
+	 *
+	 * @param int $template_id radius_template ID.
+	 * @return array<string,string>
+	 */
+	public static function radius_template_xfields_value_map( $template_id ) {
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return array();
+		}
+		$raw = get_post_meta( $template_id, '_radius_xfields', true );
+		if ( is_string( $raw ) ) {
+			$raw = json_decode( $raw, true );
+		}
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $raw as $row ) {
+			if ( ! is_array( $row ) || empty( $row['key'] ) ) {
+				continue;
+			}
+			$k = sanitize_key( (string) $row['key'] );
+			if ( $k === '' ) {
+				continue;
+			}
+			$vals = isset( $row['values'] ) && is_array( $row['values'] ) ? $row['values'] : array();
+			$v    = isset( $vals[0] ) ? trim( (string) $vals[0] ) : '';
+			if ( $v !== '' ) {
+				$out[ $k ] = $v;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Resolve meta-title / meta-desc token keys and values for a Magic Page group (from template xfields or global MP options).
+	 *
+	 * Keys stay as stored in Magic Page (e.g. `cargo-meta-title`, not `cargo-services-meta-title`).
+	 *
+	 * @param string $group_slug   Group slug.
+	 * @param int    $template_id  Optional template to read `_radius_xfields` from first.
+	 * @return array{meta_title_key:string,meta_desc_key:string,meta_title_value:string,meta_desc_value:string,focus_keyword:string}
+	 */
+	public static function migration_group_meta_field_bundle( $group_slug, $template_id = 0 ) {
+		$group_slug  = sanitize_title( (string) $group_slug );
+		$template_id = (int) $template_id;
+		$empty       = array(
+			'meta_title_key'   => '',
+			'meta_desc_key'    => '',
+			'meta_title_value' => '',
+			'meta_desc_value'  => '',
+			'focus_keyword'    => '',
+		);
+		if ( $group_slug === '' ) {
+			return $empty;
+		}
+
+		$fields = array();
+		if ( $template_id > 0 ) {
+			$fields = self::radius_template_xfields_value_map( $template_id );
+		}
+		if ( empty( $fields ) ) {
+			$fields = self::magic_page_xfields_for_group_slug( $group_slug );
+		}
+
+		$title_key = '';
+		$desc_key  = '';
+		foreach ( array_keys( $fields ) as $fk ) {
+			$fk = sanitize_key( (string) $fk );
+			if ( $fk === '' ) {
+				continue;
+			}
+			if ( $title_key === '' && self::migration_xfield_key_ends_with( $fk, 'meta-title' ) ) {
+				$title_key = $fk;
+			}
+			if ( $desc_key === '' && self::migration_xfield_key_ends_with( $fk, 'meta-desc' ) ) {
+				$desc_key = $fk;
+			}
+		}
+
+		if ( $title_key === '' ) {
+			$title_val = self::magic_page_group_meta_title( $group_slug );
+			if ( $title_val !== '' ) {
+				foreach ( self::migration_meta_key_prefixes_for_group_slug( $group_slug ) as $px ) {
+					$candidate = sanitize_key( $px . '-meta-title' );
+					if ( $candidate !== '' ) {
+						$title_key = $candidate;
+						$fields[ $title_key ] = $title_val;
+						break;
+					}
+				}
+			}
+		}
+		if ( $desc_key === '' ) {
+			$desc_val = self::magic_page_group_meta_desc( $group_slug );
+			if ( $desc_val !== '' ) {
+				foreach ( self::migration_meta_key_prefixes_for_group_slug( $group_slug ) as $px ) {
+					$candidate = sanitize_key( $px . '-meta-desc' );
+					if ( $candidate !== '' ) {
+						$desc_key = $candidate;
+						$fields[ $desc_key ] = $desc_val;
+						break;
+					}
+				}
+			}
+		}
+
+		$title_val = ( $title_key !== '' && isset( $fields[ $title_key ] ) ) ? (string) $fields[ $title_key ] : '';
+		$desc_val  = ( $desc_key !== '' && isset( $fields[ $desc_key ] ) ) ? (string) $fields[ $desc_key ] : '';
+
+		$focus = '';
+		if ( $title_key !== '' ) {
+			$focus = preg_replace( '/-meta-?title$/i', '', $title_key );
+			$focus = trim( str_replace( array( '-', '_' ), ' ', (string) $focus ) );
+		}
+		if ( $focus === '' ) {
+			$prefixes = self::migration_meta_key_prefixes_for_group_slug( $group_slug );
+			$focus    = ! empty( $prefixes[0] ) ? str_replace( '-', ' ', (string) $prefixes[0] ) : str_replace( '-', ' ', $group_slug );
+		}
+
+		$bundle = array(
+			'meta_title_key'   => $title_key,
+			'meta_desc_key'    => $desc_key,
+			'meta_title_value' => $title_val,
+			'meta_desc_value'  => $desc_val,
+			'focus_keyword'    => $focus,
+		);
+
+		/**
+		 * Meta token keys/values for Yoast + template title (keys match Magic Page xfields, e.g. cargo-meta-title).
+		 *
+		 * @param array{meta_title_key:string,meta_desc_key:string,meta_title_value:string,meta_desc_value:string,focus_keyword:string} $bundle
+		 * @param string $group_slug
+		 * @param int    $template_id
+		 */
+		$f = apply_filters( 'radius_migration_group_meta_field_bundle', $bundle, $group_slug, $template_id );
+		return is_array( $f ) ? array_merge( $empty, $f ) : $bundle;
+	}
+
+	/**
+	 * Whether an xfield key ends with a suffix (meta-title, meta-desc, …).
+	 *
+	 * @param string $key    Sanitized key.
+	 * @param string $suffix Suffix without leading hyphen (meta-title, metadesc).
+	 * @return bool
+	 */
+	private static function migration_xfield_key_ends_with( $key, $suffix ) {
+		$key    = sanitize_key( (string) $key );
+		$suffix = sanitize_key( (string) $suffix );
+		if ( $key === '' || $suffix === '' ) {
+			return false;
+		}
+		$tail = '-' . $suffix;
+		if ( strlen( $key ) >= strlen( $tail ) && substr( $key, -strlen( $tail ) ) === $tail ) {
+			return true;
+		}
+		return $key === $suffix || substr( $key, -strlen( $suffix ) ) === $suffix;
+	}
+
+	/**
+	 * Set radius_template post_title from the group's meta-title xfield (Magic Page prefix keys).
+	 *
+	 * @param int    $template_id radius_template ID.
+	 * @param string $group_slug  Group slug.
+	 * @return string Title written, or empty.
+	 */
+	public static function sync_migration_template_post_title_from_meta( $template_id, $group_slug ) {
+		$template_id = (int) $template_id;
+		$group_slug  = sanitize_title( (string) $group_slug );
+		if ( $template_id <= 0 || $group_slug === '' ) {
+			return '';
+		}
+		$bundle = self::migration_group_meta_field_bundle( $group_slug, $template_id );
+		$title  = trim( (string) $bundle['meta_title_value'] );
+		if ( $title === '' ) {
+			$title = trim( self::magic_page_group_meta_title( $group_slug ) );
+		}
+		if ( $title === '' ) {
+			return '';
+		}
+		wp_update_post(
+			array(
+				'ID'         => $template_id,
+				'post_title' => $title,
+			)
+		);
+		clean_post_cache( $template_id );
+		return $title;
 	}
 
 	/**
@@ -4149,18 +4328,7 @@ class Radius_Legacy_Import_Service {
 		$tid = (int) $imported;
 		self::finalize_migration_radius_template( $tid, $slug );
 		self::import_magic_page_group_meta_xfields_into_template( $tid, $slug, true );
-		if ( $title === '' ) {
-			$title = self::magic_page_group_meta_title( $slug );
-		}
-		if ( $title !== '' ) {
-			wp_update_post(
-				array(
-					'ID'         => $tid,
-					'post_title' => $title,
-				)
-			);
-			clean_post_cache( $tid );
-		}
+		self::sync_migration_template_post_title_from_meta( $tid, $slug );
 		$legacy_radius_cache[ $legacy_id ] = $tid;
 		return $tid;
 	}
@@ -5032,6 +5200,11 @@ class Radius_Legacy_Import_Service {
 		self::apply_keyword_swaps_to_radius_template( (int) $new_id, $pairs );
 		self::finalize_migration_radius_template( (int) $new_id, $target_slug );
 		self::import_magic_page_group_meta_xfields_into_template( (int) $new_id, $target_slug, true );
+		if ( $new_title === '' ) {
+			$new_title = self::sync_migration_template_post_title_from_meta( (int) $new_id, $target_slug );
+		} else {
+			self::sync_migration_template_post_title_from_meta( (int) $new_id, $target_slug );
+		}
 
 		return (int) $new_id;
 	}
@@ -5142,7 +5315,7 @@ class Radius_Legacy_Import_Service {
 		$template_id  = (int) $template_id;
 		$service_line = sanitize_key( (string) $service_line );
 		$group_slug   = sanitize_title( (string) $group_slug );
-		if ( $template_id <= 0 || $service_line === '' ) {
+		if ( $template_id <= 0 ) {
 			return false;
 		}
 		$post = get_post( $template_id );
@@ -5150,60 +5323,83 @@ class Radius_Legacy_Import_Service {
 			return false;
 		}
 
-		$map = apply_filters(
-			'radius_migration_yoast_service_line_map',
-			array(
-				'towing'    => array(
-					'focuskw'   => 'towing',
-					'title_tpl' => '{{towing-meta-title}}',
-					'desc_tpl'  => '{{towing-meta-desc}}',
-				),
-				'roadside'  => array(
-					'focuskw'   => 'roadside assistance',
-					'title_tpl' => '{{roadside-meta-title}}',
-					'desc_tpl'  => '{{roadside-meta-desc}}',
-				),
-				'heavy'     => array(
-					'focuskw'   => 'heavy towing',
-					'title_tpl' => '{{heavy-meta-title}}',
-					'desc_tpl'  => '{{heavy-meta-desc}}',
-				),
-				'equipment' => array(
-					'focuskw'   => 'heavy equipment towing',
-					'title_tpl' => '{{equipment-meta-title}}',
-					'desc_tpl'  => '{{equipment-meta-desc}}',
-				),
-			),
-			$template_id,
-			$service_line
-		);
-
-		if ( ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) && $group_slug !== '' ) {
-			$line_key = $service_line;
-			$label    = str_replace( '-', ' ', $group_slug );
-			$map[ $line_key ] = array(
-				'focuskw'   => $label,
-				'title_tpl' => '{{' . $line_key . '-meta-title}}',
-				'desc_tpl'  => '{{' . $line_key . '-meta-desc}}',
+		$bundle = ( $group_slug !== '' )
+			? self::migration_group_meta_field_bundle( $group_slug, $template_id )
+			: array(
+				'meta_title_key'   => '',
+				'meta_desc_key'    => '',
+				'meta_title_value' => '',
+				'meta_desc_value'  => '',
+				'focus_keyword'    => '',
 			);
+
+		if ( $bundle['meta_title_key'] !== '' ) {
+			update_post_meta( $template_id, '_yoast_wpseo_focuskw', (string) $bundle['focus_keyword'] );
+			update_post_meta( $template_id, '_yoast_wpseo_title', '{{' . $bundle['meta_title_key'] . '}}' );
+			if ( $bundle['meta_desc_key'] !== '' ) {
+				update_post_meta( $template_id, '_yoast_wpseo_metadesc', '{{' . $bundle['meta_desc_key'] . '}}' );
+			}
+		} else {
+			if ( $service_line === '' ) {
+				return false;
+			}
+			$map = apply_filters(
+				'radius_migration_yoast_service_line_map',
+				array(
+					'towing'    => array(
+						'focuskw'   => 'towing',
+						'title_tpl' => '{{towing-meta-title}}',
+						'desc_tpl'  => '{{towing-meta-desc}}',
+					),
+					'roadside'  => array(
+						'focuskw'   => 'roadside assistance',
+						'title_tpl' => '{{roadside-meta-title}}',
+						'desc_tpl'  => '{{roadside-meta-desc}}',
+					),
+					'heavy'     => array(
+						'focuskw'   => 'heavy towing',
+						'title_tpl' => '{{heavy-meta-title}}',
+						'desc_tpl'  => '{{heavy-meta-desc}}',
+					),
+					'equipment' => array(
+						'focuskw'   => 'heavy equipment towing',
+						'title_tpl' => '{{equipment-meta-title}}',
+						'desc_tpl'  => '{{equipment-meta-desc}}',
+					),
+				),
+				$template_id,
+				$service_line
+			);
+
+			if ( ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) && $group_slug !== '' ) {
+				$line_key         = $service_line;
+				$label            = str_replace( '-', ' ', $group_slug );
+				$map[ $line_key ] = array(
+					'focuskw'   => $label,
+					'title_tpl' => '{{' . $line_key . '-meta-title}}',
+					'desc_tpl'  => '{{' . $line_key . '-meta-desc}}',
+				);
+			}
+
+			if ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) {
+				return false;
+			}
+
+			$m = $map[ $service_line ];
+			if ( isset( $m['focuskw'] ) ) {
+				update_post_meta( $template_id, '_yoast_wpseo_focuskw', (string) $m['focuskw'] );
+			}
+			if ( isset( $m['title_tpl'] ) ) {
+				update_post_meta( $template_id, '_yoast_wpseo_title', (string) $m['title_tpl'] );
+			}
+			if ( isset( $m['desc_tpl'] ) ) {
+				update_post_meta( $template_id, '_yoast_wpseo_metadesc', (string) $m['desc_tpl'] );
+			}
 		}
 
-		if ( empty( $map[ $service_line ] ) || ! is_array( $map[ $service_line ] ) ) {
-			return false;
+		if ( $bundle['meta_title_key'] === '' && $service_line !== '' ) {
+			self::seed_default_meta_xfields_on_template( $template_id, $service_line, $group_slug );
 		}
-
-		$m = $map[ $service_line ];
-		if ( isset( $m['focuskw'] ) ) {
-			update_post_meta( $template_id, '_yoast_wpseo_focuskw', (string) $m['focuskw'] );
-		}
-		if ( isset( $m['title_tpl'] ) ) {
-			update_post_meta( $template_id, '_yoast_wpseo_title', (string) $m['title_tpl'] );
-		}
-		if ( isset( $m['desc_tpl'] ) ) {
-			update_post_meta( $template_id, '_yoast_wpseo_metadesc', (string) $m['desc_tpl'] );
-		}
-
-		self::seed_default_meta_xfields_on_template( $template_id, $service_line, $group_slug );
 
 		clean_post_cache( $template_id );
 		return true;
@@ -5805,24 +6001,6 @@ class Radius_Legacy_Import_Service {
 
 			self::finalize_migration_radius_template( $tid, $slug );
 			$imported_xfields = self::import_magic_page_group_meta_xfields_into_template( $tid, $slug, true );
-
-			$title = self::magic_page_group_meta_title( $slug );
-			if ( $title === '' && ! empty( $group_row['meta_title'] ) ) {
-				$title = (string) $group_row['meta_title'];
-			}
-			if ( $title === '' ) {
-				$title = self::migration_title_for_group_slug( $slug, $legacy_id );
-			}
-			if ( $title !== '' ) {
-				wp_update_post(
-					array(
-						'ID'         => $tid,
-						'post_title' => $title,
-					)
-				);
-				clean_post_cache( $tid );
-			}
-			$out['titles'][ $slug ] = $title;
 			if ( ! $imported_xfields ) {
 				self::seed_default_meta_xfields_on_template( $tid, $service_line, $slug );
 			}
@@ -5839,6 +6017,7 @@ class Radius_Legacy_Import_Service {
 			$out['slugs'][ $slug ]              = $slug;
 			if ( get_post( $tid ) ) {
 				self::apply_migration_template_yoast_meta( $tid, $service_line, $slug );
+				$out['titles'][ $slug ] = self::sync_migration_template_post_title_from_meta( $tid, $slug );
 			}
 
 			if ( $slug === $base_slug ) {
@@ -5982,6 +6161,12 @@ class Radius_Legacy_Import_Service {
 			if ( ! empty( $sp['errors'] ) ) {
 				$out['errors'] = array_merge( $out['errors'], $sp['errors'] );
 			}
+			if ( $group_slug !== '' ) {
+				$synced = self::sync_migration_template_post_title_from_meta( $tid, $group_slug );
+				if ( $synced !== '' ) {
+					$titles[ $group_slug ] = $synced;
+				}
+			}
 		}
 
 		$base_label = '';
@@ -6004,9 +6189,16 @@ class Radius_Legacy_Import_Service {
 			foreach ( $group_template_ids as $group_slug => $vid ) {
 				$vid  = (int) $vid;
 				$post = $vid > 0 ? get_post( $vid ) : null;
-				$lbl  = isset( $titles[ $group_slug ] ) ? (string) $titles[ $group_slug ] : '';
+				$lbl  = isset( $titles[ $group_slug ] ) ? trim( (string) $titles[ $group_slug ] ) : '';
+				if ( $lbl === '' && $vid > 0 ) {
+					$lbl = self::sync_migration_template_post_title_from_meta( $vid, (string) $group_slug );
+				}
 				if ( $lbl === '' && $post instanceof WP_Post && $post->post_title !== '' ) {
 					$lbl = $post->post_title;
+				}
+				if ( $lbl === '' ) {
+					$bundle = self::migration_group_meta_field_bundle( (string) $group_slug, $vid );
+					$lbl    = trim( (string) $bundle['meta_title_value'] );
 				}
 				if ( $lbl === '' ) {
 					$lbl = (string) $group_slug;
@@ -6017,6 +6209,7 @@ class Radius_Legacy_Import_Service {
 					'id'    => $vid,
 				);
 			}
+			$out['titles'] = $titles;
 		} else {
 			$labels[] = array(
 				'key'   => 'towing',
