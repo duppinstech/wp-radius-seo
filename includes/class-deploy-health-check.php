@@ -1372,9 +1372,20 @@ final class Radius_Deploy_Health_Check {
 	}
 
 	/**
+	 * Redirect conflict check for the health UI (optional full scan of all published deploy URLs).
+	 *
+	 * @param bool $full_scan When true, scan all published pages (up to 5000), not the default sample size.
 	 * @return array<string,mixed>
 	 */
-	private static function check_deployed_url_redirect_conflicts() {
+	public static function get_redirect_conflict_check( $full_scan = false ) {
+		return self::check_deployed_url_redirect_conflicts( (bool) $full_scan );
+	}
+
+	/**
+	 * @param bool $full_scan Scan all published deploy URLs when true.
+	 * @return array<string,mixed>
+	 */
+	private static function check_deployed_url_redirect_conflicts( $full_scan = false ) {
 		if ( ! class_exists( 'Radius_Health_Url_Conflicts' ) ) {
 			return self::make_check(
 				'url_redirect_conflicts',
@@ -1396,12 +1407,17 @@ final class Radius_Deploy_Health_Check {
 				__( 'Redirect conflict scan skipped (filtered off).', 'radius' )
 			);
 		}
-		$scan = Radius_Health_Url_Conflicts::scan();
+		$scan = $full_scan ? Radius_Health_Url_Conflicts::scan_all() : Radius_Health_Url_Conflicts::scan();
 		$conflicts = isset( $scan['conflicts'] ) && is_array( $scan['conflicts'] ) ? $scan['conflicts'] : array();
 		$n         = count( $conflicts );
 		$scanned   = isset( $scan['scanned'] ) ? (int) $scan['scanned'] : 0;
 		$total     = isset( $scan['total'] ) ? (int) $scan['total'] : $scanned;
 		$capped    = ! empty( $scan['capped'] );
+		$scan_extra = array(
+			'redirect_scan_capped' => $capped,
+			'redirect_scanned'     => $scanned,
+			'redirect_scan_total'    => $total,
+		);
 		if ( $n < 1 ) {
 			$summary = sprintf(
 				/* translators: %d: URLs scanned */
@@ -1411,7 +1427,7 @@ final class Radius_Deploy_Health_Check {
 			if ( $capped && $total > $scanned ) {
 				$summary .= ' ' . sprintf(
 					/* translators: 1: scanned count, 2: total published deploy pages */
-					__( '(Sampled %1$d of %2$d published pages — raise radius_health_redirect_scan_max_urls for a wider scan.)', 'radius' ),
+					__( '(Sampled %1$d of %2$d published pages.)', 'radius' ),
 					$scanned,
 					$total
 				);
@@ -1420,7 +1436,9 @@ final class Radius_Deploy_Health_Check {
 				'url_redirect_conflicts',
 				__( 'Landing URL redirects', 'radius' ),
 				'pass',
-				$summary
+				$summary,
+				'',
+				$scan_extra
 			);
 		}
 		$sample_paths = array();
@@ -1447,14 +1465,17 @@ final class Radius_Deploy_Health_Check {
 				$scanned
 			),
 			$detail,
-			array(
-				'conflict_count' => $n,
-				'scanned'        => $scanned,
-				'conflict_paths' => $sample_paths,
-				'remediation'    => array(
-					'action' => 'remove_redirect_conflicts',
-					'count'  => $n,
-				),
+			array_merge(
+				$scan_extra,
+				array(
+					'conflict_count' => $n,
+					'scanned'        => $scanned,
+					'conflict_paths' => $sample_paths,
+					'remediation'    => array(
+						'action' => 'remove_redirect_conflicts',
+						'count'  => $n,
+					),
+				)
 			)
 		);
 	}

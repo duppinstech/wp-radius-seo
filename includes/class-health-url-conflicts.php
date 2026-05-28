@@ -84,12 +84,34 @@ final class Radius_Health_Url_Conflicts {
 	}
 
 	/**
-	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,capped:bool}
+	 * Scan every published landing / service-area URL (up to 5000).
+	 *
+	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
+	 */
+	public static function scan_all() {
+		$total = self::count_published_deployed_posts();
+		$max   = max( 50, min( 5000, $total ) );
+		return self::scan_with_limit( $max, $total );
+	}
+
+	/**
+	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
 	 */
 	public static function scan() {
-		$max    = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
-		$max    = max( 50, min( 5000, $max ) );
-		$total  = self::count_published_deployed_posts();
+		$max   = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
+		$max   = max( 50, min( 5000, $max ) );
+		$total = self::count_published_deployed_posts();
+		return self::scan_with_limit( $max, $total );
+	}
+
+	/**
+	 * @param int $max   Max URLs to scan.
+	 * @param int $total Total published deploy pages (0 = recount).
+	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
+	 */
+	private static function scan_with_limit( $max, $total = 0 ) {
+		$max   = max( 50, min( 5000, (int) $max ) );
+		$total = $total > 0 ? (int) $total : self::count_published_deployed_posts();
 		$capped = $total > $max;
 		$pages  = self::get_deployed_pages( $max );
 

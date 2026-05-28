@@ -699,6 +699,9 @@ class Radius_Admin {
 						'deactivateMagicPageRunning' => __( 'Deactivating…', 'radius' ),
 						'conflictPaths' => __( 'Sample conflicting URL paths', 'radius' ),
 						'sampleOptions' => __( 'Sample autoload=yes options', 'radius' ),
+						'checkAllRedirects' => __( 'Check all now', 'radius' ),
+						'checkAllRedirectsConfirm' => __( 'Scan every published landing and service-area URL for redirect conflicts? This can take a minute on large sites.', 'radius' ),
+						'checkAllRedirectsRunning' => __( 'Scanning all URLs…', 'radius' ),
 					),
 				)
 			);

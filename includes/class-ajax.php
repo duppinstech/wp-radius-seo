@@ -977,6 +977,28 @@ class Radius_Ajax {
 					$template_id
 				);
 				$message = self::health_remediate_message_landings( $result );
+			} elseif ( 'scan_redirect_conflicts_all' === $action ) {
+				if ( ! class_exists( 'Radius_Health_Url_Conflicts' ) || ! class_exists( 'Radius_Deploy_Health_Check' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Redirect conflict scan unavailable.', 'radius' ) ), 500 );
+					return;
+				}
+				$check   = Radius_Deploy_Health_Check::get_redirect_conflict_check( true );
+				$scanned = isset( $check['redirect_scanned'] ) ? (int) $check['redirect_scanned'] : 0;
+				$log_msg = sprintf( 'Full redirect conflict scan: %d URL(s) checked.', $scanned );
+				$message = sprintf(
+					/* translators: %d: URLs scanned */
+					__( 'Full redirect scan finished (%d URL(s) checked).', 'radius' ),
+					$scanned
+				);
+				$result  = array( 'check' => $check );
+				wp_send_json_success(
+					array(
+						'remediation' => $result,
+						'message'     => $message,
+						'check'       => $check,
+					)
+				);
+				return;
 			} elseif ( 'remove_redirect_conflicts' === $action ) {
 				if ( ! class_exists( 'Radius_Health_Url_Conflicts' ) ) {
 					wp_send_json_error( array( 'message' => __( 'Redirect conflict scan unavailable.', 'radius' ) ), 500 );

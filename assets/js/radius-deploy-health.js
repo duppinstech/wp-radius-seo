@@ -73,6 +73,124 @@
 		return 'Fix';
 	}
 
+	var lastReport = null;
+
+	function summarizeChecks(checks) {
+		var pass = 0;
+		var warn = 0;
+		var fail = 0;
+		var skip = 0;
+		if (!Array.isArray(checks)) {
+			return { pass: 0, warn: 0, fail: 0, skip: 0, status: 'pass' };
+		}
+		checks.forEach(function (c) {
+			if (!c || !c.status) {
+				skip += 1;
+				return;
+			}
+			if (c.status === 'pass') {
+				pass += 1;
+			} else if (c.status === 'warn') {
+				warn += 1;
+			} else if (c.status === 'fail') {
+				fail += 1;
+			} else {
+				skip += 1;
+			}
+		});
+		var status = fail > 0 ? 'fail' : warn > 0 ? 'warn' : 'pass';
+		return { pass: pass, warn: warn, fail: fail, skip: skip, status: status };
+	}
+
+	function renderRedirectScanAllLink(c, i18n) {
+		if (!c || !c.redirect_scan_capped) {
+			return '';
+		}
+		return (
+			' <button type="button" class="button-link radius-deploy-health-scan-all-redirects" data-remediate-action="scan_redirect_conflicts_all" data-check-id="' +
+			esc(c.id || 'url_redirect_conflicts') +
+			'">' +
+			esc(i18n.checkAllRedirects || 'Check all now') +
+			'</button>'
+		);
+	}
+
+	function renderCheckItem(c, i18n) {
+		var stc = c.status || 'skip';
+		var html = '<li class="radius-deploy-health-item ' + esc(statusClass(stc)) + '" data-check-id="' + esc(c.id || '') + '">';
+		html +=
+			'<div class="radius-deploy-health-item__head"><strong>' +
+			esc(c.label || c.id || '') +
+			'</strong> <span class="radius-badge">' +
+			esc(statusLabel(stc)) +
+			'</span></div>';
+		html += '<p class="radius-deploy-health-item__summary">' + esc(c.summary || '');
+		html += renderRedirectScanAllLink(c, i18n);
+		html += '</p>';
+		if (c.detail) {
+			html += '<p class="description">' + esc(c.detail) + '</p>';
+		}
+		if (c.missing_slugs && c.missing_slugs.length) {
+			html +=
+				'<p class="description"><strong>' +
+				esc(i18n.missingSlugs || 'Sample missing place slugs') +
+				':</strong> ' +
+				esc(c.missing_slugs.join(', ')) +
+				(c.missing_count > c.missing_slugs.length ? ' …' : '') +
+				'</p>';
+		}
+		if (c.extra_slugs && c.extra_slugs.length) {
+			html +=
+				'<p class="description"><strong>' +
+				esc(i18n.extraSlugs || 'Sample out-of-scope place slugs') +
+				':</strong> ' +
+				esc(c.extra_slugs.join(', ')) +
+				(c.extra_count > c.extra_slugs.length ? ' …' : '') +
+				'</p>';
+		}
+		if (c.conflict_paths && c.conflict_paths.length) {
+			html +=
+				'<p class="description"><strong>' +
+				esc(i18n.conflictPaths || 'Sample conflicting URL paths') +
+				':</strong> ' +
+				esc(c.conflict_paths.join(', ')) +
+				(c.conflict_count > c.conflict_paths.length ? ' …' : '') +
+				'</p>';
+		}
+		if (c.sample_option_names && c.sample_option_names.length) {
+			html +=
+				'<p class="description"><strong>' +
+				esc(i18n.sampleOptions || 'Sample autoload=yes options') +
+				':</strong> <code>' +
+				esc(c.sample_option_names.join('</code>, <code>')) +
+				'</code>' +
+				(c.autoload_yes > c.sample_option_names.length ? ' …' : '') +
+				'</p>';
+		}
+		html += renderRemediationButton(c, i18n);
+		if (c.fix_url) {
+			html +=
+				'<p><a class="button button-small" href="' +
+				esc(c.fix_url) +
+				'">' +
+				esc(i18n.fix || 'Open fix') +
+				'</a></p>';
+		}
+		html += '</li>';
+		return html;
+	}
+
+	function mergeCheckIntoReport(check) {
+		if (!lastReport || !check || !check.id || !Array.isArray(lastReport.checks)) {
+			return;
+		}
+		lastReport.checks = lastReport.checks.map(function (c) {
+			return c && c.id === check.id ? check : c;
+		});
+		lastReport.summary = summarizeChecks(lastReport.checks);
+		renderReport(lastReport);
+	}
+
 	function renderRemediationButton(c, i18n) {
 		var rem = c.remediation;
 		if (!rem || rem.count < 1 || !rem.action) {
@@ -108,6 +226,7 @@
 		if (!summaryEl || !resultsEl) {
 			return;
 		}
+		lastReport = data;
 		var sum = data && data.summary ? data.summary : {};
 		var st = sum.status || 'pass';
 		var i18n = cfg.i18n || {};
@@ -170,65 +289,7 @@
 
 		var html = '<ul class="radius-deploy-health-list">';
 		checks.forEach(function (c) {
-			var stc = c.status || 'skip';
-			html += '<li class="radius-deploy-health-item ' + esc(statusClass(stc)) + '">';
-			html +=
-				'<div class="radius-deploy-health-item__head"><strong>' +
-				esc(c.label || c.id || '') +
-				'</strong> <span class="radius-badge">' +
-				esc(statusLabel(stc)) +
-				'</span></div>';
-			html += '<p class="radius-deploy-health-item__summary">' + esc(c.summary || '') + '</p>';
-			if (c.detail) {
-				html += '<p class="description">' + esc(c.detail) + '</p>';
-			}
-			if (c.missing_slugs && c.missing_slugs.length) {
-				html +=
-					'<p class="description"><strong>' +
-					esc(i18n.missingSlugs || 'Sample missing place slugs') +
-					':</strong> ' +
-					esc(c.missing_slugs.join(', ')) +
-					(c.missing_count > c.missing_slugs.length ? ' …' : '') +
-					'</p>';
-			}
-			if (c.extra_slugs && c.extra_slugs.length) {
-				html +=
-					'<p class="description"><strong>' +
-					esc(i18n.extraSlugs || 'Sample out-of-scope place slugs') +
-					':</strong> ' +
-					esc(c.extra_slugs.join(', ')) +
-					(c.extra_count > c.extra_slugs.length ? ' …' : '') +
-					'</p>';
-			}
-			if (c.conflict_paths && c.conflict_paths.length) {
-				html +=
-					'<p class="description"><strong>' +
-					esc(i18n.conflictPaths || 'Sample conflicting URL paths') +
-					':</strong> ' +
-					esc(c.conflict_paths.join(', ')) +
-					(c.conflict_count > c.conflict_paths.length ? ' …' : '') +
-					'</p>';
-			}
-			if (c.sample_option_names && c.sample_option_names.length) {
-				html +=
-					'<p class="description"><strong>' +
-					esc(i18n.sampleOptions || 'Sample autoload=yes options') +
-					':</strong> <code>' +
-					esc(c.sample_option_names.join('</code>, <code>')) +
-					'</code>' +
-					(c.autoload_yes > c.sample_option_names.length ? ' …' : '') +
-					'</p>';
-			}
-			html += renderRemediationButton(c, i18n);
-			if (c.fix_url) {
-				html +=
-					'<p><a class="button button-small" href="' +
-					esc(c.fix_url) +
-					'">' +
-					esc(i18n.fix || 'Open fix') +
-					'</a></p>';
-			}
-			html += '</li>';
+			html += renderCheckItem(c, i18n);
 		});
 		html += '</ul>';
 		resultsEl.innerHTML = html;
@@ -279,6 +340,12 @@
 				i18n.deactivateMagicPageConfirm || 'Deactivate the Magic Page plugin?'
 			);
 		}
+		if (action === 'scan_redirect_conflicts_all') {
+			return window.confirm(
+				i18n.checkAllRedirectsConfirm ||
+					'Scan every published landing and service-area URL for redirect conflicts? This can take a minute on large sites.'
+			);
+		}
 		return true;
 	}
 
@@ -315,6 +382,9 @@
 		}
 		if (action === 'deactivate_magic_page_plugin') {
 			return i18n.deactivateMagicPageRunning || 'Deactivating…';
+		}
+		if (action === 'scan_redirect_conflicts_all') {
+			return i18n.checkAllRedirectsRunning || 'Scanning all URLs…';
 		}
 		return i18n.trashExtraHubsRunning || 'Trashing hubs…';
 	}
@@ -415,6 +485,8 @@
 				}
 				if (json.data && json.data.report) {
 					renderReport(json.data.report);
+				} else if (json.data && json.data.check) {
+					mergeCheckIntoReport(json.data.check);
 				}
 				if (resultsEl && json.data && json.data.message) {
 					resultsEl.insertAdjacentHTML(
@@ -465,7 +537,8 @@
 			if (
 				t &&
 				t.classList &&
-				t.classList.contains('radius-deploy-health-trash-extra')
+				(t.classList.contains('radius-deploy-health-trash-extra') ||
+					t.classList.contains('radius-deploy-health-scan-all-redirects'))
 			) {
 				ev.preventDefault();
 				runRemediate(
