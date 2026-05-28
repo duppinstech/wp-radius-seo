@@ -325,9 +325,10 @@ class Radius_Ajax {
 			wp_raise_memory_limit( 'admin' );
 		}
 
-		$template_id = isset( $_POST['radius_template_id'] ) ? absint( wp_unslash( $_POST['radius_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$continuing  = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
-		$target      = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		$template_id    = isset( $_POST['radius_template_id'] ) ? absint( wp_unslash( $_POST['radius_template_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$continuing     = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$deploy_missing = ! empty( $_POST['radius_deploy_missing'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$target         = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( 'radius_service_area' !== $target ) {
 			$target = 'radius_landing';
 		}
@@ -373,7 +374,7 @@ class Radius_Ajax {
 		);
 
 		try {
-			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target, $deploy_context );
+			$result = Radius_Form_Handlers::execute_deploy_chunk( $template_id, $continuing, $target, $deploy_context, $deploy_missing );
 		} catch ( \Throwable $e ) {
 			if ( class_exists( 'Radius_Multisite' ) ) {
 				Radius_Multisite::release_heavy_operation();

@@ -1926,8 +1926,16 @@ class Radius_Admin {
 		$lf_cfg     = Radius_Settings::get();
 		$sa_tid     = isset( $lf_cfg['service_area_template_id'] ) ? (int) $lf_cfg['service_area_template_id'] : 0;
 		$sa_tpl_ok  = $sa_tid > 0 && get_post_type( $sa_tid ) === 'radius_template';
-		$sa_queue   = null;
-		$sa_run_tid = $sa_tpl_ok ? $sa_tid : 0;
+		$sa_queue              = null;
+		$sa_run_tid            = $sa_tpl_ok ? $sa_tid : 0;
+		$scope_for_deploy      = null;
+		$landings_deployed_map = null;
+		$sa_coverage_gaps      = null;
+		if ( class_exists( 'Radius_Deploy_Health_Check' ) ) {
+			$scope_for_deploy      = Radius_Deploy_Health_Check::get_expected_scope_place_ids();
+			$landings_deployed_map = Radius_Deploy_Health_Check::get_deployed_place_ids_map( 'radius_landing' );
+			$sa_coverage_gaps      = Radius_Deploy_Health_Check::get_service_area_coverage_gaps( $scope_for_deploy );
+		}
 		foreach ( $templates as $tpl_q ) {
 			$q_try = Radius_Form_Handlers::get_deploy_queue_for_template( (int) $tpl_q->ID, 'radius_service_area' );
 			if ( $q_try && ! empty( $q_try['remaining'] ) && is_array( $q_try['remaining'] ) ) {
@@ -2056,6 +2064,12 @@ class Radius_Admin {
 						$edit   = get_edit_post_link( $tid, 'raw' );
 						$queue  = Radius_Form_Handlers::get_deploy_queue_for_template( $tid );
 						$q_left = ( $queue && ! empty( $queue['remaining'] ) && is_array( $queue['remaining'] ) ) ? count( $queue['remaining'] ) : 0;
+						$landing_gaps = class_exists( 'Radius_Deploy_Health_Check' )
+							? Radius_Deploy_Health_Check::get_landing_template_gaps( $tid, $scope_for_deploy, $landings_deployed_map )
+							: array( 'missing_place_ids' => array(), 'expected_count' => 0, 'deployed_count' => 0 );
+						$missing_n    = isset( $landing_gaps['missing_place_ids'] ) && is_array( $landing_gaps['missing_place_ids'] )
+							? count( $landing_gaps['missing_place_ids'] )
+							: 0;
 						$scope   = max( 0, (int) $stats['places_in_scope'] );
 						$spintax_n = self::count_template_spintax_shortcodes( $tid );
 						/*
@@ -2176,25 +2190,68 @@ class Radius_Admin {
 										?>
 									</form>
 								<?php endif; ?>
+								<?php
+								$deploy_btn_attrs = array();
+								if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
+									$deploy_btn_attrs['disabled'] = 'disabled';
+									$deploy_btn_attrs['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
+								}
+								$can_deploy_missing = $missing_n > 0 && $q_left <= 0 && empty( $deploy_btn_attrs['disabled'] );
+								?>
+								<?php if ( $can_deploy_missing ) : ?>
+									<p class="radius-deploy-card__pending description">
+										<?php
+										printf(
+											/* translators: 1: missing count, 2: expected in scope */
+											esc_html__( '%1$d place(s) in deploy scope do not have a landing for this template yet (of %2$d expected).', 'radius' ),
+											(int) $missing_n,
+											(int) ( $landing_gaps['expected_count'] ?? $scope )
+										);
+										?>
+									</p>
+									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--missing" data-radius-chained-deploy="1">
+										<input type="hidden" name="action" value="radius_deploy" />
+										<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
+										<input type="hidden" name="radius_deploy_target" value="radius_landing" />
+										<input type="hidden" name="radius_deploy_missing" value="1" />
+										<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
+										<?php
+										submit_button(
+											sprintf(
+												/* translators: %d: places missing a landing */
+												__( 'Deploy missing places (%d)', 'radius' ),
+												(int) $missing_n
+											),
+											'primary large',
+											'submit',
+											false,
+											$deploy_btn_attrs
+										);
+										?>
+									</form>
+								<?php endif; ?>
 								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-radius-chained-deploy="1">
 									<input type="hidden" name="action" value="radius_deploy" />
 									<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
 									<input type="hidden" name="radius_deploy_target" value="radius_landing" />
 									<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 									<?php
-									$btn_attrs = array();
-									if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
-										$btn_attrs['disabled'] = 'disabled';
-										$btn_attrs['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
+									if ( $q_left > 0 ) {
+										$all_label = __( 'Start new deploy (replaces queue)', 'radius' );
+										$all_class = 'secondary large';
+									} elseif ( $can_deploy_missing ) {
+										$all_label = __( 'Redeploy all in scope (updates every place)', 'radius' );
+										$all_class = 'secondary large';
+									} else {
+										$all_label = __( 'Deploy & update all places', 'radius' );
+										$all_class = 'primary large';
 									}
 									submit_button(
-										$q_left > 0
-											? __( 'Start new deploy (replaces queue)', 'radius' )
-											: __( 'Deploy & update all places', 'radius' ),
-										$q_left > 0 ? 'secondary large' : 'primary large',
+										$all_label,
+										$all_class,
 										'submit',
 										false,
-										$btn_attrs
+										$deploy_btn_attrs
 									);
 									?>
 								</form>
@@ -2221,6 +2278,9 @@ class Radius_Admin {
 			$sa_target   = $scope_sa > 0 ? max( $scope_sa, $sa_deployed ) : 0;
 			$sa_pct      = $sa_target > 0 ? (int) min( 100, (int) round( 100 * $sa_deployed / $sa_target ) ) : 0;
 			$sa_frac     = $scope_sa > 0 ? sprintf( '%d / %d', $sa_deployed, $sa_target ) : sprintf( '%d / —', $sa_deployed );
+			$sa_missing_n = ( is_array( $sa_coverage_gaps ) && ! empty( $sa_coverage_gaps['missing_place_ids'] ) && is_array( $sa_coverage_gaps['missing_place_ids'] ) )
+				? count( $sa_coverage_gaps['missing_place_ids'] )
+				: 0;
 			$sa_mod      = $sa_tpl_obj ? get_the_modified_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $sa_tpl_obj ) : '';
 			$sa_is_el    = $sa_tpl_ok && get_post_meta( $sa_tid, '_elementor_edit_mode', true ) === 'builder';
 			$sa_is_bb    = $sa_tpl_ok && class_exists( 'Radius_Beaver_Builder_Compat' ) && Radius_Beaver_Builder_Compat::post_uses_beaver_builder( $sa_tid );
@@ -2335,20 +2395,62 @@ class Radius_Admin {
 								<?php submit_button( __( 'Clear service area queue', 'radius' ), 'secondary', 'submit', false, array() ); ?>
 							</form>
 						<?php else : ?>
+							<?php
+							$sa_btn = array();
+							if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
+								$sa_btn['disabled'] = 'disabled';
+								$sa_btn['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
+							}
+							$sa_can_deploy_missing = $sa_missing_n > 0 && $sa_q_left <= 0 && empty( $sa_btn['disabled'] );
+							?>
+							<?php if ( $sa_can_deploy_missing ) : ?>
+								<p class="radius-deploy-card__pending description">
+									<?php
+									printf(
+										/* translators: 1: missing count, 2: expected in scope */
+										esc_html__( '%1$d place(s) in deploy scope do not have a service area hub yet (of %2$d expected).', 'radius' ),
+										(int) $sa_missing_n,
+										(int) ( is_array( $sa_coverage_gaps ) ? (int) ( $sa_coverage_gaps['expected_count'] ?? $scope_sa ) : $scope_sa )
+									);
+									?>
+								</p>
+								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--missing" data-radius-chained-deploy="1">
+									<input type="hidden" name="action" value="radius_deploy" />
+									<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $sa_tid ); ?>" />
+									<input type="hidden" name="radius_deploy_target" value="radius_service_area" />
+									<input type="hidden" name="radius_deploy_missing" value="1" />
+									<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
+									<?php
+									submit_button(
+										sprintf(
+											/* translators: %d: places missing a hub */
+											__( 'Deploy missing service areas (%d)', 'radius' ),
+											(int) $sa_missing_n
+										),
+										'primary large',
+										'submit',
+										false,
+										$sa_btn
+									);
+									?>
+								</form>
+							<?php endif; ?>
 							<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-radius-chained-deploy="1">
 								<input type="hidden" name="action" value="radius_deploy" />
 								<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $sa_tid ); ?>" />
 								<input type="hidden" name="radius_deploy_target" value="radius_service_area" />
 								<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 								<?php
-								$sa_btn = array();
-								if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
-									$sa_btn['disabled'] = 'disabled';
-									$sa_btn['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
+								if ( $sa_can_deploy_missing ) {
+									$sa_all_label = __( 'Redeploy all in scope (updates every place)', 'radius' );
+									$sa_all_class = 'secondary large';
+								} else {
+									$sa_all_label = __( 'Deploy & update all service areas', 'radius' );
+									$sa_all_class = 'primary large';
 								}
 								submit_button(
-									__( 'Deploy & update all service areas', 'radius' ),
-									'primary large',
+									$sa_all_label,
+									$sa_all_class,
 									'submit',
 									false,
 									$sa_btn

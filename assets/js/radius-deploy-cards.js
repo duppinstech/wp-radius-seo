@@ -228,6 +228,10 @@
 			if ( continuing ) {
 				fd.append( 'radius_deploy_continue', '1' );
 			}
+			var missingInput = formEl.querySelector( 'input[name="radius_deploy_missing"]' );
+			if ( ! continuing && missingInput && missingInput.value === '1' ) {
+				fd.append( 'radius_deploy_missing', '1' );
+			}
 
 			function failUi() {
 				card.classList.remove( 'is-submitting' );

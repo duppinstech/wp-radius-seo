@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.96
+Stable tag: 1.6.97
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.97 =
+* **Fix:** Deploy → Landings / Service Areas — **Deploy missing places** stays available when deployed count is below scope (new locations or an interrupted run), without redeploying every page.
 
 = 1.6.96 =
 * **Improved:** Settings → Database — row checkboxes (shift-click range select), bulk remove autoload / delete selected, and **Safe disarm** (keeps `_group_meta_fields_*`, `_magic_page_xfields`, `_magic_page_spintax_expressions`, `_magic_page_groups`; deletes other Magic Page options).

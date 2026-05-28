@@ -427,7 +427,7 @@ class Radius_Form_Handlers {
 	 * @param string $context          Optional caller context (e.g. migration_wizard) for batch tuning.
 	 * @return array{success:bool,message:string,done?:bool,remaining?:int,initial_total?:int,stats_total?:array,stats_batch?:array,prefilter?:array{removed_blacklist:int,removed_duplicate:int},batch_size?:int,chunk_duration?:float}
 	 */
-	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing', $context = '' ) {
+	public static function execute_deploy_chunk( $template_id, $continuing, $target_post_type = 'radius_landing', $context = '', $deploy_missing = false ) {
 		$template_id = (int) $template_id;
 		if ( $template_id <= 0 || get_post_type( $template_id ) !== 'radius_template' ) {
 			return array(
@@ -445,6 +445,7 @@ class Radius_Form_Handlers {
 		if ( ! in_array( $target_post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			$target_post_type = 'radius_landing';
 		}
+		$deploy_missing = (bool) $deploy_missing;
 
 		if ( 'radius_service_area' === $target_post_type && ! $continuing ) {
 			$cfg_sa_tpl = (int) ( Radius_Settings::get()['service_area_template_id'] ?? 0 );
@@ -528,6 +529,35 @@ class Radius_Form_Handlers {
 				$deploy_prefilter['removed_blacklist'] = (int) ( $state['prefilter']['removed_blacklist'] ?? 0 );
 				$deploy_prefilter['removed_duplicate'] = (int) ( $state['prefilter']['removed_duplicate'] ?? 0 );
 			}
+		} elseif ( $deploy_missing ) {
+			delete_transient( $tkey );
+
+			if ( ! class_exists( 'Radius_Deploy_Health_Check' ) ) {
+				return array(
+					'success' => false,
+					'message' => __( 'Deploy gap check is not available.', 'radius' ),
+				);
+			}
+
+			if ( 'radius_service_area' === $target_post_type ) {
+				$gaps = Radius_Deploy_Health_Check::get_service_area_coverage_gaps();
+				$ids  = isset( $gaps['missing_place_ids'] ) && is_array( $gaps['missing_place_ids'] )
+					? array_map( 'intval', $gaps['missing_place_ids'] )
+					: array();
+			} else {
+				$gaps = Radius_Deploy_Health_Check::get_landing_template_gaps( $template_id );
+				$ids  = isset( $gaps['missing_place_ids'] ) && is_array( $gaps['missing_place_ids'] )
+					? array_map( 'intval', $gaps['missing_place_ids'] )
+					: array();
+			}
+			$ids = array_values( array_unique( array_filter( $ids ) ) );
+			if ( empty( $ids ) ) {
+				return array(
+					'success' => false,
+					'message' => __( 'Every place in deploy scope already has a page for this template — nothing missing to deploy.', 'radius' ),
+				);
+			}
+			$initial_total = count( $ids );
 		} else {
 			delete_transient( $tkey );
 
@@ -659,12 +689,13 @@ class Radius_Form_Handlers {
 		check_admin_referer( 'radius_deploy', 'radius_deploy_nonce' );
 
 		$template_id  = isset( $_POST['radius_template_id'] ) ? absint( $_POST['radius_template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$continuing   = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$continuing     = ! empty( $_POST['radius_deploy_continue'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$deploy_missing = ! empty( $_POST['radius_deploy_missing'] ); // phpcs:ignore WordPress.Security.NonceVerification
 		$target       = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( 'radius_service_area' !== $target ) {
 			$target = 'radius_landing';
 		}
-		$result       = self::execute_deploy_chunk( $template_id, $continuing, $target );
+		$result       = self::execute_deploy_chunk( $template_id, $continuing, $target, '', $deploy_missing );
 
 		if ( ! $result['success'] ) {
 			self::redirect( 'radius-deploy', $result['message'] );
