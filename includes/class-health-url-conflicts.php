@@ -265,11 +265,22 @@ final class Radius_Health_Url_Conflicts {
 	}
 
 	/**
-	 * @return array{removed:int,redirection:int,yoast:int,radius:int}
+	 * Remove redirect rules that conflict with deployed landing / service-area URLs.
+	 *
+	 * @param bool $full_scan When true (default), scan every published deploy URL before removing — matches “Check all now”.
+	 * @return array{removed:int,redirection:int,yoast:int,radius:int,remaining:int}
 	 */
-	public static function remove_all_conflicts() {
-		$scan = self::scan();
-		return self::remove_conflicts( $scan['conflicts'] );
+	public static function remove_all_conflicts( $full_scan = true ) {
+		$scan = $full_scan ? self::scan_all() : self::scan();
+		$out  = self::remove_conflicts( $scan['conflicts'] );
+		$out['remaining'] = 0;
+		if ( $full_scan ) {
+			$verify = self::scan_all();
+			$out['remaining'] = isset( $verify['conflicts'] ) && is_array( $verify['conflicts'] )
+				? count( $verify['conflicts'] )
+				: 0;
+		}
+		return $out;
 	}
 
 	/**
@@ -505,15 +516,18 @@ final class Radius_Health_Url_Conflicts {
 					++$deleted;
 				}
 			}
-			return $deleted;
-		}
-		global $wpdb;
-		$table = $wpdb->prefix . 'redirection_items';
-		foreach ( $ids as $id ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			if ( false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) ) ) {
-				++$deleted;
+		} else {
+			global $wpdb;
+			$table = $wpdb->prefix . 'redirection_items';
+			foreach ( $ids as $id ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+				if ( false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) ) ) {
+					++$deleted;
+				}
 			}
+		}
+		if ( $deleted > 0 && class_exists( 'Red_Module' ) && method_exists( 'Red_Module', 'flush' ) ) {
+			Red_Module::flush( true );
 		}
 		return $deleted;
 	}
@@ -579,9 +593,21 @@ final class Radius_Health_Url_Conflicts {
 		$rules = Radius_Redirect_Service::get_stored_rules();
 		$deleted = 0;
 		foreach ( $paths as $path ) {
+			$path = (string) $path;
+			if ( $path === '' ) {
+				continue;
+			}
 			if ( isset( $rules[ $path ] ) ) {
 				unset( $rules[ $path ] );
 				++$deleted;
+				continue;
+			}
+			foreach ( array_keys( $rules ) as $key ) {
+				if ( self::normalize_source_path( (string) $key ) === $path ) {
+					unset( $rules[ $key ] );
+					++$deleted;
+					break;
+				}
 			}
 		}
 		if ( $deleted > 0 ) {

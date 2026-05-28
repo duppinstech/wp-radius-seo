@@ -87,6 +87,29 @@ final class Radius_Deploy_Health_Check {
 	}
 
 	/**
+	 * Replace one check row in a health report and refresh summary / remediation plan.
+	 *
+	 * @param array<string,mixed> $report Full report from run().
+	 * @param array<string,mixed> $check  Replacement check row.
+	 * @return array<string,mixed>
+	 */
+	public static function replace_check_in_report( array $report, array $check ) {
+		$check_id = isset( $check['id'] ) ? (string) $check['id'] : '';
+		if ( $check_id === '' || empty( $report['checks'] ) || ! is_array( $report['checks'] ) ) {
+			return $report;
+		}
+		foreach ( $report['checks'] as $i => $row ) {
+			if ( is_array( $row ) && isset( $row['id'] ) && (string) $row['id'] === $check_id ) {
+				$report['checks'][ $i ] = $check;
+				break;
+			}
+		}
+		$report['summary']          = self::summarize_checks( $report['checks'] );
+		$report['remediation_plan'] = self::build_remediation_plan( $report['checks'] );
+		return $report;
+	}
+
+	/**
 	 * Run every automated remediation step (redirect cleanup, trash extras, deactivate Magic Page).
 	 *
 	 * @return array<string,array<string,mixed>>

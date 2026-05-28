@@ -943,14 +943,15 @@ class Radius_Ajax {
 
 		$action = isset( $_POST['remediate_action'] ) ? sanitize_key( wp_unslash( $_POST['remediate_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 
+		$redirect_heavy = in_array( $action, array( 'scan_redirect_conflicts_all', 'remove_redirect_conflicts', 'fix_all_issues' ), true );
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
-			@set_time_limit( 'scan_redirect_conflicts_all' === $action ? 600 : 300 );
+			@set_time_limit( $redirect_heavy ? 600 : 300 );
 		}
 		if ( function_exists( 'ignore_user_abort' ) ) {
 			@ignore_user_abort( true );
 		}
-		if ( function_exists( 'wp_raise_memory_limit' ) && 'scan_redirect_conflicts_all' === $action ) {
+		if ( function_exists( 'wp_raise_memory_limit' ) && $redirect_heavy ) {
 			wp_raise_memory_limit( 'admin' );
 		}
 
@@ -1012,14 +1013,29 @@ class Radius_Ajax {
 					wp_send_json_error( array( 'message' => __( 'Redirect conflict scan unavailable.', 'radius' ) ), 500 );
 					return;
 				}
-				$result  = Radius_Health_Url_Conflicts::remove_all_conflicts();
-				$log_msg = sprintf(
-					'Removed %1$d redirect rule(s) conflicting with deployed URLs (Redirection: %2$d, Yoast: %3$d, Radius: %4$d).',
+				$full_scan = ! isset( $_POST['redirect_full_scan'] ) // phpcs:ignore WordPress.Security.NonceVerification
+					|| ! empty( $_POST['redirect_full_scan'] ); // phpcs:ignore WordPress.Security.NonceVerification
+				$result    = Radius_Health_Url_Conflicts::remove_all_conflicts( $full_scan );
+				$remaining = isset( $result['remaining'] ) ? (int) $result['remaining'] : 0;
+				$log_msg   = sprintf(
+					'Removed %1$d redirect rule(s) conflicting with deployed URLs (Redirection: %2$d, Yoast: %3$d, Radius: %4$d). %5$d conflict(s) remain after full rescan.',
 					(int) $result['removed'],
 					(int) $result['redirection'],
 					(int) $result['yoast'],
-					(int) $result['radius']
+					(int) $result['radius'],
+					$remaining
 				);
+				if ( (int) $result['removed'] < 1 && $remaining > 0 ) {
+					wp_send_json_error(
+						array(
+							'message' => __(
+								'Could not remove conflicting redirect rules. They may be regex rules, disabled in the scan index, or managed by another plugin. Remove them manually in Redirection or Yoast SEO.',
+								'radius'
+							),
+						)
+					);
+					return;
+				}
 				$message = sprintf(
 					/* translators: 1: total removed, 2: redirection count, 3: yoast count, 4: radius count */
 					__( 'Removed %1$d conflicting redirect rule(s) (Redirection: %2$d, Yoast: %3$d, Radius: %4$d).', 'radius' ),
@@ -1028,6 +1044,13 @@ class Radius_Ajax {
 					(int) $result['yoast'],
 					(int) $result['radius']
 				);
+				if ( $remaining > 0 ) {
+					$message .= ' ' . sprintf(
+						/* translators: %d: remaining conflict count */
+						__( '%d conflict(s) still remain — remove those rules manually or run Check all now again.', 'radius' ),
+						$remaining
+					);
+				}
 			} elseif ( 'deactivate_magic_page_plugin' === $action ) {
 				$result  = Radius_Deploy_Health_Check::deactivate_magic_page_plugin();
 				$log_msg = $result['message'];
@@ -1100,6 +1123,12 @@ class Radius_Ajax {
 		}
 
 		$report = Radius_Deploy_Health_Check::run();
+		if ( in_array( $action, array( 'remove_redirect_conflicts', 'fix_all_issues' ), true ) && class_exists( 'Radius_Deploy_Health_Check' ) ) {
+			$report = Radius_Deploy_Health_Check::replace_check_in_report(
+				$report,
+				Radius_Deploy_Health_Check::get_redirect_conflict_check( true )
+			);
+		}
 		if ( class_exists( 'Radius_Deploy_Health_Cron' ) ) {
 			Radius_Deploy_Health_Cron::store_report( $report, 'manual' );
 		}

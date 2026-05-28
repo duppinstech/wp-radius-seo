@@ -206,6 +206,14 @@
 		if (rem.template_id) {
 			html += ' data-template-id="' + esc(String(rem.template_id)) + '"';
 		}
+		if (rem.action === 'remove_redirect_conflicts') {
+			var fullScan =
+				c.redirect_scan_capped === false ||
+				(c.redirect_scanned > 0 &&
+					c.redirect_scan_total > 0 &&
+					c.redirect_scanned >= c.redirect_scan_total);
+			html += ' data-redirect-full-scan="' + (fullScan ? '1' : '0') + '"';
+		}
 		html +=
 			' data-check-id="' +
 			esc(c.id || '') +
@@ -454,6 +462,10 @@
 		fd.append('remediate_action', action);
 		if (action === 'trash_extra_landings' && templateId) {
 			fd.append('template_id', String(templateId));
+		}
+		if (action === 'remove_redirect_conflicts' && triggerBtn) {
+			var redirectFull = triggerBtn.getAttribute('data-redirect-full-scan');
+			fd.append('redirect_full_scan', redirectFull === '0' ? '0' : '1');
 		}
 		fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' })
 			.then(parseAjaxJson)
