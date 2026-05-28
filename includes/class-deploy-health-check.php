@@ -1419,15 +1419,16 @@ final class Radius_Deploy_Health_Check {
 			'redirect_scan_total'    => $total,
 		);
 		if ( $n < 1 ) {
-			$summary = sprintf(
-				/* translators: %d: URLs scanned */
-				__( 'No redirect rules conflict with %d deployed page URL(s).', 'radius' ),
-				$scanned
-			);
-			if ( $capped && $total > $scanned ) {
-				$summary .= ' ' . sprintf(
-					/* translators: 1: scanned count, 2: total published deploy pages */
-					__( '(Sampled %1$d of %2$d published pages.)', 'radius' ),
+			if ( $full_scan && ! $capped ) {
+				$summary = sprintf(
+					/* translators: %d: URLs scanned (all published deploy pages) */
+					__( 'No redirect rules conflict among all %d published deploy page URL(s).', 'radius' ),
+					$scanned
+				);
+			} else {
+				$summary = sprintf(
+					/* translators: 1: URLs scanned, 2: total published deploy pages */
+					__( 'No redirect rules conflict among %1$d URL(s) checked (of %2$d published deploy pages).', 'radius' ),
 					$scanned,
 					$total
 				);

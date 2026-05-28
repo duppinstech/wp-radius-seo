@@ -21,63 +21,132 @@ final class Radius_Health_Url_Conflicts {
 	 * @return array<int,array{post_id:int,post_type:string,path:string,url:string}>
 	 */
 	public static function get_deployed_pages( $limit = 0 ) {
-		global $wpdb;
-
 		$limit = (int) $limit;
 		if ( $limit <= 0 ) {
 			$limit = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
 			$limit = max( 50, min( 5000, $limit ) );
 		}
 
-		$sa_slug   = class_exists( 'Radius_Settings' ) ? Radius_Settings::get_service_area_url_slug() : 'service-area';
-		$pages     = array();
-		$per_type  = max( 25, (int) ceil( $limit / 2 ) );
+		$by_type = self::count_published_deployed_posts_by_type();
+		$total   = (int) $by_type['radius_landing'] + (int) $by_type['radius_service_area'];
+		$sa_slug = class_exists( 'Radius_Settings' ) ? Radius_Settings::get_service_area_url_slug() : 'service-area';
 
-		foreach ( array( 'radius_landing', 'radius_service_area' ) as $pt ) {
-			if ( count( $pages ) >= $limit ) {
-				break;
-			}
-			$remaining = min( $per_type, $limit - count( $pages ) );
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$rows = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT ID, post_name FROM {$wpdb->posts}
-					WHERE post_type = %s AND post_status = 'publish' AND post_name != ''
-					ORDER BY ID ASC
-					LIMIT %d",
-					$pt,
-					$remaining
-				),
-				ARRAY_A
-			);
-			if ( ! is_array( $rows ) ) {
-				continue;
-			}
-			foreach ( $rows as $row ) {
-				$pid  = (int) $row['ID'];
-				$slug = (string) $row['post_name'];
-				if ( $pid <= 0 || $slug === '' ) {
-					continue;
-				}
-				if ( 'radius_service_area' === $pt ) {
-					$rel = user_trailingslashit( $sa_slug . '/' . $slug );
-				} else {
-					$rel = user_trailingslashit( $slug );
-				}
-				$url  = home_url( $rel );
-				$path = class_exists( 'Radius_Redirect_Service' )
-					? Radius_Redirect_Service::url_to_path( $url )
-					: '/' . trim( $rel, '/' ) . '/';
-				if ( $path === '' ) {
-					continue;
-				}
-				$pages[] = array(
-					'post_id'   => $pid,
-					'post_type' => $pt,
-					'path'      => $path,
-					'url'       => $url,
+		if ( $total <= 0 ) {
+			return array();
+		}
+
+		// Full coverage: every published landing + service-area URL (up to $limit).
+		if ( $limit >= $total ) {
+			$pages = array();
+			foreach ( array( 'radius_landing', 'radius_service_area' ) as $pt ) {
+				$pages = array_merge(
+					$pages,
+					self::query_deployed_pages_for_type( $pt, 0, $sa_slug )
 				);
 			}
+			return $pages;
+		}
+
+		// Sample: allocate scan budget by share of each post type (not 50/50).
+		$landing_n = (int) $by_type['radius_landing'];
+		$sa_n      = (int) $by_type['radius_service_area'];
+		$landing_limit = $landing_n > 0 ? (int) min( $landing_n, max( 1, (int) round( $limit * $landing_n / $total ) ) ) : 0;
+		$sa_limit      = min( $sa_n, max( 0, $limit - $landing_limit ) );
+		if ( $landing_limit + $sa_limit < $limit && $landing_n > $landing_limit ) {
+			$landing_limit = min( $landing_n, $limit - $sa_limit );
+		}
+
+		$pages = array();
+		if ( $landing_limit > 0 ) {
+			$pages = array_merge(
+				$pages,
+				self::query_deployed_pages_for_type( 'radius_landing', $landing_limit, $sa_slug )
+			);
+		}
+		if ( $sa_limit > 0 ) {
+			$pages = array_merge(
+				$pages,
+				self::query_deployed_pages_for_type( 'radius_service_area', $sa_limit, $sa_slug )
+			);
+		}
+
+		return $pages;
+	}
+
+	/**
+	 * Published row counts per deploy post type.
+	 *
+	 * @return array{radius_landing:int,radius_service_area:int}
+	 */
+	public static function count_published_deployed_posts_by_type() {
+		global $wpdb;
+
+		$out = array(
+			'radius_landing'      => 0,
+			'radius_service_area' => 0,
+		);
+		foreach ( array_keys( $out ) as $pt ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$n = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM {$wpdb->posts}
+					WHERE post_type = %s AND post_status = 'publish' AND post_name != ''",
+					$pt
+				)
+			);
+			$out[ $pt ] = is_numeric( $n ) ? (int) $n : 0;
+		}
+		return $out;
+	}
+
+	/**
+	 * @param string $post_type radius_landing or radius_service_area.
+	 * @param int    $limit     Max rows (0 = no limit).
+	 * @param string $sa_slug   Service area URL prefix.
+	 * @return array<int,array{post_id:int,post_type:string,path:string,url:string}>
+	 */
+	private static function query_deployed_pages_for_type( $post_type, $limit, $sa_slug ) {
+		global $wpdb;
+
+		$limit = (int) $limit;
+		$sql   = "SELECT ID, post_name FROM {$wpdb->posts}
+			WHERE post_type = %s AND post_status = 'publish' AND post_name != ''
+			ORDER BY ID ASC";
+		if ( $limit > 0 ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- limit is int.
+			$sql .= $wpdb->prepare( ' LIMIT %d', $limit );
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $post_type ), ARRAY_A );
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$pages = array();
+		foreach ( $rows as $row ) {
+			$pid  = (int) $row['ID'];
+			$slug = (string) $row['post_name'];
+			if ( $pid <= 0 || $slug === '' ) {
+				continue;
+			}
+			if ( 'radius_service_area' === $post_type ) {
+				$rel = user_trailingslashit( $sa_slug . '/' . $slug );
+			} else {
+				$rel = user_trailingslashit( $slug );
+			}
+			$url  = home_url( $rel );
+			$path = class_exists( 'Radius_Redirect_Service' )
+				? Radius_Redirect_Service::url_to_path( $url )
+				: '/' . trim( $rel, '/' ) . '/';
+			if ( $path === '' ) {
+				continue;
+			}
+			$pages[] = array(
+				'post_id'   => $pid,
+				'post_type' => $post_type,
+				'path'      => $path,
+				'url'       => $url,
+			);
 		}
 
 		return $pages;
@@ -112,8 +181,9 @@ final class Radius_Health_Url_Conflicts {
 	private static function scan_with_limit( $max, $total = 0 ) {
 		$max   = max( 50, min( 5000, (int) $max ) );
 		$total = $total > 0 ? (int) $total : self::count_published_deployed_posts();
-		$capped = $total > $max;
-		$pages  = self::get_deployed_pages( $max );
+		$pages   = self::get_deployed_pages( $max );
+		$scanned = count( $pages );
+		$capped  = $total > $scanned;
 
 		$sources = self::load_redirect_source_index();
 		$conflicts = array();
@@ -135,7 +205,7 @@ final class Radius_Health_Url_Conflicts {
 
 		return array(
 			'conflicts' => $conflicts,
-			'scanned'   => count( $pages ),
+			'scanned'   => $scanned,
 			'total'     => $total,
 			'capped'    => $capped,
 		);

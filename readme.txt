@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.98
+Stable tag: 1.6.99
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.99 =
+* **Fix:** Redirect health scan checks all published landings and service areas on “Check all now” (was capped at half the limit per type). Clearer “X of Y URL(s) checked” wording.
 
 = 1.6.98 =
 * **Improved:** Deploy → Health check — **Check all now** link on redirect scan when only a sample was checked (manual full scan, not automatic).

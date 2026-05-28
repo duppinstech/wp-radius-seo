@@ -984,11 +984,13 @@ class Radius_Ajax {
 				}
 				$check   = Radius_Deploy_Health_Check::get_redirect_conflict_check( true );
 				$scanned = isset( $check['redirect_scanned'] ) ? (int) $check['redirect_scanned'] : 0;
-				$log_msg = sprintf( 'Full redirect conflict scan: %d URL(s) checked.', $scanned );
+				$total   = isset( $check['redirect_scan_total'] ) ? (int) $check['redirect_scan_total'] : $scanned;
+				$log_msg = sprintf( 'Full redirect conflict scan: %1$d of %2$d URL(s) checked.', $scanned, $total );
 				$message = sprintf(
-					/* translators: %d: URLs scanned */
-					__( 'Full redirect scan finished (%d URL(s) checked).', 'radius' ),
-					$scanned
+					/* translators: 1: URLs scanned, 2: total published deploy pages */
+					__( 'Full redirect scan finished (%1$d of %2$d URL(s) checked).', 'radius' ),
+					$scanned,
+					$total
 				);
 				$result  = array( 'check' => $check );
 				wp_send_json_success(
