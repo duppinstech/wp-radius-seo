@@ -945,7 +945,13 @@ class Radius_Ajax {
 
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
-			@set_time_limit( 300 );
+			@set_time_limit( 'scan_redirect_conflicts_all' === $action ? 600 : 300 );
+		}
+		if ( function_exists( 'ignore_user_abort' ) ) {
+			@ignore_user_abort( true );
+		}
+		if ( function_exists( 'wp_raise_memory_limit' ) && 'scan_redirect_conflicts_all' === $action ) {
+			wp_raise_memory_limit( 'admin' );
 		}
 
 		if ( ! class_exists( 'Radius_Deploy_Health_Check' ) ) {

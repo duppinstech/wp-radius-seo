@@ -15,6 +15,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Radius_Health_Url_Conflicts {
 
 	/**
+	 * Default sample size for routine health checks (full “Check all now” scans are not capped unless filtered).
+	 */
+	private const DEFAULT_SAMPLE_SCAN_MAX = 800;
+
+	/**
+	 * Clamp routine sample scan size (Run health check).
+	 *
+	 * @param int $limit Requested limit.
+	 * @return int
+	 */
+	private static function clamp_sample_scan_limit( $limit ) {
+		$limit = (int) $limit;
+		$ceil  = (int) apply_filters( 'radius_health_redirect_scan_sample_ceiling', 5000 );
+		if ( $ceil > 0 ) {
+			$limit = min( $ceil, $limit );
+		}
+		return max( 50, $limit );
+	}
+
+	/**
+	 * Max URLs for a manual full scan (0 = no hard cap — every published deploy page).
+	 *
+	 * @param int $total Published landing + service-area count.
+	 * @return int
+	 */
+	private static function full_scan_limit_for_total( $total ) {
+		$total = max( 0, (int) $total );
+		$cap   = (int) apply_filters( 'radius_health_redirect_scan_full_max_urls', 0 );
+		if ( $cap > 0 ) {
+			return min( $cap, $total );
+		}
+		return $total;
+	}
+
+	/**
 	 * Published landing / service-area rows for redirect scans (paths derived from slugs, not get_permalink).
 	 *
 	 * @param int $limit Max rows (0 = use filter default in scan()).
@@ -23,8 +58,10 @@ final class Radius_Health_Url_Conflicts {
 	public static function get_deployed_pages( $limit = 0 ) {
 		$limit = (int) $limit;
 		if ( $limit <= 0 ) {
-			$limit = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
-			$limit = max( 50, min( 5000, $limit ) );
+			$limit = (int) apply_filters( 'radius_health_redirect_scan_max_urls', self::DEFAULT_SAMPLE_SCAN_MAX );
+			$limit = self::clamp_sample_scan_limit( $limit );
+		} else {
+			$limit = max( 50, (int) $limit );
 		}
 
 		$by_type = self::count_published_deployed_posts_by_type();
@@ -153,13 +190,13 @@ final class Radius_Health_Url_Conflicts {
 	}
 
 	/**
-	 * Scan every published landing / service-area URL (up to 5000).
+	 * Scan every published landing / service-area URL (no 5k cap unless filtered).
 	 *
 	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
 	 */
 	public static function scan_all() {
 		$total = self::count_published_deployed_posts();
-		$max   = max( 50, min( 5000, $total ) );
+		$max   = self::full_scan_limit_for_total( $total );
 		return self::scan_with_limit( $max, $total );
 	}
 
@@ -167,8 +204,8 @@ final class Radius_Health_Url_Conflicts {
 	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
 	 */
 	public static function scan() {
-		$max   = (int) apply_filters( 'radius_health_redirect_scan_max_urls', 800 );
-		$max   = max( 50, min( 5000, $max ) );
+		$max   = (int) apply_filters( 'radius_health_redirect_scan_max_urls', self::DEFAULT_SAMPLE_SCAN_MAX );
+		$max   = self::clamp_sample_scan_limit( $max );
 		$total = self::count_published_deployed_posts();
 		return self::scan_with_limit( $max, $total );
 	}
@@ -179,7 +216,7 @@ final class Radius_Health_Url_Conflicts {
 	 * @return array{conflicts:array<int,array<string,mixed>>,scanned:int,total:int,capped:bool}
 	 */
 	private static function scan_with_limit( $max, $total = 0 ) {
-		$max   = max( 50, min( 5000, (int) $max ) );
+		$max   = max( 50, (int) $max );
 		$total = $total > 0 ? (int) $total : self::count_published_deployed_posts();
 		$pages   = self::get_deployed_pages( $max );
 		$scanned = count( $pages );

@@ -1374,7 +1374,7 @@ final class Radius_Deploy_Health_Check {
 	/**
 	 * Redirect conflict check for the health UI (optional full scan of all published deploy URLs).
 	 *
-	 * @param bool $full_scan When true, scan all published pages (up to 5000), not the default sample size.
+	 * @param bool $full_scan When true, scan all published pages (no default 5k cap), not the routine sample size.
 	 * @return array<string,mixed>
 	 */
 	public static function get_redirect_conflict_check( $full_scan = false ) {
