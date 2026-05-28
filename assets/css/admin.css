@@ -1932,3 +1932,128 @@ progress.radius-mw-overall-bar {
 .radius-mw-system-check__actions {
 	margin: 0.75em 0 0;
 }
+
+/* Settings → Database: Magic Page wp_options */
+.radius-mp-safe-disarm {
+	margin: 0 0 24px;
+	padding: 16px 18px;
+	max-width: 960px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+}
+.radius-mp-safe-disarm h3 {
+	margin: 0 0 8px;
+	font-size: 14px;
+}
+.radius-mp-safe-disarm__preview {
+	margin: 8px 0 12px;
+}
+.radius-mp-safe-disarm__delete-list {
+	margin: 8px 0 0 18px;
+	max-height: 160px;
+	overflow: auto;
+}
+.radius-mp-selection-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	margin: 16px 0 8px;
+	max-width: 960px;
+	padding: 10px 12px;
+	background: #f0f6fc;
+	border: 1px solid #c5d9ed;
+	border-radius: 4px;
+}
+.radius-mp-selection-count {
+	font-weight: 600;
+}
+.radius-mp-option-row--preserved .radius-mp-option-name {
+	background: #f0f6e8;
+}
+.radius-mp-keep-badge {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 6px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	color: #007017;
+	background: #edfaef;
+	border: 1px solid #00a32a;
+	border-radius: 3px;
+	vertical-align: middle;
+}
+.radius-mp-options-table .check-column {
+	width: 2.2em;
+	vertical-align: middle;
+}
+.radius-mp-autoload-legend {
+	margin-top: 12px;
+}
+.radius-mp-autoload-legend .radius-mp-autoload {
+	margin-right: 4px;
+}
+.radius-mp-autoload-legend .radius-mp-autoload + .description,
+.radius-mp-autoload-legend .radius-mp-autoload {
+	margin-right: 14px;
+}
+.radius-mp-autoload {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-weight: 600;
+	font-size: 12px;
+	line-height: 1.5;
+	text-transform: lowercase;
+}
+.radius-mp-autoload--danger {
+	background: #fcf0f1;
+	color: #b32d2e;
+	border: 1px solid #d63638;
+}
+.radius-mp-autoload--warn {
+	background: #fcf9e8;
+	color: #8a6d00;
+	border: 1px solid #dba617;
+}
+.radius-mp-autoload--success {
+	background: #edfaef;
+	color: #007017;
+	border: 1px solid #00a32a;
+}
+.radius-mp-autoload--neutral {
+	background: #f0f0f1;
+	color: #50575e;
+	border: 1px solid #c3c4c7;
+}
+.radius-mp-options-table {
+	margin-top: 16px;
+	max-width: 960px;
+}
+.radius-mp-options-table .radius-mp-option-name {
+	word-break: break-all;
+}
+.radius-mp-col-autoload {
+	width: 100px;
+}
+.radius-mp-col-actions {
+	width: 200px;
+	white-space: nowrap;
+}
+.radius-mp-action-sep {
+	margin: 0 6px;
+	color: #c3c4c7;
+}
+.radius-mp-bulk-actions {
+	margin-top: 24px;
+	max-width: 720px;
+	padding-top: 16px;
+	border-top: 1px solid #dcdcde;
+}
+.radius-mp-bulk-actions h3 {
+	margin: 0 0 8px;
+	font-size: 14px;
+}

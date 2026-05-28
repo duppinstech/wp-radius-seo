@@ -50,6 +50,47 @@ class Radius_Form_Handlers {
 
 		$mode = isset( $_POST['radius_magic_page_cleanup_mode'] ) ? sanitize_key( wp_unslash( $_POST['radius_magic_page_cleanup_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 
+		if ( 'safe_disarm' === $mode ) {
+			if ( empty( $_POST['radius_magic_page_cleanup_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				self::redirect(
+					'radius-settings',
+					__( 'Confirm before running safe disarm.', 'radius' ),
+					array( 'tab' => 'database' )
+				);
+				return;
+			}
+			$res = Radius_Legacy_Import_Service::safe_disarm_magic_page_options();
+			$msg = sprintf(
+				/* translators: 1: preserved rows disarmed, 2: rows deleted, 3: preserved row count */
+				__( 'Safe disarm complete: set autoload=no on %1$d kept row(s); deleted %2$d other row(s). %3$d option(s) remain for later review.', 'radius' ),
+				(int) $res['disarmed'],
+				(int) $res['deleted'],
+				(int) $res['preserve_count']
+			);
+			self::redirect( 'radius-settings', $msg, array( 'tab' => 'database' ) );
+			return;
+		}
+
+		if ( 'unautoload_all' === $mode ) {
+			if ( empty( $_POST['radius_magic_page_cleanup_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				self::redirect(
+					'radius-settings',
+					__( 'Confirm before disabling autoload on all Magic Page options.', 'radius' ),
+					array( 'tab' => 'database' )
+				);
+				return;
+			}
+			$res = Radius_Legacy_Import_Service::unautoload_all_magic_page_options();
+			$msg = sprintf(
+				/* translators: 1: rows updated, 2: rows unchanged */
+				__( 'Unautoload all complete: %1$d option row(s) set to autoload=no (%2$d already off). Values were not deleted.', 'radius' ),
+				(int) $res['updated'],
+				(int) $res['unchanged']
+			);
+			self::redirect( 'radius-settings', $msg, array( 'tab' => 'database' ) );
+			return;
+		}
+
 		if ( 'preserve' === $mode ) {
 			if ( empty( $_POST['radius_magic_page_preserve_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 				self::redirect(

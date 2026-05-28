@@ -548,6 +548,34 @@ class Radius_Admin {
 					),
 				)
 			);
+			wp_enqueue_script(
+				'radius-magic-page-options',
+				RADIUS_URL . 'assets/js/radius-magic-page-options.js',
+				array(),
+				RADIUS_VERSION,
+				true
+			);
+			wp_localize_script(
+				'radius-magic-page-options',
+				'radiusMagicPageOptions',
+				array(
+					'ajaxurl' => admin_url( 'admin-ajax.php' ),
+					'nonce'   => wp_create_nonce( 'radius_magic_page_options' ),
+					'i18n'    => array(
+						'working'            => __( 'Working…', 'radius' ),
+						'unautoload'         => __( 'Remove autoload', 'radius' ),
+						'delete'             => __( 'Delete', 'radius' ),
+						'deleteConfirm'      => __( 'Permanently delete this option row? This cannot be undone.', 'radius' ),
+						'deleteBulkConfirm'  => __( 'Permanently delete the selected option rows? This cannot be undone.', 'radius' ),
+						'failed'             => __( 'Request failed. Refresh the page and try again.', 'radius' ),
+						'autoloadNo'         => __( 'no', 'radius' ),
+						'selected'           => __( 'selected', 'radius' ),
+						'bulkUnautoload'     => __( 'Remove autoload on selected', 'radius' ),
+						'bulkDelete'         => __( 'Delete selected', 'radius' ),
+						'selectRows'         => __( 'Select at least one row.', 'radius' ),
+					),
+				)
+			);
 			return;
 		}
 		if ( 'radius_page_radius-deploy' === $hook_suffix ) {
@@ -3412,124 +3440,175 @@ Fast roadside help in {{region}}
 				<div id="radius-panel-database" class="radius-settings-panel" style="<?php echo $tab === 'database' ? '' : 'display:none;'; ?>">
 					<?php if ( $tab === 'database' ) : ?>
 						<?php
-						$mp_db    = Radius_Legacy_Import_Service::get_magic_page_storage_footprint();
-						$mp_auto  = Radius_Legacy_Import_Service::get_magic_page_options_autoload_status();
+						$mp_db          = Radius_Legacy_Import_Service::get_magic_page_storage_footprint();
+						$mp_auto        = Radius_Legacy_Import_Service::get_magic_page_options_autoload_status();
+						$mp_rows        = Radius_Legacy_Import_Service::get_magic_page_options_rows();
+						$mp_safe        = Radius_Legacy_Import_Service::preview_safe_disarm_magic_page_options();
+						$mp_preserve    = Radius_Legacy_Import_Service::magic_page_safe_disarm_preserve_exact_names();
+						$mp_prefixes    = Radius_Legacy_Import_Service::magic_page_safe_disarm_preserve_prefixes();
 						?>
 						<h2 class="screen-reader-text"><?php esc_html_e( 'Database', 'radius' ); ?></h2>
-						<p class="description"><?php esc_html_e( 'Legacy Magic Page data may remain in options and post meta after migration. Sizes below are approximate: MySQL sums the stored length of keys and values (actual disk usage includes row overhead and indexes).', 'radius' ); ?></p>
-						<table class="widefat striped radius-mp-db-matrix" style="max-width:720px;margin-top:12px;">
-							<thead>
-								<tr>
-									<th scope="col"><?php esc_html_e( 'Table', 'radius' ); ?></th>
-									<th scope="col"><?php esc_html_e( 'Matching rows', 'radius' ); ?></th>
-									<th scope="col"><?php esc_html_e( 'Approx. data', 'radius' ); ?></th>
-									<th scope="col"><?php esc_html_e( 'Scope', 'radius' ); ?></th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr>
-									<td><code><?php echo esc_html( $mp_db['options']['label'] ); ?></code></td>
-									<td><?php echo esc_html( number_format_i18n( (int) $mp_db['options']['rows'] ) ); ?></td>
-									<td><?php echo esc_html( size_format( (int) $mp_db['options']['bytes'], 2 ) ); ?></td>
-									<td><?php esc_html_e( 'Removed by “Delete Magic Page options” below.', 'radius' ); ?></td>
-								</tr>
-								<tr>
-									<td><code><?php echo esc_html( $mp_db['postmeta']['label'] ); ?></code></td>
-									<td><?php echo esc_html( number_format_i18n( (int) $mp_db['postmeta']['rows'] ) ); ?></td>
-									<td>
-										<?php
-										if ( ! empty( $mp_db['postmeta_bytes_omitted'] ) ) {
-											echo esc_html( '—' );
-										} else {
-											echo esc_html( size_format( (int) $mp_db['postmeta']['bytes'], 2 ) );
-										}
-										?>
-									</td>
-									<td><?php esc_html_e( 'Informational — not deleted by that button.', 'radius' ); ?></td>
-								</tr>
-							</tbody>
-						</table>
-						<?php if ( ! empty( $mp_db['postmeta_bytes_omitted'] ) ) : ?>
-							<p class="description" style="margin-top:8px;">
-								<?php esc_html_e( 'Post meta byte total was skipped because the matching row count is very large (aggregating sizes would be too slow). Row count above is still accurate.', 'radius' ); ?>
+						<div class="radius-mp-safe-disarm" id="radius-mp-safe-disarm">
+							<h3><?php esc_html_e( 'Safe disarm', 'radius' ); ?></h3>
+							<p class="description">
+								<?php esc_html_e( 'One-step safety net: keep service group bundles, xfields, and spintax for later; remove autoload on those rows; permanently delete every other Magic Page option in the list below (caches, sitemaps, etc.).', 'radius' ); ?>
 							</p>
-						<?php endif; ?>
-						<p class="description" style="margin-top:12px;">
+							<p class="description">
+								<strong><?php esc_html_e( 'Kept (disarmed):', 'radius' ); ?></strong>
+								<code><?php echo esc_html( implode( '`, `', $mp_prefixes ) ); ?>*</code>
+								<?php if ( ! empty( $mp_preserve ) ) : ?>
+									<?php esc_html_e( 'and', 'radius' ); ?>
+									<code><?php echo esc_html( implode( '`, `', $mp_preserve ) ); ?></code>
+								<?php endif; ?>
+							</p>
+							<?php if ( (int) $mp_safe['preserve_count'] + (int) $mp_safe['delete_count'] > 0 ) : ?>
+								<p class="description">
+									<?php
+									printf(
+										/* translators: 1: keep count, 2: disarm count, 3: delete count */
+										esc_html__( 'Ready to run: keep %1$d row(s) (%2$d need autoload turned off), delete %3$d other row(s).', 'radius' ),
+										(int) $mp_safe['preserve_count'],
+										(int) $mp_safe['disarm_count'],
+										(int) $mp_safe['delete_count']
+									);
+									?>
+								</p>
+								<?php if ( ! empty( $mp_safe['delete_names'] ) ) : ?>
+									<details class="radius-mp-safe-disarm__preview">
+										<summary><?php esc_html_e( 'Preview rows that will be deleted', 'radius' ); ?></summary>
+										<ul class="radius-mp-safe-disarm__delete-list">
+											<?php foreach ( $mp_safe['delete_names'] as $del_name ) : ?>
+												<li><code><?php echo esc_html( $del_name ); ?></code></li>
+											<?php endforeach; ?>
+										</ul>
+									</details>
+								<?php endif; ?>
+							<?php endif; ?>
+							<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+								<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+								<input type="hidden" name="radius_magic_page_cleanup_mode" value="safe_disarm" />
+								<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+								<p>
+									<label>
+										<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
+										<?php esc_html_e( 'I understand: kept rows stay in the database with autoload=no; other Magic Page options listed below will be deleted.', 'radius' ); ?>
+									</label>
+								</p>
+								<?php submit_button( __( 'Run safe disarm', 'radius' ), 'primary', 'submit', false ); ?>
+							</form>
+						</div>
+						<p class="description"><?php esc_html_e( 'Magic Page legacy rows in wp_options. Values stay in the database when you remove autoload — only the autoload flag changes so WordPress stops loading them on every request.', 'radius' ); ?></p>
+						<p class="description radius-mp-autoload-legend">
+							<span class="radius-mp-autoload radius-mp-autoload--danger"><?php esc_html_e( 'yes', 'radius' ); ?></span>
+							<?php esc_html_e( 'loaded on most requests', 'radius' ); ?>
+							<span class="radius-mp-autoload radius-mp-autoload--warn"><?php esc_html_e( 'auto', 'radius' ); ?></span>
+							<?php esc_html_e( 'WordPress may still autoload', 'radius' ); ?>
+							<span class="radius-mp-autoload radius-mp-autoload--success"><?php esc_html_e( 'no', 'radius' ); ?></span>
+							<?php esc_html_e( 'stored but not autoloaded', 'radius' ); ?>
+						</p>
+						<p class="description">
 							<?php
 							printf(
-								/* translators: %s: formatted byte size */
-								esc_html__( 'Approximate space reclaimable by permanently deleting options: %s', 'radius' ),
-								'<strong>' . esc_html( size_format( (int) $mp_db['cleanup_bytes'], 2 ) ) . '</strong>'
+								/* translators: 1: row count, 2: formatted size */
+								esc_html__( '%1$d option row(s), ~%2$s data.', 'radius' ),
+								(int) $mp_db['options']['rows'],
+								esc_html( size_format( (int) $mp_db['options']['bytes'], 2 ) )
 							);
 							?>
-						</p>
-						<?php if ( (int) $mp_auto['total'] > 0 ) : ?>
-							<p class="description">
+							<?php if ( (int) $mp_auto['total'] > 0 ) : ?>
 								<?php
+								echo ' ';
 								printf(
-									/* translators: 1: autoload yes count, 2: total rows, 3: autoload no count, 4: autoload auto count */
-									esc_html__( 'Autoload status: %1$d set to yes (loaded on most requests), %3$d to no, %4$d to auto — %2$d row(s) total.', 'radius' ),
+									/* translators: 1: autoload yes, 2: auto, 3: no */
+									esc_html__( 'Autoload: %1$d yes, %2$d auto, %3$d no.', 'radius' ),
 									(int) $mp_auto['autoload_yes'],
-									(int) $mp_auto['total'],
-									(int) $mp_auto['autoload_no'],
-									(int) $mp_auto['autoload_auto']
+									(int) $mp_auto['autoload_auto'],
+									(int) $mp_auto['autoload_no']
 								);
 								?>
-							</p>
+							<?php endif; ?>
+						</p>
+						<?php if ( empty( $mp_rows ) ) : ?>
+							<p><?php esc_html_e( 'No Magic Page–matching options found.', 'radius' ); ?></p>
+						<?php else : ?>
+							<div class="radius-mp-selection-bar" id="radius-mp-selection-bar" hidden>
+								<span class="radius-mp-selection-count" id="radius-mp-selection-count">0</span>
+								<span><?php esc_html_e( 'selected', 'radius' ); ?></span>
+								<button type="button" class="button radius-mp-bulk-unautoload"><?php esc_html_e( 'Remove autoload on selected', 'radius' ); ?></button>
+								<button type="button" class="button radius-mp-bulk-delete"><?php esc_html_e( 'Delete selected', 'radius' ); ?></button>
+							</div>
+							<table class="widefat striped radius-mp-options-table" id="radius-magic-page-cleanup">
+								<thead>
+									<tr>
+										<td class="check-column">
+											<input type="checkbox" id="radius-mp-select-all" aria-label="<?php esc_attr_e( 'Select all options', 'radius' ); ?>" />
+										</td>
+										<th scope="col"><?php esc_html_e( 'Option', 'radius' ); ?></th>
+										<th scope="col" class="radius-mp-col-autoload"><?php esc_html_e( 'Autoload', 'radius' ); ?></th>
+										<th scope="col" class="radius-mp-col-actions"><?php esc_html_e( 'Actions', 'radius' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $mp_rows as $mp_row ) : ?>
+										<?php
+										$opt_name  = $mp_row['option_name'];
+										$al_tone   = $mp_row['autoload_tone'];
+										$al_label  = $mp_row['autoload_label'];
+										$al_raw    = $mp_row['autoload'];
+										$needs_off = ! in_array( $al_raw, array( 'no', 'off' ), true );
+										$preserved = ! empty( $mp_row['preserved'] );
+										$row_class = 'radius-mp-option-row';
+										if ( $preserved ) {
+											$row_class .= ' radius-mp-option-row--preserved';
+										}
+										?>
+										<tr class="<?php echo esc_attr( $row_class ); ?>" data-option-name="<?php echo esc_attr( $opt_name ); ?>" data-preserved="<?php echo $preserved ? '1' : '0'; ?>">
+											<th scope="row" class="check-column">
+												<input type="checkbox" class="radius-mp-row-check" value="<?php echo esc_attr( $opt_name ); ?>" aria-label="<?php echo esc_attr( sprintf( __( 'Select %s', 'radius' ), $opt_name ) ); ?>" />
+											</th>
+											<td>
+												<code class="radius-mp-option-name"><?php echo esc_html( $opt_name ); ?></code>
+												<?php if ( $preserved ) : ?>
+													<span class="radius-mp-keep-badge"><?php esc_html_e( 'Keep', 'radius' ); ?></span>
+												<?php endif; ?>
+											</td>
+											<td class="radius-mp-col-autoload">
+												<span class="radius-mp-autoload radius-mp-autoload--<?php echo esc_attr( $al_tone ); ?>" data-autoload-tone="<?php echo esc_attr( $al_tone ); ?>">
+													<?php echo esc_html( $al_label ); ?>
+												</span>
+											</td>
+											<td class="radius-mp-col-actions">
+												<?php if ( $needs_off ) : ?>
+													<button type="button" class="button-link radius-mp-unautoload" data-option-name="<?php echo esc_attr( $opt_name ); ?>">
+														<?php esc_html_e( 'Remove autoload', 'radius' ); ?>
+													</button>
+													<span class="radius-mp-action-sep" aria-hidden="true">|</span>
+												<?php endif; ?>
+												<button type="button" class="button-link radius-mp-delete" data-option-name="<?php echo esc_attr( $opt_name ); ?>">
+													<?php esc_html_e( 'Delete', 'radius' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
 						<?php endif; ?>
-						<table class="form-table radius-mp-cleanup" id="radius-magic-page-cleanup" style="margin-top:1.5em;">
-							<tr>
-								<th scope="row"><?php esc_html_e( 'Preserve data', 'radius' ); ?></th>
-								<td>
-									<p class="description"><?php esc_html_e( 'Recommended if you might need Magic Page settings later (e.g. to compare Search Console URLs or re-import spintax). Keeps all option values in the database but stops WordPress from loading them on every page view.', 'radius' ); ?></p>
-									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
-										<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
-										<input type="hidden" name="radius_magic_page_cleanup_mode" value="preserve" />
-										<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
-										<fieldset>
-											<legend class="screen-reader-text"><?php esc_html_e( 'Autoload target', 'radius' ); ?></legend>
-											<p>
-												<label>
-													<input type="radio" name="radius_magic_page_preserve_autoload" value="no" checked="checked" />
-													<?php esc_html_e( 'Set autoload to no — do not load on every request (recommended)', 'radius' ); ?>
-												</label>
-											</p>
-											<p>
-												<label>
-													<input type="radio" name="radius_magic_page_preserve_autoload" value="auto" />
-													<?php esc_html_e( 'Set autoload to auto — let WordPress decide per option size (WP 6.4+)', 'radius' ); ?>
-												</label>
-											</p>
-										</fieldset>
-										<p>
-											<label>
-												<input type="checkbox" name="radius_magic_page_preserve_confirm" value="1" />
-												<?php esc_html_e( 'Keep Magic Page option values and only change autoload (nothing is deleted).', 'radius' ); ?>
-											</label>
-										</p>
-										<?php submit_button( __( 'Preserve — disable autoload', 'radius' ), 'primary', 'submit', false ); ?>
-									</form>
-								</td>
-							</tr>
-							<tr>
-								<th scope="row"><?php esc_html_e( 'Delete permanently', 'radius' ); ?></th>
-								<td>
-									<p class="description"><?php esc_html_e( 'Removes matching wp_options rows entirely. Use only when you are sure you will not need the legacy Magic Page data again.', 'radius' ); ?></p>
-									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
-										<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
-										<input type="hidden" name="radius_magic_page_cleanup_mode" value="delete" />
-										<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
-										<p>
-											<label>
-												<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
-												<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows.', 'radius' ); ?>
-											</label>
-										</p>
-										<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'delete', 'submit', false ); ?>
-									</form>
-								</td>
-							</tr>
-						</table>
+						<div class="radius-mp-bulk-actions" id="radius-magic-page-bulk">
+							<h3><?php esc_html_e( 'Bulk', 'radius' ); ?></h3>
+							<p class="description"><?php esc_html_e( 'Set autoload=no on every row above that is still yes or auto. Option values are not deleted.', 'radius' ); ?></p>
+							<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+								<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+								<input type="hidden" name="radius_magic_page_cleanup_mode" value="unautoload_all" />
+								<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+								<p>
+									<label>
+										<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
+										<?php esc_html_e( 'Disable autoload on all Magic Page options listed above (keep values).', 'radius' ); ?>
+									</label>
+								</p>
+								<?php submit_button( __( 'Unautoload all', 'radius' ), 'primary', 'submit', false ); ?>
+							</form>
+						</div>
 					<?php else : ?>
 						<p class="description">
 							<?php esc_html_e( 'Open the Database tab to load the Magic Page storage summary. Other settings tabs skip that query so the admin stays fast.', 'radius' ); ?>

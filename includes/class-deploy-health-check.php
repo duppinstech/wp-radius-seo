@@ -1295,7 +1295,7 @@ final class Radius_Deploy_Health_Check {
 
 		$detail = sprintf(
 			/* translators: 1: autoload=yes count, 2: total option rows */
-			__( '%1$d of %2$d Magic Page option row(s) still use autoload=yes, so WordPress loads them on nearly every request. Preserve the data but set autoload to no (recommended) or delete the rows when you no longer need them.', 'radius' ),
+			__( '%1$d of %2$d Magic Page option row(s) still use autoload=yes, so WordPress loads them on nearly every request. On Settings → Database, use Remove autoload per row, Unautoload all, or Delete when you no longer need the data.', 'radius' ),
 			$yes_n,
 			$total
 		);

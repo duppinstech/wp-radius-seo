@@ -32,6 +32,9 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_deploy_health_remediate', array( __CLASS__, 'deploy_health_remediate' ) );
 		add_action( 'wp_ajax_radius_deploy_reconnect', array( __CLASS__, 'deploy_reconnect' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
+		add_action( 'wp_ajax_radius_magic_page_option_unautoload', array( __CLASS__, 'magic_page_option_unautoload' ) );
+		add_action( 'wp_ajax_radius_magic_page_option_delete', array( __CLASS__, 'magic_page_option_delete' ) );
+		add_action( 'wp_ajax_radius_magic_page_options_bulk', array( __CLASS__, 'magic_page_options_bulk' ) );
 	}
 
 	/**
@@ -1249,5 +1252,107 @@ class Radius_Ajax {
 
 		$res = Radius_Deploy_Service::deduplicate_deployed( $post_type );
 		wp_send_json_success( $res );
+	}
+
+	/**
+	 * Set autoload=no on one Magic Page wp_options row (Settings → Database).
+	 *
+	 * @return void
+	 */
+	public static function magic_page_option_unautoload() {
+		check_ajax_referer( 'radius_magic_page_options', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$name = isset( $_POST['option_name'] ) ? sanitize_text_field( wp_unslash( $_POST['option_name'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $name === '' ) {
+			wp_send_json_error( array( 'message' => __( 'Missing option name.', 'radius' ) ), 400 );
+		}
+
+		$res = Radius_Legacy_Import_Service::unautoload_magic_page_option_by_name( $name );
+		if ( empty( $res['ok'] ) ) {
+			wp_send_json_error( array( 'message' => $res['message'] ), 400 );
+		}
+
+		wp_send_json_success(
+			array(
+				'message'         => $res['message'],
+				'autoload_label'  => $res['autoload_label'],
+				'autoload_tone'   => $res['autoload_tone'],
+			)
+		);
+	}
+
+	/**
+	 * Delete one Magic Page wp_options row (Settings → Database).
+	 *
+	 * @return void
+	 */
+	public static function magic_page_option_delete() {
+		check_ajax_referer( 'radius_magic_page_options', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$name = isset( $_POST['option_name'] ) ? sanitize_text_field( wp_unslash( $_POST['option_name'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $name === '' ) {
+			wp_send_json_error( array( 'message' => __( 'Missing option name.', 'radius' ) ), 400 );
+		}
+
+		$res = Radius_Legacy_Import_Service::delete_magic_page_option_by_name( $name );
+		if ( empty( $res['ok'] ) ) {
+			wp_send_json_error( array( 'message' => $res['message'] ), 400 );
+		}
+
+		wp_send_json_success( array( 'message' => $res['message'] ) );
+	}
+
+	/**
+	 * Bulk unautoload or delete Magic Page wp_options rows (Settings → Database).
+	 *
+	 * @return void
+	 */
+	public static function magic_page_options_bulk() {
+		check_ajax_referer( 'radius_magic_page_options', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$mode = isset( $_POST['bulk_mode'] ) ? sanitize_key( wp_unslash( $_POST['bulk_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$raw  = isset( $_POST['option_names'] ) ? wp_unslash( $_POST['option_names'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( is_string( $raw ) ) {
+			$decoded = json_decode( $raw, true );
+			$names   = is_array( $decoded ) ? $decoded : array();
+		} elseif ( is_array( $raw ) ) {
+			$names = $raw;
+		} else {
+			$names = array();
+		}
+
+		if ( empty( $names ) ) {
+			wp_send_json_error( array( 'message' => __( 'No options selected.', 'radius' ) ), 400 );
+		}
+
+		$res = Radius_Legacy_Import_Service::bulk_magic_page_options_action( $names, $mode );
+		if ( $res['ok_count'] <= 0 && ! empty( $res['errors'] ) ) {
+			wp_send_json_error(
+				array(
+					'message' => implode( ' ', array_slice( $res['errors'], 0, 3 ) ),
+				),
+				400
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'ok_count' => (int) $res['ok_count'],
+				'errors'   => $res['errors'],
+				'mode'     => $mode,
+			)
+		);
 	}
 }

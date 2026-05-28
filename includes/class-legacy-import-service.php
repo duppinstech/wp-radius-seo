@@ -1789,6 +1789,377 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
+	 * Whether an option name matches Magic Page cleanup patterns.
+	 *
+	 * @param string $option_name Option name.
+	 * @return bool
+	 */
+	public static function is_magic_page_option_name( $option_name ) {
+		$option_name = (string) $option_name;
+		if ( $option_name === '' ) {
+			return false;
+		}
+		return in_array( $option_name, self::list_magic_page_legacy_option_names(), true );
+	}
+
+	/**
+	 * Magic Page wp_options rows for the Database settings table.
+	 *
+	 * @return array<int,array{option_name:string,autoload:string,autoload_label:string,autoload_tone:string,size_bytes:int,preserved:bool}>
+	 */
+	public static function get_magic_page_options_rows() {
+		global $wpdb;
+
+		$patterns = self::magic_page_option_name_like_patterns();
+		$rows_out = array();
+		if ( empty( $patterns ) ) {
+			return $rows_out;
+		}
+
+		$holders = implode( ' OR ', array_fill( 0, count( $patterns ), 'option_name LIKE %s' ) );
+		$sql     = "SELECT option_name, autoload,
+			CHAR_LENGTH(option_name) + CHAR_LENGTH(IFNULL(option_value, '')) AS size_bytes
+			FROM {$wpdb->options} WHERE {$holders} ORDER BY option_name ASC";
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$db_rows = $wpdb->get_results( $wpdb->prepare( $sql, $patterns ), ARRAY_A );
+		if ( ! is_array( $db_rows ) ) {
+			return $rows_out;
+		}
+
+		foreach ( $db_rows as $row ) {
+			$name = isset( $row['option_name'] ) ? (string) $row['option_name'] : '';
+			if ( $name === '' ) {
+				continue;
+			}
+			$meta = self::autoload_display_meta( isset( $row['autoload'] ) ? (string) $row['autoload'] : '' );
+			$rows_out[] = array(
+				'option_name'    => $name,
+				'autoload'       => $meta['raw'],
+				'autoload_label' => $meta['label'],
+				'autoload_tone'  => $meta['tone'],
+				'size_bytes'     => isset( $row['size_bytes'] ) ? (int) $row['size_bytes'] : 0,
+				'preserved'      => self::is_magic_page_option_preserved_for_safe_disarm( $name ),
+			);
+		}
+
+		return $rows_out;
+	}
+
+	/**
+	 * Exact wp_options names kept by safe disarm (disarmed, not deleted).
+	 *
+	 * @return string[]
+	 */
+	public static function magic_page_safe_disarm_preserve_exact_names() {
+		$names = apply_filters(
+			'radius_magic_page_safe_disarm_preserve_option_names',
+			array(
+				'_magic_page_xfields',
+				'_magic_page_spintax_expressions',
+				'_magic_page_groups',
+			)
+		);
+		if ( ! is_array( $names ) ) {
+			$names = array();
+		}
+		$xfield_opts = apply_filters(
+			'radius_magic_page_xfields_option_names',
+			array( '_magic_page_xfields' )
+		);
+		if ( is_array( $xfield_opts ) ) {
+			$names = array_merge( $names, $xfield_opts );
+		}
+		$out = array();
+		foreach ( $names as $n ) {
+			$n = (string) $n;
+			if ( $n !== '' ) {
+				$out[] = $n;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Option name prefixes kept by safe disarm (e.g. `_group_meta_fields_towing`).
+	 *
+	 * @return string[]
+	 */
+	public static function magic_page_safe_disarm_preserve_prefixes() {
+		$prefixes = apply_filters(
+			'radius_magic_page_safe_disarm_preserve_option_prefixes',
+			array( self::GROUP_META_FIELDS_OPTION_PREFIX )
+		);
+		if ( ! is_array( $prefixes ) ) {
+			$prefixes = array( self::GROUP_META_FIELDS_OPTION_PREFIX );
+		}
+		$out = array();
+		foreach ( $prefixes as $p ) {
+			$p = (string) $p;
+			if ( $p !== '' ) {
+				$out[] = $p;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Whether a Magic Page option is kept (disarmed) during safe removal.
+	 *
+	 * @param string $option_name Option name.
+	 * @return bool
+	 */
+	public static function is_magic_page_option_preserved_for_safe_disarm( $option_name ) {
+		$option_name = (string) $option_name;
+		if ( $option_name === '' || ! self::is_magic_page_option_name( $option_name ) ) {
+			return false;
+		}
+		if ( in_array( $option_name, self::magic_page_safe_disarm_preserve_exact_names(), true ) ) {
+			return true;
+		}
+		foreach ( self::magic_page_safe_disarm_preserve_prefixes() as $prefix ) {
+			if ( $prefix !== '' && 0 === strpos( $option_name, $prefix ) ) {
+				return true;
+			}
+		}
+		return (bool) apply_filters( 'radius_magic_page_safe_disarm_preserve_option', false, $option_name );
+	}
+
+	/**
+	 * Preview safe disarm: preserve + unautoload core rows, delete the rest.
+	 *
+	 * @return array{
+	 *   preserve_count:int,
+	 *   disarm_count:int,
+	 *   delete_count:int,
+	 *   preserve_names:string[],
+	 *   delete_names:string[]
+	 * }
+	 */
+	public static function preview_safe_disarm_magic_page_options() {
+		$preserve_names = array();
+		$delete_names   = array();
+		$disarm_count   = 0;
+
+		foreach ( self::get_magic_page_options_rows() as $row ) {
+			$name = isset( $row['option_name'] ) ? (string) $row['option_name'] : '';
+			if ( $name === '' ) {
+				continue;
+			}
+			if ( ! empty( $row['preserved'] ) ) {
+				$preserve_names[] = $name;
+				$al               = isset( $row['autoload'] ) ? strtolower( (string) $row['autoload'] ) : '';
+				if ( 'no' !== $al && 'off' !== $al ) {
+					++$disarm_count;
+				}
+			} else {
+				$delete_names[] = $name;
+			}
+		}
+
+		return array(
+			'preserve_count' => count( $preserve_names ),
+			'disarm_count'   => $disarm_count,
+			'delete_count'   => count( $delete_names ),
+			'preserve_names' => $preserve_names,
+			'delete_names'   => $delete_names,
+		);
+	}
+
+	/**
+	 * Safe disarm: unautoload preserved Magic Page options; delete everything else in scope.
+	 *
+	 * @return array{disarmed:int,deleted:int,preserve_count:int}
+	 */
+	public static function safe_disarm_magic_page_options() {
+		$preview        = self::preview_safe_disarm_magic_page_options();
+		$disarmed       = 0;
+		$deleted        = 0;
+		$preserve_set   = array_flip( $preview['preserve_names'] );
+
+		foreach ( self::get_magic_page_options_rows() as $row ) {
+			$name = isset( $row['option_name'] ) ? (string) $row['option_name'] : '';
+			if ( $name === '' ) {
+				continue;
+			}
+			if ( isset( $preserve_set[ $name ] ) ) {
+				$al = isset( $row['autoload'] ) ? strtolower( (string) $row['autoload'] ) : '';
+				if ( 'no' !== $al && 'off' !== $al && self::set_option_autoload_flag( $name, 'no' ) ) {
+					++$disarmed;
+				}
+				continue;
+			}
+			delete_option( $name );
+			++$deleted;
+		}
+
+		wp_cache_delete( 'alloptions', 'options' );
+		self::bust_magic_page_footprint_cache();
+
+		return array(
+			'disarmed'       => $disarmed,
+			'deleted'        => $deleted,
+			'preserve_count' => (int) $preview['preserve_count'],
+		);
+	}
+
+	/**
+	 * Bulk unautoload or delete validated Magic Page option names.
+	 *
+	 * @param string[] $option_names Option names.
+	 * @param string   $mode         unautoload|delete.
+	 * @return array{ok_count:int,errors:string[]}
+	 */
+	public static function bulk_magic_page_options_action( array $option_names, $mode ) {
+		$mode = sanitize_key( (string) $mode );
+		if ( ! in_array( $mode, array( 'unautoload', 'delete' ), true ) ) {
+			return array(
+				'ok_count' => 0,
+				'errors'   => array( __( 'Invalid bulk action.', 'radius' ) ),
+			);
+		}
+
+		$ok_count = 0;
+		$errors   = array();
+		foreach ( $option_names as $name ) {
+			$name = sanitize_text_field( (string) $name );
+			if ( $name === '' ) {
+				continue;
+			}
+			if ( 'delete' === $mode ) {
+				$res = self::delete_magic_page_option_by_name( $name );
+			} else {
+				$res = self::unautoload_magic_page_option_by_name( $name );
+			}
+			if ( ! empty( $res['ok'] ) ) {
+				++$ok_count;
+			} elseif ( ! empty( $res['message'] ) ) {
+				$errors[] = $name . ': ' . $res['message'];
+			}
+		}
+
+		return array(
+			'ok_count' => $ok_count,
+			'errors'   => $errors,
+		);
+	}
+
+	/**
+	 * UI label and tone for an autoload column value.
+	 *
+	 * @param string $autoload Raw autoload value.
+	 * @return array{raw:string,label:string,tone:string}
+	 */
+	private static function autoload_display_meta( $autoload ) {
+		$al = strtolower( trim( (string) $autoload ) );
+		if ( 'yes' === $al || 'on' === $al ) {
+			return array(
+				'raw'   => $al,
+				'label' => 'yes',
+				'tone'  => 'danger',
+			);
+		}
+		if ( 'auto' === $al ) {
+			return array(
+				'raw'   => 'auto',
+				'label' => 'auto',
+				'tone'  => 'warn',
+			);
+		}
+		if ( 'no' === $al || 'off' === $al ) {
+			return array(
+				'raw'   => 'no',
+				'label' => 'no',
+				'tone'  => 'success',
+			);
+		}
+		return array(
+			'raw'   => $al,
+			'label' => $al !== '' ? $al : '—',
+			'tone'  => 'neutral',
+		);
+	}
+
+	/**
+	 * Set one Magic Page option autoload to no (keeps option_value).
+	 *
+	 * @param string $option_name Option name.
+	 * @return array{ok:bool,autoload_label:string,autoload_tone:string,message:string}
+	 */
+	public static function unautoload_magic_page_option_by_name( $option_name ) {
+		$option_name = (string) $option_name;
+		if ( ! self::is_magic_page_option_name( $option_name ) ) {
+			return array(
+				'ok'              => false,
+				'autoload_label'  => '',
+				'autoload_tone'   => '',
+				'message'         => __( 'Not a Magic Page option row.', 'radius' ),
+			);
+		}
+		if ( self::set_option_autoload_flag( $option_name, 'no' ) ) {
+			wp_cache_delete( 'alloptions', 'options' );
+			self::bust_magic_page_footprint_cache();
+		}
+		$meta = self::autoload_display_meta( 'no' );
+		return array(
+			'ok'             => true,
+			'autoload_label' => $meta['label'],
+			'autoload_tone'  => $meta['tone'],
+			'message'        => __( 'Autoload set to no. Data is still stored.', 'radius' ),
+		);
+	}
+
+	/**
+	 * Delete one Magic Page option row.
+	 *
+	 * @param string $option_name Option name.
+	 * @return array{ok:bool,message:string}
+	 */
+	public static function delete_magic_page_option_by_name( $option_name ) {
+		$option_name = (string) $option_name;
+		if ( ! self::is_magic_page_option_name( $option_name ) ) {
+			return array(
+				'ok'      => false,
+				'message' => __( 'Not a Magic Page option row.', 'radius' ),
+			);
+		}
+		delete_option( $option_name );
+		wp_cache_delete( 'alloptions', 'options' );
+		self::bust_magic_page_footprint_cache();
+		return array(
+			'ok'      => true,
+			'message' => __( 'Option deleted.', 'radius' ),
+		);
+	}
+
+	/**
+	 * Set autoload=no on every Magic Page option that is currently yes or auto.
+	 *
+	 * @return array{updated:int,unchanged:int}
+	 */
+	public static function unautoload_all_magic_page_options() {
+		$updated   = 0;
+		$unchanged = 0;
+		foreach ( self::get_magic_page_options_rows() as $row ) {
+			$al = isset( $row['autoload'] ) ? strtolower( (string) $row['autoload'] ) : '';
+			if ( 'no' === $al || 'off' === $al ) {
+				++$unchanged;
+				continue;
+			}
+			if ( self::set_option_autoload_flag( $row['option_name'], 'no' ) ) {
+				++$updated;
+			} else {
+				++$unchanged;
+			}
+		}
+		wp_cache_delete( 'alloptions', 'options' );
+		self::bust_magic_page_footprint_cache();
+		return array(
+			'updated'   => $updated,
+			'unchanged' => $unchanged,
+		);
+	}
+
+	/**
 	 * Set autoload on Magic Page option rows without deleting values (preserves data for later).
 	 *
 	 * @param string $target_autoload WordPress autoload value: no or auto.
