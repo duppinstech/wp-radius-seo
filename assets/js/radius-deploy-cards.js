@@ -455,11 +455,268 @@
 		} );
 	}
 
+	function initReconnectForms() {
+		var cfg = typeof window.radiusDeployReconnect !== 'undefined' ? window.radiusDeployReconnect : null;
+		if ( ! cfg || ! cfg.ajaxurl ) {
+			return;
+		}
+
+		var interDelay = parseInt( cfg.interBatchDelayMs, 10 ) || 0;
+
+		function statusElFor( postType ) {
+			return document.getElementById( 'radius-reconnect-status-' + postType );
+		}
+
+		function setStatus( postType, text, show ) {
+			var el = statusElFor( postType );
+			if ( ! el ) {
+				return;
+			}
+			if ( show ) {
+				el.removeAttribute( 'hidden' );
+				el.textContent = text;
+			} else {
+				el.setAttribute( 'hidden', 'hidden' );
+				el.textContent = '';
+			}
+		}
+
+		function progressText( done, total ) {
+			var tpl = cfg.i18n.progressTpl || 'Processed {done} of {total}…';
+			return tpl.replace( '{done}', String( done ) ).replace( '{total}', String( total ) );
+		}
+
+		function setPanelBusy( panel, busy ) {
+			if ( ! panel ) {
+				return;
+			}
+			panel.querySelectorAll( 'input, select, button' ).forEach( function ( node ) {
+				node.disabled = !! busy;
+			} );
+		}
+
+		function delayPromise( ms ) {
+			return new Promise( function ( resolve ) {
+				window.setTimeout( resolve, ms );
+			} );
+		}
+
+		function postReconnect( params ) {
+			var body = new URLSearchParams();
+			body.set( 'action', 'radius_deploy_reconnect' );
+			body.set( 'nonce', cfg.nonce || '' );
+			body.set( 'post_type', params.postType );
+			body.set( 'page', String( params.page ) );
+			body.set( 'from', String( params.from ) );
+			if ( params.discard ) {
+				body.set( 'discard', '1' );
+			} else {
+				body.set( 'to', String( params.to ) );
+			}
+			return fetch( cfg.ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } ).then( function ( r ) {
+				return r.json();
+			} );
+		}
+
+		function runBatchedOp( params ) {
+			var totals = params.totals;
+			var page = params.page || 1;
+
+			return postReconnect( params )
+				.then( function ( json ) {
+					if ( ! json || ! json.success ) {
+						var msg =
+							json && json.data && json.data.message
+								? json.data.message
+								: cfg.i18n.errorPrefix + ' ' + ( cfg.i18n.networkError || 'Request failed.' );
+						throw new Error( msg );
+					}
+					var d = json.data || {};
+					if ( ! totals.total && d.total ) {
+						totals.total = d.total;
+					}
+					if ( params.discard ) {
+						totals.done += d.trashed || 0;
+						totals.skipped += d.skipped || 0;
+					} else {
+						totals.done += ( d.relinked || 0 ) + ( d.skipped || 0 );
+						totals.relinked += d.relinked || 0;
+						totals.duplicates_trashed += d.duplicates_trashed || 0;
+						totals.skipped += d.skipped || 0;
+					}
+					var total = totals.total || totals.done;
+					setStatus( params.postType, progressText( totals.done, total ), true );
+					if ( d.done ) {
+						return totals;
+					}
+					var next = Object.assign( {}, params, { page: page + 1, totals: totals } );
+					var chain = Promise.resolve( totals );
+					if ( interDelay > 0 ) {
+						chain = delayPromise( interDelay );
+					}
+					return chain.then( function () {
+						return runBatchedOp( next );
+					} );
+				} );
+		}
+
+		function finishRedirect( postType, message ) {
+			var tab = postType === 'radius_service_area' ? 'service-areas' : 'landings';
+			var base = cfg.deployPageUrl || window.location.pathname + window.location.search;
+			var join = base.indexOf( '?' ) >= 0 ? '&' : '?';
+			window.location.href =
+				base + join + 'tab=' + encodeURIComponent( tab ) + '&radius_notice=' + encodeURIComponent( message );
+		}
+
+		function runReconnect( from, to, postType ) {
+			setStatus( postType, cfg.i18n.reconnecting || cfg.i18n.working || 'Working…', true );
+			return runBatchedOp( {
+				from: from,
+				to: to,
+				postType: postType,
+				page: 1,
+				discard: false,
+				totals: { done: 0, total: 0, relinked: 0, duplicates_trashed: 0, skipped: 0 },
+			} );
+		}
+
+		function runDiscard( from, postType ) {
+			setStatus( postType, cfg.i18n.deleting || cfg.i18n.working || 'Working…', true );
+			return runBatchedOp( {
+				from: from,
+				to: 0,
+				postType: postType,
+				page: 1,
+				discard: true,
+				totals: { done: 0, total: 0, trashed: 0, skipped: 0 },
+			} );
+		}
+
+		document.querySelectorAll( 'form[data-radius-reconnect-form="1"]' ).forEach( function ( form ) {
+			form.addEventListener( 'submit', function ( e ) {
+				e.preventDefault();
+				var panel = form.closest( '[data-radius-reconnect-post-type]' );
+				var postType = panel ? panel.getAttribute( 'data-radius-reconnect-post-type' ) : 'radius_landing';
+				var fromInput = form.querySelector( 'input[name="radius_reconnect_from"]' );
+				var toSelect = form.querySelector( 'select[name="radius_reconnect_to"]' );
+				var from = fromInput ? parseInt( fromInput.value, 10 ) : 0;
+				var to = toSelect ? parseInt( toSelect.value, 10 ) : 0;
+				if ( ! to ) {
+					window.alert( cfg.i18n.pickTemplate || 'Choose a target template.' );
+					return;
+				}
+				setPanelBusy( panel, true );
+				runReconnect( from, to, postType )
+					.then( function ( totals ) {
+						var msg = ( cfg.i18n.doneTpl || 'Done.' )
+							.replace( '{n}', String( totals.relinked ) )
+							.replace( '{t}', String( totals.duplicates_trashed ) );
+						finishRedirect( postType, msg );
+					} )
+					.catch( function ( err ) {
+						setPanelBusy( panel, false );
+						setStatus( postType, '', false );
+						window.alert( err && err.message ? err.message : cfg.i18n.networkError );
+					} );
+			} );
+		} );
+
+		document.querySelectorAll( '.radius-deploy-reconnect__discard' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', function () {
+				var panel = btn.closest( '[data-radius-reconnect-post-type]' );
+				var postType = panel ? panel.getAttribute( 'data-radius-reconnect-post-type' ) : 'radius_landing';
+				var from = parseInt( btn.getAttribute( 'data-from' ) || '0', 10 );
+				var count = parseInt( btn.getAttribute( 'data-count' ) || '0', 10 );
+				var label = btn.getAttribute( 'data-label' ) || '';
+				var confirmTpl = cfg.i18n.discardConfirm || 'Delete {n} pages?';
+				if ( ! window.confirm( confirmTpl.replace( '{n}', String( count ) ).replace( '{label}', label ) ) ) {
+					return;
+				}
+				setPanelBusy( panel, true );
+				runDiscard( from, postType )
+					.then( function ( totals ) {
+						var n = totals.done || totals.trashed || 0;
+						var msg = ( cfg.i18n.discardDoneTpl || 'Done.' ).replace( '{n}', String( n ) );
+						finishRedirect( postType, msg );
+					} )
+					.catch( function ( err ) {
+						setPanelBusy( panel, false );
+						setStatus( postType, '', false );
+						window.alert( err && err.message ? err.message : cfg.i18n.networkError );
+					} );
+			} );
+		} );
+
+		document.querySelectorAll( 'form[data-radius-reconnect-bulk="1"]' ).forEach( function ( form ) {
+			form.addEventListener( 'submit', function ( e ) {
+				e.preventDefault();
+				var panel = form.closest( '[data-radius-reconnect-post-type]' );
+				var postType = panel ? panel.getAttribute( 'data-radius-reconnect-post-type' ) : 'radius_landing';
+				setPanelBusy( panel, true );
+				setStatus( postType, cfg.i18n.reconnecting || cfg.i18n.working || 'Working…', true );
+
+				var body = new URLSearchParams();
+				body.set( 'action', 'radius_deploy_reconnect' );
+				body.set( 'nonce', cfg.nonce || '' );
+				body.set( 'post_type', postType );
+				body.set( 'plan_suggested', '1' );
+
+				fetch( cfg.ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } )
+					.then( function ( r ) {
+						return r.json();
+					} )
+					.then( function ( json ) {
+						if ( ! json || ! json.success ) {
+							throw new Error(
+								json && json.data && json.data.message
+									? json.data.message
+									: cfg.i18n.errorPrefix + ' ' + ( cfg.i18n.networkError || '' )
+							);
+						}
+						var pairs = ( json.data && json.data.pairs ) || [];
+						if ( ! pairs.length ) {
+							throw new Error( cfg.i18n.noSuggested || 'No suggested matches.' );
+						}
+						var chain = Promise.resolve( {
+							relinked: 0,
+							duplicates_trashed: 0,
+							skipped: 0,
+							groups: 0,
+						} );
+						pairs.forEach( function ( pair ) {
+							chain = chain.then( function ( acc ) {
+								return runReconnect( pair.from, pair.to, postType ).then( function ( totals ) {
+									acc.relinked += totals.relinked;
+									acc.duplicates_trashed += totals.duplicates_trashed;
+									acc.skipped += totals.skipped;
+									acc.groups += 1;
+									return acc;
+								} );
+							} );
+						} );
+						return chain;
+					} )
+					.then( function ( acc ) {
+						var msg = ( cfg.i18n.bulkDoneTpl || 'Done.' )
+							.replace( '{n}', String( acc.relinked ) )
+							.replace( '{g}', String( acc.groups ) );
+						finishRedirect( postType, msg );
+					} )
+					.catch( function ( err ) {
+						setPanelBusy( panel, false );
+						setStatus( postType, '', false );
+						window.alert( err && err.message ? err.message : cfg.i18n.networkError );
+					} );
+			} );
+		} );
+	}
+
 	document.addEventListener( 'DOMContentLoaded', function () {
 		initDeployHelpModal();
 		initMigrationRerunButton();
 		initDedupeLandingsButton();
 		initChainedDeploy();
+		initReconnectForms();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {
 			if ( form.getAttribute( 'data-radius-chained-deploy' ) === '1' ) {

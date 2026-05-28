@@ -30,6 +30,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
 		add_action( 'wp_ajax_radius_deploy_health_check', array( __CLASS__, 'deploy_health_check' ) );
 		add_action( 'wp_ajax_radius_deploy_health_remediate', array( __CLASS__, 'deploy_health_remediate' ) );
+		add_action( 'wp_ajax_radius_deploy_reconnect', array( __CLASS__, 'deploy_reconnect' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
 	}
 
@@ -1146,6 +1147,83 @@ class Radius_Ajax {
 			$redirects,
 			$index_url
 		);
+	}
+
+	/**
+	 * Re-link orphaned deployed pages to a current template (batched).
+	 *
+	 * @return void
+	 */
+	public static function deploy_reconnect() {
+		check_ajax_referer( 'radius_deploy_reconnect', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 120 );
+		}
+
+		$post_type = isset( $_POST['post_type'] ) ? sanitize_key( wp_unslash( $_POST['post_type'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$post_type = 'radius_landing';
+		}
+
+		if ( ! empty( $_POST['plan_suggested'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$report = Radius_Deploy_Reconnect::get_report( $post_type );
+			$pairs  = array();
+			foreach ( $report['clusters'] as $cluster ) {
+				$from = (int) $cluster['from_template_id'];
+				$to   = (int) $cluster['suggested_template_id'];
+				if ( $from <= 0 || $to <= 0 ) {
+					continue;
+				}
+				$pairs[] = array(
+					'from' => $from,
+					'to'   => $to,
+				);
+			}
+			wp_send_json_success(
+				array(
+					'pairs' => $pairs,
+				)
+			);
+		}
+
+		$from     = isset( $_POST['from'] ) ? absint( $_POST['from'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$to       = isset( $_POST['to'] ) ? absint( $_POST['to'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$page     = isset( $_POST['page'] ) ? max( 1, absint( $_POST['page'] ) ) : 1; // phpcs:ignore WordPress.Security.NonceVerification
+		$discard  = ! empty( $_POST['discard'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$per_page = Radius_Deploy_Reconnect::get_batch_size();
+
+		if ( $discard ) {
+			$batch = Radius_Deploy_Reconnect::discard_cluster_batch( $from, $post_type, $page, $per_page );
+			if ( ! empty( $batch['errors'] ) ) {
+				wp_send_json_error(
+					array(
+						'message' => implode( ' ', array_unique( array_map( 'strval', $batch['errors'] ) ) ),
+					)
+				);
+			}
+			wp_send_json_success( $batch );
+		}
+
+		$batch = Radius_Deploy_Reconnect::reconnect_batch( $from, $to, $post_type, $page, $per_page );
+		if ( ! empty( $batch['errors'] ) ) {
+			wp_send_json_error(
+				array(
+					'message' => implode( ' ', array_unique( array_map( 'strval', $batch['errors'] ) ) ),
+				)
+			);
+		}
+
+		wp_send_json_success( $batch );
 	}
 
 	public static function dedupe_landings() {

@@ -45,6 +45,7 @@ final class Radius_Deploy_Health_Check {
 		$checks[] = self::check_landings_without_service_area( $scope, $deployed_sa, $deployed_landings );
 		$checks[] = self::check_magic_page_landings_remain();
 		$checks[] = self::check_magic_page_plugin_uninstalled();
+		$checks[] = self::check_magic_page_options_autoload();
 		$checks[] = self::check_deployed_url_redirect_conflicts();
 		$checks[] = self::check_duplicate_deploy_pages();
 		$checks[] = self::check_orphan_deploy_meta();
@@ -1246,6 +1247,86 @@ final class Radius_Deploy_Health_Check {
 	/**
 	 * @return array<string,mixed>
 	 */
+	/**
+	 * Magic Page wp_options still set to autoload=yes slow every page load even when the plugin is off.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function check_magic_page_options_autoload() {
+		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
+			return self::make_check(
+				'magic_page_options_autoload',
+				__( 'Magic Page options autoload', 'radius' ),
+				'skip',
+				__( 'Legacy import service not available.', 'radius' )
+			);
+		}
+
+		$stats = Radius_Legacy_Import_Service::get_magic_page_options_autoload_status();
+		$total = (int) $stats['total'];
+		$yes_n = (int) $stats['autoload_yes'];
+
+		if ( $total <= 0 ) {
+			return self::make_check(
+				'magic_page_options_autoload',
+				__( 'Magic Page options autoload', 'radius' ),
+				'pass',
+				__( 'No Magic Page–matching rows in wp_options.', 'radius' )
+			);
+		}
+
+		if ( $yes_n <= 0 ) {
+			return self::make_check(
+				'magic_page_options_autoload',
+				__( 'Magic Page options autoload', 'radius' ),
+				'pass',
+				sprintf(
+					/* translators: %d: option row count */
+					__( '%d Magic Page option row(s) present; none use autoload=yes.', 'radius' ),
+					$total
+				),
+				'',
+				array(
+					'autoload_auto' => (int) $stats['autoload_auto'],
+					'autoload_no'   => (int) $stats['autoload_no'],
+				)
+			);
+		}
+
+		$detail = sprintf(
+			/* translators: 1: autoload=yes count, 2: total option rows */
+			__( '%1$d of %2$d Magic Page option row(s) still use autoload=yes, so WordPress loads them on nearly every request. Preserve the data but set autoload to no (recommended) or delete the rows when you no longer need them.', 'radius' ),
+			$yes_n,
+			$total
+		);
+
+		$samples = isset( $stats['sample_yes_names'] ) && is_array( $stats['sample_yes_names'] ) ? $stats['sample_yes_names'] : array();
+
+		return self::make_check(
+			'magic_page_options_autoload',
+			__( 'Magic Page options autoload', 'radius' ),
+			'warn',
+			sprintf(
+				/* translators: %d: autoload=yes count */
+				_n(
+					'%d Magic Page option still autoloads on every page view.',
+					'%d Magic Page options still autoload on every page view.',
+					$yes_n,
+					'radius'
+				),
+				$yes_n
+			),
+			$detail,
+			array(
+				'fix_url'          => admin_url( 'admin.php?page=radius-settings&tab=database#radius-magic-page-cleanup' ),
+				'autoload_yes'     => $yes_n,
+				'autoload_auto'    => (int) $stats['autoload_auto'],
+				'autoload_no'      => (int) $stats['autoload_no'],
+				'sample_option_names' => $samples,
+			)
+		);
+	}
+
 	private static function check_magic_page_plugin_uninstalled() {
 		if ( ! class_exists( 'Radius_Legacy_Import_Service' ) ) {
 			return self::make_check(

@@ -3,7 +3,7 @@
  * Plugin Name:       Radius SEO
  * Plugin URI:        https://github.com/oduppinsjr/wp-radius-seo
  * Description:       Blueprint-first local landing page generator — multi-template deploy, efficient place library, tokens & spintax, CSV import, optional Elementor.
- * Version:           1.6.87
+ * Version:           1.6.94
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://github.com/oduppinsjr/wp-radius-seo
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'RADIUS_FILE', __FILE__ );
-define( 'RADIUS_VERSION', '1.6.87' );
+define( 'RADIUS_VERSION', '1.6.94' );
 define( 'RADIUS_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RADIUS_URL', plugin_dir_url( __FILE__ ) );
 
@@ -40,6 +40,7 @@ require_once RADIUS_PATH . 'includes/class-template-tokens.php';
 require_once RADIUS_PATH . 'includes/class-geo-service.php';
 require_once RADIUS_PATH . 'includes/class-render-context.php';
 require_once RADIUS_PATH . 'includes/class-deploy-service.php';
+require_once RADIUS_PATH . 'includes/class-deploy-reconnect.php';
 require_once RADIUS_PATH . 'includes/class-deploy-health-check.php';
 require_once RADIUS_PATH . 'includes/class-health-url-conflicts.php';
 require_once RADIUS_PATH . 'includes/class-deploy-health-cron.php';
@@ -76,6 +77,7 @@ function radius_boot() {
 	Radius_Redirect_Service::init();
 	Radius_API_License::init();
 	Radius_GitHub_Updater::init();
+	Radius_Form_Handlers::init();
 	Radius_Plugin::instance();
 }
 

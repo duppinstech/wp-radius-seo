@@ -209,6 +209,16 @@
 					(c.conflict_count > c.conflict_paths.length ? ' …' : '') +
 					'</p>';
 			}
+			if (c.sample_option_names && c.sample_option_names.length) {
+				html +=
+					'<p class="description"><strong>' +
+					esc(i18n.sampleOptions || 'Sample autoload=yes options') +
+					':</strong> <code>' +
+					esc(c.sample_option_names.join('</code>, <code>')) +
+					'</code>' +
+					(c.autoload_yes > c.sample_option_names.length ? ' …' : '') +
+					'</p>';
+			}
 			html += renderRemediationButton(c, i18n);
 			if (c.fix_url) {
 				html +=

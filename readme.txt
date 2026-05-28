@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.87
+Stable tag: 1.6.94
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,29 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.94 =
+* **New:** Deploy → **Reconnect deployed pages** (reassign or delete orphaned landings/service areas) with batched processing using the Deploy batch size setting.
+* **New:** Settings → Database — **Preserve — disable autoload** now also includes Magic Page `_group_meta_fields_*` option bundles (so they no longer autoload).
+* **Fix:** Beaver Builder editor compatibility improvements for Radius CPTs.
+
+= 1.6.93 =
+* **New:** Settings → Database — **Preserve — disable autoload** keeps Magic Page wp_options data but sets autoload to `no` or `auto` (stops loading on every request). **Delete permanently** unchanged. Health check warns when Magic Page options still use autoload=yes with **Open fix** → Database tab.
+
+= 1.6.92 =
+* **Improvement:** Reconnect panel is hidden when every deployed page is already linked to a current template.
+
+= 1.6.91 =
+* **Improvement:** Reconnect and delete-orphan-cluster use **Deploy batch size** from Settings (same as deploy). Progress shows “Processed X of Y”. **Delete all** trashes every landing/hub in a group you do not want to reconnect.
+
+= 1.6.90 =
+* **Fix:** Reconnect uses admin-ajax batches (fixes white screen / HTTP 400 on admin-post.php) and registers form handlers earlier on `plugins_loaded`. PHP 7.4-safe string checks.
+
+= 1.6.89 =
+* **Improvement:** Reconnect panel shows sample deployed page titles, a “likely service” keyword from those titles, and smarter template suggestions when the old template was permanently deleted.
+
+= 1.6.88 =
+* **New:** Deploy → Landings and Service Areas tabs include **Reconnect deployed pages** — detects landings/hubs still linked to deleted or trashed templates, suggests a match by migration group slug, and updates `_radius_template_id` so redeploy with “Update existing” overwrites in place instead of duplicating.
 
 = 1.6.87 =
 * **Fix:** Yoast SEO title/description tokens use the actual Magic Page xfield keys on each template (`cargo-meta-title`, not `cargo-services-meta-title`). Template post titles and the migration summary list use the meta-title value (e.g. cargo keyword + `{{place_name}}`). Stops seeding duplicate wrong-prefixed xfields after import.

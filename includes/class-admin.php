@@ -34,7 +34,6 @@ class Radius_Admin {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
 		Radius_Admin_Maintenance::init();
-		Radius_Form_Handlers::init();
 		add_action( 'admin_init', array( 'Radius_Settings', 'register' ) );
 	}
 
@@ -583,6 +582,33 @@ class Radius_Admin {
 				),
 			)
 		);
+		$reconnect_batch = max( 1, min( 200, (int) Radius_Settings::get()['deploy_batch'] ) );
+		$inter_reconnect = (int) apply_filters( 'radius_deploy_auto_inter_batch_ms', 0 );
+		wp_localize_script(
+			'radius-deploy-cards',
+			'radiusDeployReconnect',
+			array(
+				'ajaxurl'             => admin_url( 'admin-ajax.php' ),
+				'nonce'               => wp_create_nonce( 'radius_deploy_reconnect' ),
+				'deployPageUrl'       => admin_url( 'admin.php?page=radius-deploy' ),
+				'batchSize'           => $reconnect_batch,
+				'interBatchDelayMs'   => max( 0, $inter_reconnect ),
+				'i18n'                => array(
+					'working'         => __( 'Working…', 'radius' ),
+					'reconnecting'    => __( 'Reconnecting pages…', 'radius' ),
+					'deleting'        => __( 'Deleting pages…', 'radius' ),
+					'progressTpl'     => __( 'Processed {done} of {total} in this group…', 'radius' ),
+					'doneTpl'         => __( 'Done. Reconnected {n} page(s), trashed {t} duplicate(s). Reloading…', 'radius' ),
+					'discardDoneTpl'  => __( 'Done. Deleted {n} page(s). Reloading…', 'radius' ),
+					'bulkDoneTpl'     => __( 'Done. Reconnected {n} page(s) across {g} group(s). Reloading…', 'radius' ),
+					'errorPrefix'     => __( 'Error:', 'radius' ),
+					'networkError'    => __( 'Network error. Please try again.', 'radius' ),
+					'pickTemplate'    => __( 'Choose a target template first.', 'radius' ),
+					'noSuggested'     => __( 'No suggested template matches to apply.', 'radius' ),
+					'discardConfirm'  => __( 'Permanently move {n} page(s) to the Trash for “{label}”? This cannot be undone from here.', 'radius' ),
+				),
+			)
+		);
 		wp_localize_script(
 			'radius-deploy-cards',
 			'radiusDeployMigration',
@@ -644,6 +670,7 @@ class Radius_Admin {
 						'deactivateMagicPageConfirm' => __( 'Deactivate the Magic Page plugin?', 'radius' ),
 						'deactivateMagicPageRunning' => __( 'Deactivating…', 'radius' ),
 						'conflictPaths' => __( 'Sample conflicting URL paths', 'radius' ),
+						'sampleOptions' => __( 'Sample autoload=yes options', 'radius' ),
 					),
 				)
 			);
@@ -1656,6 +1683,194 @@ class Radius_Admin {
 	}
 
 	/**
+	 * Orphaned deployed pages panel (reconnect to a new template after templates were recreated).
+	 *
+	 * @param string $post_type   radius_landing or radius_service_area.
+	 * @param string $action      admin-post.php URL.
+	 * @param int    $batch_size  Deploy batch size (Settings).
+	 * @return void
+	 */
+	private static function render_deploy_reconnect_panel( $post_type, $action, $batch_size = 25 ) {
+		if ( ! class_exists( 'Radius_Deploy_Reconnect' ) ) {
+			return;
+		}
+
+		$post_type = sanitize_key( (string) $post_type );
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			return;
+		}
+
+		$report   = Radius_Deploy_Reconnect::get_report( $post_type );
+		$clusters = isset( $report['clusters'] ) && is_array( $report['clusters'] ) ? $report['clusters'] : array();
+		$targets  = isset( $report['active_templates'] ) && is_array( $report['active_templates'] ) ? $report['active_templates'] : array();
+
+		$label = 'radius_service_area' === $post_type
+			? __( 'service area hub', 'radius' )
+			: __( 'landing', 'radius' );
+
+		if ( empty( $clusters ) ) {
+			return;
+		}
+
+		$suggested_ready = 0;
+		foreach ( $clusters as $cluster ) {
+			if ( ! empty( $cluster['suggested_template_id'] ) ) {
+				++$suggested_ready;
+			}
+		}
+		?>
+		<div class="radius-card radius-deploy-reconnect" id="<?php echo esc_attr( 'radius-deploy-reconnect-' . $post_type ); ?>" data-radius-reconnect-post-type="<?php echo esc_attr( $post_type ); ?>">
+			<h2><?php esc_html_e( 'Reconnect deployed pages', 'radius' ); ?></h2>
+			<p class="radius-deploy-reconnect__status description" id="<?php echo esc_attr( 'radius-reconnect-status-' . $post_type ); ?>" hidden aria-live="polite"></p>
+			<p class="description">
+				<?php
+				printf(
+					/* translators: 1: landing or service area hub, 2: batch size number */
+					esc_html__( 'If you deleted or recreated templates, existing %1$s pages may still point at the old template ID. Reconnect them to a new template, or delete the whole group if you no longer offer that service. Reconnect and delete run in batches of %2$d (same as Deploy batch size under Settings).', 'radius' ),
+					esc_html( $label ),
+					(int) $batch_size
+				);
+				?>
+			</p>
+				<table class="widefat striped radius-deploy-reconnect__table">
+					<thead>
+						<tr>
+							<th scope="col"><?php esc_html_e( 'Currently linked to', 'radius' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Pages', 'radius' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Sample page titles', 'radius' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Reconnect to template', 'radius' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $clusters as $cluster ) : ?>
+							<?php
+							$from_tid      = (int) $cluster['from_template_id'];
+							$suggest       = (int) $cluster['suggested_template_id'];
+							$sample_pages  = isset( $cluster['sample_pages'] ) && is_array( $cluster['sample_pages'] ) ? $cluster['sample_pages'] : array();
+							$identity_hint = isset( $cluster['identity_hint'] ) ? trim( (string) $cluster['identity_hint'] ) : '';
+							?>
+							<tr>
+								<td>
+									<strong><?php echo esc_html( (string) $cluster['from_label'] ); ?></strong>
+									<?php if ( $identity_hint !== '' ) : ?>
+										<p class="description radius-deploy-reconnect__hint">
+											<?php
+											printf(
+												/* translators: %s: inferred keyword or template title */
+												esc_html__( 'Likely service: %s', 'radius' ),
+												esc_html( $identity_hint )
+											);
+											?>
+										</p>
+									<?php endif; ?>
+									<?php if ( ! empty( $cluster['group_slug'] ) ) : ?>
+										<br /><code class="radius-deploy-reconnect__slug"><?php echo esc_html( (string) $cluster['group_slug'] ); ?></code>
+									<?php endif; ?>
+									<?php if ( $suggest > 0 && ! empty( $cluster['suggested_label'] ) ) : ?>
+										<p class="description">
+											<?php
+											printf(
+												/* translators: %s: suggested template title */
+												esc_html__( 'Suggested match: %s', 'radius' ),
+												esc_html( (string) $cluster['suggested_label'] )
+											);
+											?>
+										</p>
+									<?php endif; ?>
+								</td>
+								<td><?php echo esc_html( (string) (int) $cluster['count'] ); ?></td>
+								<td class="radius-deploy-reconnect__samples">
+									<?php if ( ! empty( $sample_pages ) ) : ?>
+										<ul class="radius-deploy-reconnect__sample-list">
+											<?php foreach ( $sample_pages as $sample ) : ?>
+												<li>
+													<?php echo esc_html( (string) $sample['title'] ); ?>
+													<?php if ( ! empty( $sample['place_name'] ) ) : ?>
+														<span class="description">— <?php echo esc_html( (string) $sample['place_name'] ); ?></span>
+													<?php endif; ?>
+												</li>
+											<?php endforeach; ?>
+										</ul>
+										<?php if ( (int) $cluster['count'] > count( $sample_pages ) ) : ?>
+											<p class="description">
+												<?php
+												printf(
+													/* translators: %d: additional pages not listed */
+													esc_html__( '…and %d more', 'radius' ),
+													(int) $cluster['count'] - count( $sample_pages )
+												);
+												?>
+											</p>
+										<?php endif; ?>
+									<?php else : ?>
+										<span class="description">—</span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-reconnect__form" data-radius-reconnect-form="1">
+										<input type="hidden" name="action" value="radius_deploy_reconnect" />
+										<input type="hidden" name="radius_deploy_target" value="<?php echo esc_attr( $post_type ); ?>" />
+										<input type="hidden" name="radius_reconnect_from" value="<?php echo esc_attr( (string) $from_tid ); ?>" />
+										<?php wp_nonce_field( 'radius_deploy_reconnect', 'radius_deploy_reconnect_nonce' ); ?>
+										<label class="screen-reader-text" for="<?php echo esc_attr( 'radius-reconnect-to-' . $post_type . '-' . (string) $from_tid ); ?>">
+											<?php esc_html_e( 'Target template', 'radius' ); ?>
+										</label>
+										<select name="radius_reconnect_to" id="<?php echo esc_attr( 'radius-reconnect-to-' . $post_type . '-' . (string) $from_tid ); ?>" class="radius-deploy-reconnect__select" required>
+											<option value=""><?php esc_html_e( '— Select template —', 'radius' ); ?></option>
+											<?php foreach ( $targets as $row ) : ?>
+												<option value="<?php echo esc_attr( (string) (int) $row['id'] ); ?>"<?php selected( $suggest, (int) $row['id'] ); ?>>
+													<?php
+													echo esc_html( (string) $row['title'] );
+													if ( ! empty( $row['group_slug'] ) ) {
+														echo ' (' . esc_html( (string) $row['group_slug'] ) . ')';
+													}
+													?>
+												</option>
+											<?php endforeach; ?>
+										</select>
+										<div class="radius-deploy-reconnect__actions">
+											<?php submit_button( __( 'Reconnect', 'radius' ), 'secondary', 'submit', false ); ?>
+											<button
+												type="button"
+												class="button button-link-delete radius-deploy-reconnect__discard"
+												data-from="<?php echo esc_attr( (string) $from_tid ); ?>"
+												data-count="<?php echo esc_attr( (string) (int) $cluster['count'] ); ?>"
+												data-label="<?php echo esc_attr( $identity_hint !== '' ? $identity_hint : (string) $cluster['from_label'] ); ?>"
+											>
+												<?php esc_html_e( 'Delete all', 'radius' ); ?>
+											</button>
+										</div>
+									</form>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+				<?php if ( $suggested_ready > 0 ) : ?>
+					<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-reconnect__bulk" data-radius-reconnect-bulk="1">
+						<input type="hidden" name="action" value="radius_deploy_reconnect" />
+						<input type="hidden" name="radius_deploy_target" value="<?php echo esc_attr( $post_type ); ?>" />
+						<input type="hidden" name="radius_reconnect_apply_suggested" value="1" />
+						<?php wp_nonce_field( 'radius_deploy_reconnect', 'radius_deploy_reconnect_nonce' ); ?>
+						<?php
+						submit_button(
+							sprintf(
+								/* translators: %d: number of orphan groups with a suggested template */
+								__( 'Reconnect all suggested matches (%d groups)', 'radius' ),
+								(int) $suggested_ready
+							),
+							'primary',
+							'submit',
+							false
+						);
+						?>
+					</form>
+				<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Deploy summary + template cards.
 	 *
 	 * @return void
@@ -1794,6 +2009,7 @@ class Radius_Admin {
 
 		<?php if ( 'landings' === $deploy_tab ) : ?>
 		<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Landings', 'radius' ); ?></h2>
+		<?php self::render_deploy_reconnect_panel( 'radius_landing', $action, (int) $stats['batch_size'] ); ?>
 		<?php if ( empty( $templates ) ) : ?>
 				<div class="radius-card radius-card-muted">
 					<p><?php esc_html_e( 'No templates yet. Create a template under Templates, then return here to deploy.', 'radius' ); ?></p>
@@ -1983,6 +2199,7 @@ class Radius_Admin {
 			$sa_st       = $sa_tpl_obj ? get_post_status( $sa_tpl_obj ) : '';
 			?>
 			<h2 class="radius-deploy-section-title" id="radius-deploy-service-areas"><?php esc_html_e( 'Service areas', 'radius' ); ?></h2>
+			<?php self::render_deploy_reconnect_panel( 'radius_service_area', $action, (int) $stats['batch_size'] ); ?>
 			<p class="description">
 				<?php esc_html_e( 'Hub pages use your service area URL prefix plus the place slug only (no template slug). Landings use the site root and the landing slug pattern from each template.', 'radius' ); ?>
 				<?php
@@ -3194,7 +3411,10 @@ Fast roadside help in {{region}}
 
 				<div id="radius-panel-database" class="radius-settings-panel" style="<?php echo $tab === 'database' ? '' : 'display:none;'; ?>">
 					<?php if ( $tab === 'database' ) : ?>
-						<?php $mp_db = Radius_Legacy_Import_Service::get_magic_page_storage_footprint(); ?>
+						<?php
+						$mp_db    = Radius_Legacy_Import_Service::get_magic_page_storage_footprint();
+						$mp_auto  = Radius_Legacy_Import_Service::get_magic_page_options_autoload_status();
+						?>
 						<h2 class="screen-reader-text"><?php esc_html_e( 'Database', 'radius' ); ?></h2>
 						<p class="description"><?php esc_html_e( 'Legacy Magic Page data may remain in options and post meta after migration. Sizes below are approximate: MySQL sums the stored length of keys and values (actual disk usage includes row overhead and indexes).', 'radius' ); ?></p>
 						<table class="widefat striped radius-mp-db-matrix" style="max-width:720px;margin-top:12px;">
@@ -3238,26 +3458,74 @@ Fast roadside help in {{region}}
 							<?php
 							printf(
 								/* translators: %s: formatted byte size */
-								esc_html__( 'Approximate space reclaimable by running cleanup on options: %s', 'radius' ),
+								esc_html__( 'Approximate space reclaimable by permanently deleting options: %s', 'radius' ),
 								'<strong>' . esc_html( size_format( (int) $mp_db['cleanup_bytes'], 2 ) ) . '</strong>'
 							);
 							?>
 						</p>
-						<table class="form-table" style="margin-top:1.5em;">
+						<?php if ( (int) $mp_auto['total'] > 0 ) : ?>
+							<p class="description">
+								<?php
+								printf(
+									/* translators: 1: autoload yes count, 2: total rows, 3: autoload no count, 4: autoload auto count */
+									esc_html__( 'Autoload status: %1$d set to yes (loaded on most requests), %3$d to no, %4$d to auto — %2$d row(s) total.', 'radius' ),
+									(int) $mp_auto['autoload_yes'],
+									(int) $mp_auto['total'],
+									(int) $mp_auto['autoload_no'],
+									(int) $mp_auto['autoload_auto']
+								);
+								?>
+							</p>
+						<?php endif; ?>
+						<table class="form-table radius-mp-cleanup" id="radius-magic-page-cleanup" style="margin-top:1.5em;">
 							<tr>
-								<th scope="row"><?php esc_html_e( 'Magic Page cleanup', 'radius' ); ?></th>
+								<th scope="row"><?php esc_html_e( 'Preserve data', 'radius' ); ?></th>
 								<td>
-									<p class="description"><?php esc_html_e( 'After you have migrated and deactivated Magic Page, you can delete leftover wp_options rows (for example the legacy global spintax snapshot and caches whose names start with _magic_page or magic_page_). This reduces options table bloat.', 'radius' ); ?></p>
+									<p class="description"><?php esc_html_e( 'Recommended if you might need Magic Page settings later (e.g. to compare Search Console URLs or re-import spintax). Keeps all option values in the database but stops WordPress from loading them on every page view.', 'radius' ); ?></p>
 									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
 										<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+										<input type="hidden" name="radius_magic_page_cleanup_mode" value="preserve" />
+										<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
+										<fieldset>
+											<legend class="screen-reader-text"><?php esc_html_e( 'Autoload target', 'radius' ); ?></legend>
+											<p>
+												<label>
+													<input type="radio" name="radius_magic_page_preserve_autoload" value="no" checked="checked" />
+													<?php esc_html_e( 'Set autoload to no — do not load on every request (recommended)', 'radius' ); ?>
+												</label>
+											</p>
+											<p>
+												<label>
+													<input type="radio" name="radius_magic_page_preserve_autoload" value="auto" />
+													<?php esc_html_e( 'Set autoload to auto — let WordPress decide per option size (WP 6.4+)', 'radius' ); ?>
+												</label>
+											</p>
+										</fieldset>
+										<p>
+											<label>
+												<input type="checkbox" name="radius_magic_page_preserve_confirm" value="1" />
+												<?php esc_html_e( 'Keep Magic Page option values and only change autoload (nothing is deleted).', 'radius' ); ?>
+											</label>
+										</p>
+										<?php submit_button( __( 'Preserve — disable autoload', 'radius' ), 'primary', 'submit', false ); ?>
+									</form>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Delete permanently', 'radius' ); ?></th>
+								<td>
+									<p class="description"><?php esc_html_e( 'Removes matching wp_options rows entirely. Use only when you are sure you will not need the legacy Magic Page data again.', 'radius' ); ?></p>
+									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="radius-form-block">
+										<input type="hidden" name="action" value="radius_magic_page_cleanup_options" />
+										<input type="hidden" name="radius_magic_page_cleanup_mode" value="delete" />
 										<?php wp_nonce_field( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' ); ?>
 										<p>
 											<label>
 												<input type="checkbox" name="radius_magic_page_cleanup_confirm" value="1" />
-												<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows from the database.', 'radius' ); ?>
+												<?php esc_html_e( 'I have backed up this site and want to permanently delete Magic Page–matching option rows.', 'radius' ); ?>
 											</label>
 										</p>
-										<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'secondary', 'submit', false ); ?>
+										<?php submit_button( __( 'Delete Magic Page options', 'radius' ), 'delete', 'submit', false ); ?>
 									</form>
 								</td>
 							</tr>

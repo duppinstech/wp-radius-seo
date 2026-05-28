@@ -822,6 +822,67 @@
  * Deploy template cards: force real grid rows (wp-admin / themes sometimes override
  * layout on .wrap descendants; min() avoids overflow on narrow sidebars).
  */
+.radius-deploy-reconnect {
+	margin: 16px 0 20px;
+	max-width: 1200px;
+}
+
+.radius-deploy-reconnect__table {
+	margin-top: 12px;
+}
+
+.radius-deploy-reconnect__form {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 8px;
+}
+
+.radius-deploy-reconnect__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.radius-deploy-reconnect__select {
+	min-width: 220px;
+	max-width: 100%;
+}
+
+.radius-deploy-reconnect__bulk {
+	margin-top: 14px;
+}
+
+.radius-deploy-reconnect__ok {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 8px 0 0;
+}
+
+.radius-deploy-reconnect__slug {
+	font-size: 12px;
+}
+
+.radius-deploy-reconnect__sample-list {
+	margin: 0;
+	padding-left: 1.2em;
+	max-width: 28em;
+}
+
+.radius-deploy-reconnect__sample-list li {
+	margin: 0.35em 0;
+}
+
+.radius-deploy-reconnect__samples .description {
+	display: inline;
+}
+
+.radius-deploy-reconnect__hint {
+	margin-top: 4px;
+}
+
 #wpbody-content .wrap.radius-admin.radius-deploy .radius-deploy-grid,
 .radius-deploy-grid {
 	display: grid !important;

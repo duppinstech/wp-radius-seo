@@ -1090,6 +1090,18 @@ class Radius_Deploy_Service {
 			}
 		}
 
+		/*
+		 * Theme/layout meta: many Beaver Builder installs rely on these to suppress theme sidebars
+		 * and/or choose a canvas/full-width template. Copying them makes deployed landings behave
+		 * like pages authored directly in Beaver Builder (green dot + correct layout).
+		 */
+		foreach ( array( '_wp_page_template', '_fl_theme_layout' ) as $meta_key ) {
+			$val = get_post_meta( $template_id, $meta_key, true );
+			if ( $val !== '' && $val !== false && $val !== null ) {
+				update_post_meta( $landing_id, $meta_key, $val );
+			}
+		}
+
 		if ( method_exists( 'FLBuilderModel', 'delete_all_asset_cache' ) ) {
 			FLBuilderModel::delete_all_asset_cache( $landing_id );
 		}

@@ -23,6 +23,7 @@ class Radius_Form_Handlers {
 		add_action( 'admin_post_radius_delete_all_places', array( __CLASS__, 'handle_delete_all_places' ) );
 		add_action( 'admin_post_radius_deploy', array( __CLASS__, 'handle_deploy' ) );
 		add_action( 'admin_post_radius_deploy_cancel', array( __CLASS__, 'handle_deploy_cancel' ) );
+		add_action( 'admin_post_radius_deploy_reconnect', array( __CLASS__, 'handle_deploy_reconnect' ) );
 		add_action( 'admin_post_radius_import_slots', array( __CLASS__, 'handle_slots' ) );
 		add_action( 'admin_post_radius_legacy_templates', array( __CLASS__, 'handle_legacy_templates' ) );
 		add_action( 'admin_post_radius_legacy_places', array( __CLASS__, 'handle_legacy_places' ) );
@@ -47,10 +48,42 @@ class Radius_Form_Handlers {
 		self::bail_if_locked();
 		check_admin_referer( 'radius_magic_page_cleanup_options', 'radius_magic_page_cleanup_nonce' );
 
+		$mode = isset( $_POST['radius_magic_page_cleanup_mode'] ) ? sanitize_key( wp_unslash( $_POST['radius_magic_page_cleanup_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ( 'preserve' === $mode ) {
+			if ( empty( $_POST['radius_magic_page_preserve_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				self::redirect(
+					'radius-settings',
+					__( 'Confirm preservation before changing Magic Page options.', 'radius' ),
+					array( 'tab' => 'database' )
+				);
+				return;
+			}
+			$autoload = isset( $_POST['radius_magic_page_preserve_autoload'] ) ? sanitize_key( wp_unslash( $_POST['radius_magic_page_preserve_autoload'] ) ) : 'no'; // phpcs:ignore WordPress.Security.NonceVerification
+			$res      = Radius_Legacy_Import_Service::preserve_magic_page_legacy_options( $autoload );
+			$msg      = sprintf(
+				/* translators: 1: rows updated, 2: autoload value (no or auto) */
+				__( 'Preserved Magic Page data: set autoload=%2$s on %1$d option row(s). Values were not deleted.', 'radius' ),
+				(int) $res['updated'],
+				(string) $res['autoload']
+			);
+			self::redirect( 'radius-settings', $msg, array( 'tab' => 'database' ) );
+			return;
+		}
+
+		if ( 'delete' !== $mode ) {
+			self::redirect(
+				'radius-settings',
+				__( 'Choose preserve or delete for Magic Page cleanup.', 'radius' ),
+				array( 'tab' => 'database' )
+			);
+			return;
+		}
+
 		if ( empty( $_POST['radius_magic_page_cleanup_confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			self::redirect(
 				'radius-settings',
-				__( 'Confirm the checkbox before clearing Magic Page options.', 'radius' ),
+				__( 'Confirm the checkbox before permanently deleting Magic Page options.', 'radius' ),
 				array( 'tab' => 'database' )
 			);
 			return;
@@ -285,6 +318,63 @@ class Radius_Form_Handlers {
 			delete_transient( self::deploy_queue_transient_key( get_current_user_id(), $template_id, $target ) );
 		}
 		self::redirect( 'radius-deploy', __( 'Pending deploy queue cleared for that template.', 'radius' ) );
+	}
+
+	/**
+	 * Re-link deployed pages from a deleted/trashed template to a current template.
+	 *
+	 * @return void
+	 */
+	public static function handle_deploy_reconnect() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
+		}
+		self::bail_if_locked();
+		check_admin_referer( 'radius_deploy_reconnect', 'radius_deploy_reconnect_nonce' );
+
+		$post_type = isset( $_POST['radius_deploy_target'] ) ? sanitize_key( wp_unslash( $_POST['radius_deploy_target'] ) ) : 'radius_landing'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$post_type = 'radius_landing';
+		}
+
+		$tab = 'radius_service_area' === $post_type ? 'service-areas' : 'landings';
+
+		$apply_all = ! empty( $_POST['radius_reconnect_apply_suggested'] ); // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ( $apply_all ) {
+			$res = Radius_Deploy_Reconnect::reconnect_all_suggested( $post_type );
+			if ( ! empty( $res['errors'] ) ) {
+				$msg = implode( ' ', array_unique( array_map( 'strval', $res['errors'] ) ) );
+				self::redirect( 'radius-deploy', $msg, array( 'tab' => $tab ) );
+				return;
+			}
+			$msg = sprintf(
+				/* translators: 1: pages relinked, 2: duplicate pages trashed, 3: cluster groups */
+				__( 'Reconnect complete: %1$d page(s) relinked, %2$d duplicate(s) trashed, %3$d group(s) matched.', 'radius' ),
+				(int) $res['relinked'],
+				(int) $res['duplicates_trashed'],
+				(int) $res['clusters_applied']
+			);
+			self::redirect( 'radius-deploy', $msg, array( 'tab' => $tab ) );
+			return;
+		}
+
+		$from = isset( $_POST['radius_reconnect_from'] ) ? absint( $_POST['radius_reconnect_from'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		$to   = isset( $_POST['radius_reconnect_to'] ) ? absint( $_POST['radius_reconnect_to'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+
+		$res = Radius_Deploy_Reconnect::reconnect( $from, $to, $post_type );
+		if ( ! empty( $res['errors'] ) ) {
+			self::redirect( 'radius-deploy', implode( ' ', array_unique( array_map( 'strval', $res['errors'] ) ) ), array( 'tab' => $tab ) );
+			return;
+		}
+
+		$msg = sprintf(
+			/* translators: 1: pages relinked, 2: duplicate pages trashed */
+			__( 'Reconnected %1$d page(s) to the new template. %2$d duplicate page(s) were trashed.', 'radius' ),
+			(int) $res['relinked'],
+			(int) $res['duplicates_trashed']
+		);
+		self::redirect( 'radius-deploy', $msg, array( 'tab' => $tab ) );
 	}
 
 	/**

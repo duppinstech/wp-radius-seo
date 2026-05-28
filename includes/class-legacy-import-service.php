@@ -1565,6 +1565,8 @@ class Radius_Legacy_Import_Service {
 			array(
 				'_magic_page%',
 				'magic_page_%',
+				// Magic Page group meta field bundles (these are the heavy autoload offenders).
+				'_group_meta_fields_%',
 			)
 		);
 		if ( ! is_array( $patterns ) ) {
@@ -1703,16 +1705,15 @@ class Radius_Legacy_Import_Service {
 	}
 
 	/**
-	 * Remove Magic Page–related rows from wp_options (spintax snapshot, caches). Destructive.
+	 * Option names in wp_options that match Magic Page cleanup patterns.
 	 *
-	 * @return array{deleted:int,names:string[]}
+	 * @return string[]
 	 */
-	public static function delete_magic_page_legacy_options() {
+	public static function list_magic_page_legacy_option_names() {
 		global $wpdb;
 
 		$patterns = self::magic_page_option_name_like_patterns();
-
-		$names = array();
+		$names    = array();
 		foreach ( $patterns as $like ) {
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPlaceholder -- one placeholder.
 			$found = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
@@ -1727,6 +1728,150 @@ class Radius_Legacy_Import_Service {
 
 		$names = array_values( array_unique( $names ) );
 		sort( $names );
+		return $names;
+	}
+
+	/**
+	 * Count Magic Page options by autoload flag (yes = loaded on most requests).
+	 *
+	 * @return array{
+	 *   total:int,
+	 *   autoload_yes:int,
+	 *   autoload_auto:int,
+	 *   autoload_no:int,
+	 *   autoload_other:int,
+	 *   sample_yes_names:string[]
+	 * }
+	 */
+	public static function get_magic_page_options_autoload_status() {
+		global $wpdb;
+
+		$patterns = self::magic_page_option_name_like_patterns();
+		$out      = array(
+			'total'            => 0,
+			'autoload_yes'     => 0,
+			'autoload_auto'    => 0,
+			'autoload_no'      => 0,
+			'autoload_other'   => 0,
+			'sample_yes_names' => array(),
+		);
+		if ( empty( $patterns ) ) {
+			return $out;
+		}
+
+		$holders = implode( ' OR ', array_fill( 0, count( $patterns ), 'option_name LIKE %s' ) );
+		$sql     = "SELECT option_name, autoload FROM {$wpdb->options} WHERE {$holders} ORDER BY option_name ASC";
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $patterns ), ARRAY_A );
+		if ( ! is_array( $rows ) ) {
+			return $out;
+		}
+
+		$yes_names = array();
+		foreach ( $rows as $row ) {
+			++$out['total'];
+			$al = isset( $row['autoload'] ) ? strtolower( (string) $row['autoload'] ) : '';
+			if ( 'yes' === $al || 'on' === $al ) {
+				++$out['autoload_yes'];
+				if ( count( $yes_names ) < 15 ) {
+					$yes_names[] = (string) $row['option_name'];
+				}
+			} elseif ( 'auto' === $al ) {
+				++$out['autoload_auto'];
+			} elseif ( 'no' === $al || 'off' === $al ) {
+				++$out['autoload_no'];
+			} else {
+				++$out['autoload_other'];
+			}
+		}
+		$out['sample_yes_names'] = $yes_names;
+		return $out;
+	}
+
+	/**
+	 * Set autoload on Magic Page option rows without deleting values (preserves data for later).
+	 *
+	 * @param string $target_autoload WordPress autoload value: no or auto.
+	 * @return array{updated:int,unchanged:int,autoload:string,names:string[]}
+	 */
+	public static function preserve_magic_page_legacy_options( $target_autoload = 'no' ) {
+		$target_autoload = strtolower( sanitize_key( (string) $target_autoload ) );
+		if ( ! in_array( $target_autoload, array( 'no', 'auto' ), true ) ) {
+			$target_autoload = 'no';
+		}
+
+		$names     = self::list_magic_page_legacy_option_names();
+		$updated   = 0;
+		$unchanged = 0;
+		foreach ( $names as $opt ) {
+			if ( self::set_option_autoload_flag( $opt, $target_autoload ) ) {
+				++$updated;
+			} else {
+				++$unchanged;
+			}
+		}
+
+		wp_cache_delete( 'alloptions', 'options' );
+		self::bust_magic_page_footprint_cache();
+
+		return array(
+			'updated'   => $updated,
+			'unchanged' => $unchanged,
+			'autoload'  => $target_autoload,
+			'names'     => $names,
+		);
+	}
+
+	/**
+	 * Update only the autoload column for one option (value unchanged).
+	 *
+	 * @param string $option_name Option name.
+	 * @param string $autoload    yes|no|auto.
+	 * @return bool True when autoload was changed.
+	 */
+	private static function set_option_autoload_flag( $option_name, $autoload ) {
+		global $wpdb;
+
+		$option_name = (string) $option_name;
+		$autoload    = strtolower( sanitize_key( (string) $autoload ) );
+		if ( $option_name === '' || ! in_array( $autoload, array( 'yes', 'no', 'auto' ), true ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$current = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT autoload FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				$option_name
+			)
+		);
+		if ( null === $current ) {
+			return false;
+		}
+		if ( strtolower( (string) $current ) === $autoload ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			$wpdb->options,
+			array( 'autoload' => $autoload ),
+			array( 'option_name' => $option_name ),
+			array( '%s' ),
+			array( '%s' )
+		);
+
+		wp_cache_delete( $option_name, 'options' );
+		return true;
+	}
+
+	/**
+	 * Remove Magic Page–related rows from wp_options (spintax snapshot, caches). Destructive.
+	 *
+	 * @return array{deleted:int,names:string[]}
+	 */
+	public static function delete_magic_page_legacy_options() {
+		$names = self::list_magic_page_legacy_option_names();
 
 		foreach ( $names as $opt ) {
 			delete_option( $opt );
