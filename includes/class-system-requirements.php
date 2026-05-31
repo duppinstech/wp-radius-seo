@@ -165,6 +165,7 @@ final class Radius_System_Requirements {
 		$checks[] = self::check_curl();
 		$checks[] = self::check_multisite_parallel();
 		$checks[] = self::check_deploy_lookup_index();
+		$checks[] = self::check_plugin_write_access();
 
 		/**
 		 * Add or modify environment checks shown on Deploy → System and in the migration pre-flight.
@@ -715,6 +716,32 @@ final class Radius_System_Requirements {
 			'value_display' => $value,
 			'recommended'   => __( 'Present for large libraries', 'radius' ),
 			'status'        => $state,
+			'weight'        => 6,
+			'detail'        => $detail,
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private static function check_plugin_write_access() {
+		$plugin_dir = defined( 'RADIUS_PATH' ) ? untrailingslashit( (string) RADIUS_PATH ) : '';
+		$main_file  = defined( 'RADIUS_FILE' ) ? (string) RADIUS_FILE : '';
+		$dir_ok     = $plugin_dir !== '' && is_dir( $plugin_dir ) && wp_is_writable( $plugin_dir );
+		$file_ok    = $main_file !== '' && file_exists( $main_file ) && wp_is_writable( $main_file );
+
+		$status = ( $dir_ok && $file_ok ) ? 'good' : 'critical';
+		$value  = ( $dir_ok && $file_ok ) ? __( 'Writable', 'radius' ) : __( 'Not writable', 'radius' );
+		$detail = ( $dir_ok && $file_ok )
+			? __( 'Plugin files look writable for one-click updates.', 'radius' )
+			: __( 'WordPress updates can fail with “files could not be copied” when plugin ownership or permissions differ from the web/PHP user. Ensure plugin files are owned by the web user and use typical 755 directories / 644 files.', 'radius' );
+
+		return array(
+			'id'            => 'plugin_write_access',
+			'label'         => __( 'Plugin update write access', 'radius' ),
+			'value_display' => $value,
+			'recommended'   => __( 'Plugin directory and main file writable', 'radius' ),
+			'status'        => $status,
 			'weight'        => 6,
 			'detail'        => $detail,
 		);

@@ -128,11 +128,13 @@ class Radius_Geo_Service {
 	 * @return array{ids:int[],skipped_no_coords:int}
 	 */
 	public static function collect_place_ids_for_anchors( array $anchors ) {
+		global $wpdb;
+
 		$anchors = self::normalize_anchors_for_distance( $anchors );
 		$ids               = array();
 		$skipped_no_coords = 0;
 		$chunk             = 150;
-		$offset            = 0;
+		$last_term_id      = 0;
 
 		if ( empty( $anchors ) ) {
 			return array(
@@ -142,23 +144,27 @@ class Radius_Geo_Service {
 		}
 
 		do {
-			$terms = get_terms(
-				array(
-					'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
-					'hide_empty' => false,
-					'number'     => $chunk,
-					'offset'     => $offset,
-					'orderby'    => 'id',
-					'order'      => 'ASC',
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Cursor pagination for large place libraries.
+			$term_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT t.term_id
+					FROM {$wpdb->terms} t
+					INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id
+					WHERE tt.taxonomy = %s
+					AND t.term_id > %d
+					ORDER BY t.term_id ASC
+					LIMIT %d",
+					Radius_Place_Taxonomy::TAXONOMY,
+					$last_term_id,
+					$chunk
 				)
 			);
-
-			if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			$term_ids = array_values( array_filter( array_map( 'intval', (array) $term_ids ) ) );
+			if ( empty( $term_ids ) ) {
 				break;
 			}
 
-			foreach ( $terms as $term ) {
-				$tid = (int) $term->term_id;
+			foreach ( $term_ids as $tid ) {
 				$lat = get_term_meta( $tid, 'radius_lat', true );
 				$lng = get_term_meta( $tid, 'radius_lng', true );
 				if ( $lat === '' || $lng === '' || $lat === false || $lng === false ) {
@@ -170,8 +176,8 @@ class Radius_Geo_Service {
 				}
 			}
 
-			$offset += $chunk;
-		} while ( count( $terms ) === $chunk );
+			$last_term_id = (int) end( $term_ids );
+		} while ( count( $term_ids ) === $chunk );
 
 		return array(
 			'ids'               => array_values( array_unique( $ids ) ),

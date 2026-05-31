@@ -217,7 +217,7 @@ final class Radius_Deploy_Health_Cron {
 			wp_raise_memory_limit( 'admin' );
 		}
 		try {
-			$report = Radius_Deploy_Health_Check::run();
+			$report = Radius_Deploy_Health_Check::run( 'light' );
 			self::store_report( $report, 'cron' );
 			self::maybe_send_issue_email( $report );
 			if ( class_exists( 'Radius_Operation_Log' ) ) {

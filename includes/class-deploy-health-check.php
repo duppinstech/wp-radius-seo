@@ -22,49 +22,238 @@ final class Radius_Deploy_Health_Check {
 	 *
 	 * @return array<string,mixed>
 	 */
-	public static function run() {
+	public static function run( $mode = 'full' ) {
 		$started = microtime( true );
+		$mode    = self::normalize_mode( $mode );
+		$context = array(
+			'started_at' => $started,
+			'mode'       => $mode,
+		);
 		$checks  = array();
+		foreach ( self::get_check_plan( $mode ) as $entry ) {
+			$check_id = isset( $entry['id'] ) ? sanitize_key( (string) $entry['id'] ) : '';
+			if ( $check_id === '' ) {
+				continue;
+			}
+			$checks[] = self::run_check_by_id( $check_id, $context );
+		}
+		$scope = isset( $context['scope'] ) && is_array( $context['scope'] ) ? $context['scope'] : self::get_expected_scope_place_ids();
+		return self::build_report_from_checks( $checks, $scope, $started, $mode );
+	}
 
-		$checks[] = self::check_migration_steps();
-		$checks[] = self::check_group_meta_fields_templates();
-		$checks[] = self::check_service_anchors();
-		$checks[] = self::check_site_replacers();
-		$checks[] = self::check_place_library();
-		$checks[] = self::check_deploy_lookup_index();
-		$checks[] = self::check_service_area_template();
+	/**
+	 * Ordered list of checks for chunked and full health runs.
+	 *
+	 * @return array<int,array{id:string,label:string}>
+	 */
+	public static function get_check_plan( $mode = 'full' ) {
+		$mode = self::normalize_mode( $mode );
+		$plan = array(
+			array(
+				'id'    => 'migration_steps',
+				'label' => __( 'Migration steps', 'radius' ),
+			),
+			array(
+				'id'    => 'group_meta_fields_templates',
+				'label' => __( 'Magic Page service templates', 'radius' ),
+			),
+			array(
+				'id'    => 'service_anchors',
+				'label' => __( 'Service area anchors', 'radius' ),
+			),
+			array(
+				'id'    => 'site_replacers',
+				'label' => __( 'Site replacers (company & phone)', 'radius' ),
+			),
+			array(
+				'id'    => 'place_library',
+				'label' => __( 'Location library', 'radius' ),
+			),
+			array(
+				'id'    => 'deploy_lookup_index',
+				'label' => __( 'Deploy lookup DB index', 'radius' ),
+			),
+			array(
+				'id'    => 'service_area_template',
+				'label' => __( 'Service area template', 'radius' ),
+			),
+			array(
+				'id'    => 'places_in_scope',
+				'label' => __( 'Places inside service areas', 'radius' ),
+			),
+			array(
+				'id'    => 'service_area_coverage',
+				'label' => __( 'Service area pages', 'radius' ),
+			),
+		);
 
-		$scope = self::get_expected_scope_place_ids();
-		$checks[] = self::check_places_in_scope( $scope );
+		$templates = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => array( 'publish' ),
+				'posts_per_page' => 100,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			)
+		);
+		if ( empty( $templates ) ) {
+			$plan[] = array(
+				'id'    => 'landing_templates',
+				'label' => __( 'Landing templates', 'radius' ),
+			);
+		} else {
+			foreach ( $templates as $tpl ) {
+				$plan[] = array(
+					'id'    => 'landing_' . (int) $tpl->ID,
+					'label' => get_the_title( $tpl ),
+				);
+			}
+		}
 
-		$deployed_sa = self::get_deployed_place_ids_map( 'radius_service_area' );
-		$checks[]    = self::check_service_area_coverage( $scope, $deployed_sa );
+		$plan[] = array(
+			'id'    => 'landings_need_service_area',
+			'label' => __( 'Landings vs service area hubs', 'radius' ),
+		);
+		$plan[] = array(
+			'id'    => 'magic_page_landings',
+			'label' => __( 'Legacy Magic Page landings', 'radius' ),
+		);
+		$plan[] = array(
+			'id'    => 'magic_page_plugin',
+			'label' => __( 'Magic Page plugin', 'radius' ),
+		);
+		$plan[] = array(
+			'id'    => 'magic_page_options_autoload',
+			'label' => __( 'Magic Page options autoload', 'radius' ),
+		);
+		$plan[] = array(
+			'id'    => 'url_redirect_conflicts',
+			'label' => __( 'Landing URL redirects', 'radius' ),
+		);
+		if ( 'full' === $mode ) {
+			$plan[] = array(
+				'id'    => 'duplicate_pages',
+				'label' => __( 'Duplicate deployed pages', 'radius' ),
+			);
+			$plan[] = array(
+				'id'    => 'deploy_meta',
+				'label' => __( 'Deploy page metadata', 'radius' ),
+			);
+		}
 
-		$deployed_landings = self::get_deployed_place_ids_map( 'radius_landing' );
-		$checks            = array_merge( $checks, self::check_landing_templates( $scope, $deployed_landings ) );
+		return $plan;
+	}
 
-		$checks[] = self::check_landings_without_service_area( $scope, $deployed_sa, $deployed_landings );
-		$checks[] = self::check_magic_page_landings_remain();
-		$checks[] = self::check_magic_page_plugin_uninstalled();
-		$checks[] = self::check_magic_page_options_autoload();
-		$checks[] = self::check_deployed_url_redirect_conflicts();
-		$checks[] = self::check_duplicate_deploy_pages();
-		$checks[] = self::check_orphan_deploy_meta();
+	/**
+	 * @param string $mode Requested mode.
+	 * @return string
+	 */
+	private static function normalize_mode( $mode ) {
+		$mode = sanitize_key( (string) $mode );
+		return in_array( $mode, array( 'full', 'light' ), true ) ? $mode : 'full';
+	}
 
-		$summary = self::summarize_checks( $checks );
+	/**
+	 * Run one health check by ID.
+	 *
+	 * @param string               $check_id Check id from get_check_plan().
+	 * @param array<string,mixed> &$context  Shared context cache.
+	 * @param array<string,mixed> $args      Optional flags.
+	 * @return array<string,mixed>
+	 */
+	public static function run_check_by_id( $check_id, array &$context = array(), array $args = array() ) {
+		$check_id = sanitize_key( (string) $check_id );
+		$scope    = null;
+		$shared   = null;
 
+		switch ( $check_id ) {
+			case 'migration_steps':
+				return self::check_migration_steps();
+			case 'group_meta_fields_templates':
+				return self::check_group_meta_fields_templates();
+			case 'service_anchors':
+				return self::check_service_anchors();
+			case 'site_replacers':
+				return self::check_site_replacers();
+			case 'place_library':
+				return self::check_place_library();
+			case 'deploy_lookup_index':
+				return self::check_deploy_lookup_index();
+			case 'service_area_template':
+				return self::check_service_area_template();
+			case 'places_in_scope':
+				$scope = self::ensure_scope_context( $context );
+				return self::check_places_in_scope( $scope );
+			case 'service_area_coverage':
+				$scope  = self::ensure_scope_context( $context );
+				$shared = self::ensure_shared_deploy_context( $context );
+				return self::check_service_area_coverage( $scope, $shared['deployed_sa'] );
+			case 'landing_templates':
+				$scope  = self::ensure_scope_context( $context );
+				$shared = self::ensure_shared_deploy_context( $context );
+				return self::check_no_landing_templates( $scope );
+			case 'landings_need_service_area':
+				$scope  = self::ensure_scope_context( $context );
+				$shared = self::ensure_shared_deploy_context( $context );
+				return self::check_landings_without_service_area( $scope, $shared['deployed_sa'], $shared['deployed_landings'] );
+			case 'magic_page_landings':
+				return self::check_magic_page_landings_remain();
+			case 'magic_page_plugin':
+				return self::check_magic_page_plugin_uninstalled();
+			case 'magic_page_options_autoload':
+				return self::check_magic_page_options_autoload();
+			case 'url_redirect_conflicts':
+				return self::check_deployed_url_redirect_conflicts( ! empty( $args['full_redirect_scan'] ) );
+			case 'duplicate_pages':
+				$shared = self::ensure_shared_deploy_context( $context );
+				return self::check_duplicate_deploy_pages( $shared );
+			case 'deploy_meta':
+				$shared = self::ensure_shared_deploy_context( $context );
+				return self::check_orphan_deploy_meta( $shared );
+		}
+
+		if ( 0 === strpos( $check_id, 'landing_' ) ) {
+			$template_id = (int) substr( $check_id, 8 );
+			$scope       = self::ensure_scope_context( $context );
+			$shared      = self::ensure_shared_deploy_context( $context );
+			return self::check_single_landing_template( $template_id, $scope, $shared['deployed_landings'] );
+		}
+
+		return self::make_check(
+			$check_id,
+			__( 'Unknown check', 'radius' ),
+			'skip',
+			__( 'This health check is not available in the current build.', 'radius' )
+		);
+	}
+
+	/**
+	 * Build a full report payload from a checks list.
+	 *
+	 * @param array<int,array<string,mixed>>                  $checks Checks.
+	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
+	 * @param float|int                                       $started_at Start timestamp.
+	 * @return array<string,mixed>
+	 */
+	public static function build_report_from_checks( array $checks, array $scope, $started_at = 0, $mode = 'full' ) {
+		$elapsed = 0;
+		$mode    = self::normalize_mode( $mode );
+		if ( is_numeric( $started_at ) && (float) $started_at > 0 ) {
+			$elapsed = round( microtime( true ) - (float) $started_at, 2 );
+		}
 		return array(
-			'generated_at'      => gmdate( 'c' ),
-			'duration_sec'      => round( microtime( true ) - $started, 2 ),
-			'summary'           => $summary,
-			'remediation_plan'  => self::build_remediation_plan( $checks ),
-			'scope'             => array(
-				'expected_places' => count( $scope['ids'] ),
+			'generated_at'     => gmdate( 'c' ),
+			'duration_sec'     => $elapsed,
+			'mode'             => $mode,
+			'summary'          => self::summarize_checks( $checks ),
+			'remediation_plan' => self::build_remediation_plan( $checks ),
+			'scope'            => array(
+				'expected_places'   => count( $scope['ids'] ),
 				'skipped_no_coords' => $scope['skipped_no_coords'],
 				'removed_blacklist' => $scope['removed_blacklist'],
 				'removed_duplicate' => $scope['removed_duplicate'],
 			),
-			'checks'            => $checks,
+			'checks'           => $checks,
 		);
 	}
 
@@ -199,13 +388,30 @@ final class Radius_Deploy_Health_Check {
 	 *
 	 * @return array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int}
 	 */
-	public static function get_expected_scope_place_ids() {
+	public static function get_expected_scope_place_ids( array $args = array() ) {
 		$out = array(
 			'ids'               => array(),
 			'skipped_no_coords' => 0,
 			'removed_blacklist' => 0,
 			'removed_duplicate' => 0,
 		);
+		$use_cache     = ! isset( $args['use_cache'] ) || ! empty( $args['use_cache'] );
+		$force_refresh = ! empty( $args['force_refresh'] );
+		$cache_enabled = $use_cache && apply_filters( 'radius_deploy_health_scope_cache_enabled', true );
+		$cache_key     = '';
+
+		if ( $cache_enabled && ! $force_refresh ) {
+			$cache_key = self::scope_cache_key();
+			$cached    = get_transient( $cache_key );
+			if ( is_array( $cached ) && isset( $cached['ids'] ) && isset( $cached['skipped_no_coords'], $cached['removed_blacklist'], $cached['removed_duplicate'] ) ) {
+				return array(
+					'ids'               => array_values( array_map( 'intval', (array) $cached['ids'] ) ),
+					'skipped_no_coords' => (int) $cached['skipped_no_coords'],
+					'removed_blacklist' => (int) $cached['removed_blacklist'],
+					'removed_duplicate' => (int) $cached['removed_duplicate'],
+				);
+			}
+		}
 		$anchors = Radius_Settings::get()['service_anchors'];
 		$anchors = is_array( $anchors ) ? $anchors : array();
 		if ( empty( $anchors ) ) {
@@ -221,7 +427,159 @@ final class Radius_Deploy_Health_Check {
 		$out['removed_blacklist'] = (int) $pref['removed_blacklist'];
 		$out['removed_duplicate'] = (int) $pref['removed_duplicate'];
 		$out['ids']               = array_values( array_map( 'intval', $pref['ids'] ) );
+
+		if ( $cache_enabled ) {
+			if ( '' === $cache_key ) {
+				$cache_key = self::scope_cache_key();
+			}
+			$ttl = (int) apply_filters( 'radius_deploy_health_scope_cache_ttl', 6 * HOUR_IN_SECONDS );
+			$ttl = max( HOUR_IN_SECONDS, $ttl );
+			set_transient( $cache_key, $out, $ttl );
+		}
+
 		return $out;
+	}
+
+	/**
+	 * @return string
+	 */
+	private static function scope_cache_key() {
+		$anchors = Radius_Settings::get()['service_anchors'];
+		$anchors = is_array( $anchors ) ? $anchors : array();
+		$parts   = array(
+			'anchors'   => array_values( $anchors ),
+			'blacklist' => array_values( Radius_Place_Taxonomy::get_place_slug_blacklist_fragments() ),
+			'version'   => 1,
+		);
+		return 'radius_scope_ids_' . md5( (string) wp_json_encode( $parts ) );
+	}
+
+	/**
+	 * @param array<string,mixed> &$context Shared run context.
+	 * @return array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int}
+	 */
+	private static function ensure_scope_context( array &$context ) {
+		if ( isset( $context['scope'] ) && is_array( $context['scope'] ) && isset( $context['scope']['ids'] ) ) {
+			return $context['scope'];
+		}
+		$context['scope'] = self::get_expected_scope_place_ids();
+		return $context['scope'];
+	}
+
+	/**
+	 * @param array<string,mixed> &$context Shared run context.
+	 * @return array<string,mixed>
+	 */
+	private static function ensure_shared_deploy_context( array &$context ) {
+		if ( isset( $context['shared_deploy'] ) && is_array( $context['shared_deploy'] ) ) {
+			return $context['shared_deploy'];
+		}
+		$context['shared_deploy'] = self::get_shared_deploy_context();
+		return $context['shared_deploy'];
+	}
+
+	/**
+	 * Build deployed maps + duplicate/orphan stats from one query.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function get_shared_deploy_context() {
+		global $wpdb;
+		$maps = array(
+			'radius_landing'      => array(),
+			'radius_service_area' => array(),
+		);
+		$dup  = array(
+			'groups' => 0,
+			'extra'  => 0,
+		);
+		$orphan = 0;
+		$seen   = array();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.post_type,
+					p.post_status,
+					CAST(pm_tid.meta_value AS UNSIGNED) AS tid,
+					CAST(pm_place.meta_value AS UNSIGNED) AS place_id,
+					pm_tid.meta_id AS tid_meta_id,
+					pm_place.meta_id AS place_meta_id,
+					pm_tid.meta_value AS tid_raw,
+					pm_place.meta_value AS place_raw
+				FROM {$wpdb->posts} p
+				LEFT JOIN {$wpdb->postmeta} pm_tid ON pm_tid.post_id = p.ID AND pm_tid.meta_key = %s
+				LEFT JOIN {$wpdb->postmeta} pm_place ON pm_place.post_id = p.ID AND pm_place.meta_key = %s
+				WHERE p.post_type IN ('radius_landing','radius_service_area')
+				AND p.post_status NOT IN ('auto-draft')",
+				Radius_Data_Registry::META_TEMPLATE_ID,
+				Radius_Data_Registry::META_PLACE_ID
+			),
+			ARRAY_A
+		);
+		if ( ! is_array( $rows ) ) {
+			$rows = array();
+		}
+
+		foreach ( $rows as $row ) {
+			$post_type = isset( $row['post_type'] ) ? sanitize_key( (string) $row['post_type'] ) : '';
+			if ( ! isset( $maps[ $post_type ] ) ) {
+				continue;
+			}
+
+			$status = isset( $row['post_status'] ) ? (string) $row['post_status'] : '';
+			$tid    = (int) ( $row['tid'] ?? 0 );
+			$pid    = (int) ( $row['place_id'] ?? 0 );
+
+			if ( in_array( $status, array( 'publish', 'draft', 'pending', 'private' ), true ) && $tid > 0 && $pid > 0 ) {
+				if ( ! isset( $maps[ $post_type ][ $tid ] ) ) {
+					$maps[ $post_type ][ $tid ] = array();
+				}
+				$maps[ $post_type ][ $tid ][ $pid ] = $pid;
+			}
+
+			if ( in_array( $status, array( 'trash', 'auto-draft' ), true ) ) {
+				continue;
+			}
+
+			$tid_missing = empty( $row['tid_meta_id'] ) || ! isset( $row['tid_raw'] ) || (string) $row['tid_raw'] === '';
+			$pid_missing = empty( $row['place_meta_id'] ) || ! isset( $row['place_raw'] ) || (string) $row['place_raw'] === '';
+			if ( $tid_missing || $pid_missing ) {
+				++$orphan;
+				continue;
+			}
+
+			if ( $tid <= 0 || $pid <= 0 ) {
+				continue;
+			}
+			$pair = $post_type . '|' . $tid . '|' . $pid;
+			if ( ! isset( $seen[ $pair ] ) ) {
+				$seen[ $pair ] = 1;
+			} else {
+				++$seen[ $pair ];
+			}
+		}
+
+		foreach ( $maps as $post_type => $templates ) {
+			foreach ( $templates as $tid => $set ) {
+				$maps[ $post_type ][ $tid ] = array_values( array_map( 'intval', $set ) );
+			}
+		}
+
+		foreach ( $seen as $count ) {
+			if ( $count > 1 ) {
+				++$dup['groups'];
+				$dup['extra'] += (int) $count - 1;
+			}
+		}
+
+		return array(
+			'deployed_landings' => isset( $maps['radius_landing'] ) ? $maps['radius_landing'] : array(),
+			'deployed_sa'       => isset( $maps['radius_service_area'] ) ? $maps['radius_service_area'] : array(),
+			'duplicate_groups'  => (int) $dup['groups'],
+			'duplicate_extra'   => (int) $dup['extra'],
+			'orphan_count'      => (int) $orphan,
+		);
 	}
 
 	/**
@@ -231,48 +589,14 @@ final class Radius_Deploy_Health_Check {
 	 * @return array<int,int[]>
 	 */
 	public static function get_deployed_place_ids_map( $post_type ) {
-		global $wpdb;
 		$post_type = sanitize_key( (string) $post_type );
 		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			return array();
 		}
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT CAST(pm_tid.meta_value AS UNSIGNED) AS tid,
-					CAST(pm_place.meta_value AS UNSIGNED) AS place_id
-				FROM {$wpdb->posts} p
-				INNER JOIN {$wpdb->postmeta} pm_tid ON pm_tid.post_id = p.ID AND pm_tid.meta_key = %s
-				INNER JOIN {$wpdb->postmeta} pm_place ON pm_place.post_id = p.ID AND pm_place.meta_key = %s
-				WHERE p.post_type = %s
-				AND p.post_status IN ('publish','draft','pending','private')
-				AND pm_tid.meta_value != ''
-				AND pm_place.meta_value != ''",
-				Radius_Data_Registry::META_TEMPLATE_ID,
-				Radius_Data_Registry::META_PLACE_ID,
-				$post_type
-			),
-			ARRAY_A
-		);
-		$map = array();
-		if ( ! is_array( $rows ) ) {
-			return $map;
-		}
-		foreach ( $rows as $row ) {
-			$tid = (int) $row['tid'];
-			$pid = (int) $row['place_id'];
-			if ( $tid <= 0 || $pid <= 0 ) {
-				continue;
-			}
-			if ( ! isset( $map[ $tid ] ) ) {
-				$map[ $tid ] = array();
-			}
-			$map[ $tid ][ $pid ] = $pid;
-		}
-		foreach ( $map as $tid => $set ) {
-			$map[ $tid ] = array_values( array_map( 'intval', $set ) );
-		}
-		return $map;
+		$shared = self::get_shared_deploy_context();
+		return 'radius_landing' === $post_type
+			? (array) ( $shared['deployed_landings'] ?? array() )
+			: (array) ( $shared['deployed_sa'] ?? array() );
 	}
 
 	/**
@@ -835,7 +1159,7 @@ final class Radius_Deploy_Health_Check {
 	 *
 	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
 	 */
-	public static function get_service_area_coverage_gaps( array $scope = null, array $deployed_sa = null ) {
+	public static function get_service_area_coverage_gaps( ?array $scope = null, ?array $deployed_sa = null ) {
 		if ( ! is_array( $scope ) || ! isset( $scope['ids'] ) ) {
 			$scope = self::get_expected_scope_place_ids();
 		}
@@ -917,7 +1241,7 @@ final class Radius_Deploy_Health_Check {
 	 * @param int $template_id radius_template post ID.
 	 * @return array{template_id:int,extra_place_ids:int[],missing_place_ids:int[],expected_count:int,deployed_count:int}
 	 */
-	public static function get_landing_template_gaps( $template_id, array $scope = null, array $deployed_landings = null ) {
+	public static function get_landing_template_gaps( $template_id, ?array $scope = null, ?array $deployed_landings = null ) {
 		if ( ! is_array( $scope ) || ! isset( $scope['ids'] ) ) {
 			$scope = self::get_expected_scope_place_ids();
 		}
@@ -1071,8 +1395,6 @@ final class Radius_Deploy_Health_Check {
 	 * @return array<int,array<string,mixed>>
 	 */
 	private static function check_landing_templates( array $scope, array $deployed_landings ) {
-		$expected_set = array_fill_keys( $scope['ids'], true );
-		$expected_n   = count( $expected_set );
 		$checks       = array();
 		$templates    = get_posts(
 			array(
@@ -1084,91 +1406,114 @@ final class Radius_Deploy_Health_Check {
 			)
 		);
 		if ( empty( $templates ) ) {
-			$checks[] = self::make_check(
-				'landing_templates',
-				__( 'Landing templates', 'radius' ),
-				'fail',
-				__( 'No published landing templates found.', 'radius' )
-			);
+			$checks[] = self::check_no_landing_templates( $scope );
 			return $checks;
 		}
 		foreach ( $templates as $tpl ) {
 			$tid    = (int) $tpl->ID;
-			$title  = get_the_title( $tpl );
-			$gaps   = self::get_landing_template_gaps( $tid, $scope, $deployed_landings );
-			$missing = $gaps['missing_place_ids'];
-			$extra   = $gaps['extra_place_ids'];
-			$deployed_n = (int) $gaps['deployed_count'];
-			if ( $expected_n < 1 ) {
-				$checks[] = self::make_check(
-					'landing_' . $tid,
-					$title,
-					'skip',
-					__( 'Skipped — no places in deploy scope.', 'radius' )
-				);
-				continue;
-			}
-			if ( empty( $missing ) && empty( $extra ) ) {
-				$checks[] = self::make_check(
-					'landing_' . $tid,
-					$title,
-					'pass',
-					sprintf(
-						/* translators: %d: place count */
-						__( 'Landing deployed for all %d places in scope.', 'radius' ),
-						$expected_n
-					),
-					'',
-					array(
-						'template_id' => $tid,
-						'deployed'    => $deployed_n,
-						'expected'    => $expected_n,
-					)
-				);
-				continue;
-			}
-			$status = ! empty( $missing ) ? 'fail' : 'warn';
-			$detail = '';
-			if ( ! empty( $extra ) ) {
-				$detail = __(
-					'Extra landings are for places outside your current deploy scope. Use the button below to trash those pages. Each trashed URL gets a 301 redirect to your service area index (e.g. /service-area/).',
-					'radius'
-				);
-			}
-			$extra_fields = array(
-				'template_id'   => $tid,
-				'missing_count' => count( $missing ),
-				'extra_count'   => count( $extra ),
-				'missing_slugs' => self::place_slugs_sample( $missing ),
-				'extra_slugs'   => self::place_slugs_sample( $extra ),
-				'deployed'      => $deployed_n,
-				'expected'      => $expected_n,
-			);
-			if ( ! empty( $missing ) ) {
-				$extra_fields['fix_url'] = admin_url( 'admin.php?page=radius-deploy&tab=landings' );
-			}
-			if ( ! empty( $extra ) ) {
-				$extra_fields['remediation'] = array(
-					'action'      => 'trash_extra_landings',
-					'template_id' => $tid,
-					'count'       => count( $extra ),
-				);
-			}
-			$checks[] = self::make_check(
-				'landing_' . $tid,
-				$title,
-				$status,
-				sprintf(
-					/* translators: 1: missing count, 2: extra count */
-					__( 'Missing landings: %1$d. Extra landings (outside scope): %2$d.', 'radius' ),
-					count( $missing ),
-					count( $extra )
-				),
-				$detail,
-				$extra_fields
-			);
+			$checks[] = self::check_single_landing_template( $tid, $scope, $deployed_landings );
 		}
 		return $checks;
+	}
+
+	/**
+	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
+	 * @return array<string,mixed>
+	 */
+	private static function check_no_landing_templates( array $scope ) {
+		unset( $scope );
+		return self::make_check(
+			'landing_templates',
+			__( 'Landing templates', 'radius' ),
+			'fail',
+			__( 'No published landing templates found.', 'radius' )
+		);
+	}
+
+	/**
+	 * @param int                                                                           $template_id Template post ID.
+	 * @param array{ids:int[],skipped_no_coords:int,removed_blacklist:int,removed_duplicate:int} $scope Scope.
+	 * @param array<int,int[]>                                                             $deployed_landings Map.
+	 * @return array<string,mixed>
+	 */
+	private static function check_single_landing_template( $template_id, array $scope, array $deployed_landings ) {
+		$tid        = (int) $template_id;
+		$title      = $tid > 0 ? get_the_title( $tid ) : '';
+		$title      = $title !== '' ? $title : sprintf( __( 'Template #%d', 'radius' ), $tid );
+		$expected_n = count( $scope['ids'] );
+		$gaps       = self::get_landing_template_gaps( $tid, $scope, $deployed_landings );
+		$missing    = $gaps['missing_place_ids'];
+		$extra      = $gaps['extra_place_ids'];
+		$deployed_n = (int) $gaps['deployed_count'];
+
+		if ( $expected_n < 1 ) {
+			return self::make_check(
+				'landing_' . $tid,
+				$title,
+				'skip',
+				__( 'Skipped — no places in deploy scope.', 'radius' )
+			);
+		}
+
+		if ( empty( $missing ) && empty( $extra ) ) {
+			return self::make_check(
+				'landing_' . $tid,
+				$title,
+				'pass',
+				sprintf(
+					/* translators: %d: place count */
+					__( 'Landing deployed for all %d places in scope.', 'radius' ),
+					$expected_n
+				),
+				'',
+				array(
+					'template_id' => $tid,
+					'deployed'    => $deployed_n,
+					'expected'    => $expected_n,
+				)
+			);
+		}
+
+		$status = ! empty( $missing ) ? 'fail' : 'warn';
+		$detail = '';
+		if ( ! empty( $extra ) ) {
+			$detail = __(
+				'Extra landings are for places outside your current deploy scope. Use the button below to trash those pages. Each trashed URL gets a 301 redirect to your service area index (e.g. /service-area/).',
+				'radius'
+			);
+		}
+		$extra_fields = array(
+			'template_id'   => $tid,
+			'missing_count' => count( $missing ),
+			'extra_count'   => count( $extra ),
+			'missing_slugs' => self::place_slugs_sample( $missing ),
+			'extra_slugs'   => self::place_slugs_sample( $extra ),
+			'deployed'      => $deployed_n,
+			'expected'      => $expected_n,
+		);
+		if ( ! empty( $missing ) ) {
+			$extra_fields['fix_url'] = admin_url( 'admin.php?page=radius-deploy&tab=landings' );
+		}
+		if ( ! empty( $extra ) ) {
+			$extra_fields['remediation'] = array(
+				'action'      => 'trash_extra_landings',
+				'template_id' => $tid,
+				'count'       => count( $extra ),
+			);
+		}
+		return self::make_check(
+			'landing_' . $tid,
+			$title,
+			$status,
+			sprintf(
+				/* translators: 1: missing count, 2: extra count */
+				__( 'Missing landings: %1$d. Extra landings (outside scope): %2$d.', 'radius' ),
+				count( $missing ),
+				count( $extra )
+			),
+			$detail,
+			$extra_fields
+		);
 	}
 
 	/**
@@ -1271,37 +1616,12 @@ final class Radius_Deploy_Health_Check {
 	/**
 	 * @return array<string,mixed>
 	 */
-	private static function check_duplicate_deploy_pages() {
-		global $wpdb;
+	private static function check_duplicate_deploy_pages( ?array $shared_context = null ) {
 		$dup_groups = 0;
 		$dup_extra  = 0;
-		foreach ( array( 'radius_landing', 'radius_service_area' ) as $pt ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$rows = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT CAST(pm_tid.meta_value AS UNSIGNED) AS tid,
-						CAST(pm_place.meta_value AS UNSIGNED) AS place_id,
-						COUNT(*) AS cnt
-					FROM {$wpdb->posts} p
-					INNER JOIN {$wpdb->postmeta} pm_tid ON pm_tid.post_id = p.ID AND pm_tid.meta_key = %s
-					INNER JOIN {$wpdb->postmeta} pm_place ON pm_place.post_id = p.ID AND pm_place.meta_key = %s
-					WHERE p.post_type = %s
-					AND p.post_status NOT IN ('trash','auto-draft')
-					GROUP BY tid, place_id
-					HAVING cnt > 1",
-					Radius_Data_Registry::META_TEMPLATE_ID,
-					Radius_Data_Registry::META_PLACE_ID,
-					$pt
-				),
-				ARRAY_A
-			);
-			if ( ! is_array( $rows ) ) {
-				continue;
-			}
-			foreach ( $rows as $row ) {
-				++$dup_groups;
-				$dup_extra += max( 0, (int) $row['cnt'] - 1 );
-			}
+		if ( is_array( $shared_context ) ) {
+			$dup_groups = isset( $shared_context['duplicate_groups'] ) ? (int) $shared_context['duplicate_groups'] : 0;
+			$dup_extra  = isset( $shared_context['duplicate_extra'] ) ? (int) $shared_context['duplicate_extra'] : 0;
 		}
 		if ( $dup_groups < 1 ) {
 			return self::make_check(
@@ -1329,25 +1649,10 @@ final class Radius_Deploy_Health_Check {
 	/**
 	 * @return array<string,mixed>
 	 */
-	private static function check_orphan_deploy_meta() {
-		global $wpdb;
+	private static function check_orphan_deploy_meta( ?array $shared_context = null ) {
 		$orphan = 0;
-		foreach ( array( 'radius_landing', 'radius_service_area' ) as $pt ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$n = (int) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT COUNT(*) FROM {$wpdb->posts} p
-					LEFT JOIN {$wpdb->postmeta} pm_tid ON pm_tid.post_id = p.ID AND pm_tid.meta_key = %s
-					LEFT JOIN {$wpdb->postmeta} pm_place ON pm_place.post_id = p.ID AND pm_place.meta_key = %s
-					WHERE p.post_type = %s
-					AND p.post_status NOT IN ('trash','auto-draft')
-					AND (pm_tid.meta_id IS NULL OR pm_place.meta_id IS NULL OR pm_tid.meta_value = '' OR pm_place.meta_value = '')",
-					Radius_Data_Registry::META_TEMPLATE_ID,
-					Radius_Data_Registry::META_PLACE_ID,
-					$pt
-				)
-			);
-			$orphan += $n;
+		if ( is_array( $shared_context ) ) {
+			$orphan = isset( $shared_context['orphan_count'] ) ? (int) $shared_context['orphan_count'] : 0;
 		}
 		if ( $orphan < 1 ) {
 			return self::make_check(

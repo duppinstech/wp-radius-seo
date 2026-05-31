@@ -77,6 +77,7 @@
 	}
 
 	var lastReport = null;
+	var activeRun = null;
 
 	function summarizeChecks(checks) {
 		var pass = 0;
@@ -266,6 +267,12 @@
 					(sum.fail || 0) +
 					' fail'
 			);
+		if (data && data.progress && data.progress.total > 0) {
+			var progressText = (i18n.progressFmt || 'Running check {done} of {total}…')
+				.replace('{done}', String(data.progress.done || 0))
+				.replace('{total}', String(data.progress.total || 0));
+			summaryEl.innerHTML += '<br><span class="description">' + esc(progressText) + '</span>';
+		}
 		if (data && data.scope && typeof data.scope.expected_places === 'number') {
 			summaryEl.innerHTML +=
 				'<br><span class="description">' +
@@ -291,7 +298,7 @@
 		var checks = data && Array.isArray(data.checks) ? data.checks : [];
 		var remediateN = countRemediations(checks);
 		if (fixAllBtn) {
-			fixAllBtn.hidden = remediateN < 1;
+			fixAllBtn.hidden = !!(data && data.running) || remediateN < 1;
 			fixAllBtn.textContent = i18n.fixAllIssues || 'Fix all issues';
 			if (remediateN > 0) {
 				fixAllBtn.textContent += ' (' + remediateN + ')';
@@ -306,12 +313,31 @@
 		resultsEl.innerHTML = html;
 	}
 
+	function postHealthRequest(mode, extra) {
+		var fd = new FormData();
+		fd.append('action', 'radius_deploy_health_check');
+		fd.append('nonce', cfg.nonce);
+		fd.append('mode', mode);
+		if (extra && typeof extra === 'object') {
+			Object.keys(extra).forEach(function (k) {
+				if (extra[k] != null) {
+					fd.append(k, String(extra[k]));
+				}
+			});
+		}
+		return fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' }).then(parseAjaxJson);
+	}
+
 	function setRunning(on) {
 		var btn = document.getElementById('radius-deploy-health-run');
+		var btnFull = document.getElementById('radius-deploy-health-run-full');
 		var fixAll = document.getElementById('radius-deploy-health-fix-all');
 		var sp = document.getElementById('radius-deploy-health-spinner');
 		if (btn) {
 			btn.disabled = !!on;
+		}
+		if (btnFull) {
+			btnFull.disabled = !!on;
 		}
 		if (fixAll) {
 			fixAll.disabled = !!on;
@@ -409,42 +435,100 @@
 		return i18n.trashExtraHubsRunning || 'Trashing hubs…';
 	}
 
-	function runCheck() {
+	function runCheck(checkMode) {
 		if (!cfg.ajaxurl || !cfg.nonce) {
 			return;
 		}
+		checkMode = checkMode === 'full' ? 'full' : 'light';
+		activeRun = null;
 		setRunning(true);
-		var fd = new FormData();
-		fd.append('action', 'radius_deploy_health_check');
-		fd.append('nonce', cfg.nonce);
-		fetch(cfg.ajaxurl, { method: 'POST', body: fd, credentials: 'same-origin' })
-			.then(parseAjaxJson)
+		postHealthRequest('start', { check_mode: checkMode })
+			.then(function (json) {
+				if (!json || !json.success || !json.data || !json.data.run_id) {
+					throw new Error(
+						(json && json.data && json.data.message) || 'Could not start health check.'
+					);
+				}
+				var plan = Array.isArray(json.data.plan) ? json.data.plan : [];
+				activeRun = {
+					id: json.data.run_id,
+					checkMode: checkMode,
+					plan: plan,
+					index: 0,
+					checksById: {},
+				};
+				renderReport({
+					summary: { pass: 0, warn: 0, fail: 0, skip: 0, status: 'pass' },
+					checks: [],
+					running: true,
+					progress: { done: 0, total: plan.length },
+				});
+				return runNextHealthChunk();
+			})
+			.then(function () {
+				return postHealthRequest('finish', {
+					run_id: activeRun ? activeRun.id : '',
+					check_mode: activeRun && activeRun.checkMode ? activeRun.checkMode : checkMode,
+				});
+			})
 			.then(function (json) {
 				setRunning(false);
+				activeRun = null;
 				if (!json || !json.success) {
-					var msg =
-						json && json.data && json.data.message
-							? json.data.message
-							: cfg.i18n && cfg.i18n.errorPrefix
-								? cfg.i18n.errorPrefix + ' Request failed.'
-								: 'Request failed.';
-					var resultsEl = document.getElementById('radius-deploy-health-results');
-					if (resultsEl) {
-						resultsEl.innerHTML =
-							'<p class="notice notice-error"><strong>' + esc(msg) + '</strong></p>';
-					}
-					return;
+					throw new Error((json && json.data && json.data.message) || 'Request failed.');
 				}
 				renderReport(json.data);
 			})
 			.catch(function (err) {
 				setRunning(false);
+				activeRun = null;
 				var resultsEl = document.getElementById('radius-deploy-health-results');
 				if (resultsEl) {
 					resultsEl.innerHTML =
 						'<p class="notice notice-error"><strong>' + esc(String(err)) + '</strong></p>';
 				}
 			});
+	}
+
+	function runNextHealthChunk() {
+		if (!activeRun) {
+			return Promise.resolve();
+		}
+		if (activeRun.index >= activeRun.plan.length) {
+			return Promise.resolve();
+		}
+		var entry = activeRun.plan[activeRun.index] || {};
+		var checkId = entry.id || '';
+		return postHealthRequest('step', {
+			run_id: activeRun.id,
+			check_id: checkId,
+			check_mode: activeRun.checkMode || 'light',
+		}).then(
+			function (json) {
+				if (!json || !json.success || !json.data || !json.data.check) {
+					throw new Error(
+						(json && json.data && json.data.message) || 'Health check chunk failed.'
+					);
+				}
+				activeRun.checksById[checkId] = json.data.check;
+				activeRun.index += 1;
+				var partialChecks = activeRun.plan
+					.map(function (p) {
+						return p && p.id && activeRun.checksById[p.id] ? activeRun.checksById[p.id] : null;
+					})
+					.filter(Boolean);
+				renderReport({
+					summary: summarizeChecks(partialChecks),
+					checks: partialChecks,
+					running: true,
+					progress: {
+						done: activeRun.index,
+						total: activeRun.plan.length,
+					},
+				});
+				return runNextHealthChunk();
+			}
+		);
 	}
 
 	function runRemediate(action, triggerBtn, templateId) {
@@ -548,7 +632,15 @@
 		}
 		var btn = document.getElementById('radius-deploy-health-run');
 		if (btn) {
-			btn.addEventListener('click', runCheck);
+			btn.addEventListener('click', function () {
+				runCheck('light');
+			});
+		}
+		var btnFull = document.getElementById('radius-deploy-health-run-full');
+		if (btnFull) {
+			btnFull.addEventListener('click', function () {
+				runCheck('full');
+			});
 		}
 		var fixAllBtn = document.getElementById('radius-deploy-health-fix-all');
 		if (fixAllBtn) {
@@ -574,7 +666,7 @@
 			}
 		});
 		if (cfg.autoRun) {
-			runCheck();
+			runCheck('light');
 		} else if (cfg.storedReport && cfg.storedReport.summary) {
 			renderReport(cfg.storedReport);
 		}

@@ -877,16 +877,121 @@ class Radius_Ajax {
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
 		}
 
+		$mode = isset( $_POST['mode'] ) ? sanitize_key( wp_unslash( (string) $_POST['mode'] ) ) : 'full'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $mode, array( 'full', 'start', 'step', 'finish' ), true ) ) {
+			$mode = 'full';
+		}
+		$check_mode = isset( $_POST['check_mode'] ) ? sanitize_key( wp_unslash( (string) $_POST['check_mode'] ) ) : 'light'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $check_mode, array( 'light', 'full' ), true ) ) {
+			$check_mode = 'light';
+		}
+
+		$is_full_health = ( 'full' === $check_mode );
+		$time_limit     = in_array( $mode, array( 'full', 'finish' ), true ) ? 300 : ( $is_full_health ? 240 : 120 );
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
-			@set_time_limit( 300 );
+			@set_time_limit( $time_limit );
 		}
-		if ( function_exists( 'wp_raise_memory_limit' ) ) {
+		if ( function_exists( 'wp_raise_memory_limit' ) && ( in_array( $mode, array( 'full', 'finish' ), true ) || $is_full_health ) ) {
 			wp_raise_memory_limit( 'admin' );
 		}
 
 		try {
-			$report = Radius_Deploy_Health_Check::run();
+			if ( 'start' === $mode ) {
+				$plan   = Radius_Deploy_Health_Check::get_check_plan( $check_mode );
+				$run_id = wp_generate_uuid4();
+				$state  = array(
+					'started_at' => microtime( true ),
+					'check_mode' => $check_mode,
+					'plan'       => $plan,
+					'checks'     => array(),
+					'context'    => array(),
+				);
+				set_transient( self::deploy_health_chunk_key( $run_id ), $state, 30 * MINUTE_IN_SECONDS );
+				wp_send_json_success(
+					array(
+						'run_id'     => $run_id,
+						'check_mode' => $check_mode,
+						'plan'       => $plan,
+						'total'      => count( $plan ),
+					)
+				);
+				return;
+			}
+
+			if ( 'step' === $mode ) {
+				$run_id   = isset( $_POST['run_id'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['run_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				$check_id = isset( $_POST['check_id'] ) ? sanitize_key( wp_unslash( (string) $_POST['check_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				$state    = self::deploy_health_chunk_load( $run_id );
+				if ( ! is_array( $state ) ) {
+					wp_send_json_error( array( 'message' => __( 'Health check run expired. Start again.', 'radius' ) ), 410 );
+					return;
+				}
+				$valid_ids = array();
+				foreach ( (array) $state['plan'] as $entry ) {
+					if ( is_array( $entry ) && ! empty( $entry['id'] ) ) {
+						$valid_ids[] = sanitize_key( (string) $entry['id'] );
+					}
+				}
+				if ( $check_id === '' || ! in_array( $check_id, $valid_ids, true ) ) {
+					wp_send_json_error( array( 'message' => __( 'Unknown health check item.', 'radius' ) ), 400 );
+					return;
+				}
+
+				$context = isset( $state['context'] ) && is_array( $state['context'] ) ? $state['context'] : array();
+				$check   = Radius_Deploy_Health_Check::run_check_by_id( $check_id, $context );
+				if ( ! isset( $state['checks'] ) || ! is_array( $state['checks'] ) ) {
+					$state['checks'] = array();
+				}
+				$state['checks'][ $check_id ] = $check;
+				$state['context']             = $context;
+				set_transient( self::deploy_health_chunk_key( $run_id ), $state, 30 * MINUTE_IN_SECONDS );
+
+				wp_send_json_success(
+					array(
+						'check' => $check,
+						'done'  => count( $state['checks'] ),
+						'total' => count( (array) $state['plan'] ),
+					)
+				);
+				return;
+			}
+
+			if ( 'finish' === $mode ) {
+				$run_id = isset( $_POST['run_id'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['run_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				$state  = self::deploy_health_chunk_load( $run_id );
+				if ( ! is_array( $state ) ) {
+					wp_send_json_error( array( 'message' => __( 'Health check run expired. Start again.', 'radius' ) ), 410 );
+					return;
+				}
+				$context = isset( $state['context'] ) && is_array( $state['context'] ) ? $state['context'] : array();
+				$state_check_mode = isset( $state['check_mode'] ) ? sanitize_key( (string) $state['check_mode'] ) : $check_mode;
+				if ( ! in_array( $state_check_mode, array( 'light', 'full' ), true ) ) {
+					$state_check_mode = 'light';
+				}
+				$checks  = array();
+				foreach ( (array) $state['plan'] as $entry ) {
+					if ( ! is_array( $entry ) || empty( $entry['id'] ) ) {
+						continue;
+					}
+					$check_id = sanitize_key( (string) $entry['id'] );
+					if ( isset( $state['checks'][ $check_id ] ) && is_array( $state['checks'][ $check_id ] ) ) {
+						$checks[] = $state['checks'][ $check_id ];
+					} else {
+						$checks[] = Radius_Deploy_Health_Check::run_check_by_id( $check_id, $context );
+					}
+				}
+				$scope  = isset( $context['scope'] ) && is_array( $context['scope'] ) ? $context['scope'] : Radius_Deploy_Health_Check::get_expected_scope_place_ids();
+				$report = Radius_Deploy_Health_Check::build_report_from_checks(
+					$checks,
+					$scope,
+					isset( $state['started_at'] ) ? (float) $state['started_at'] : microtime( true ),
+					$state_check_mode
+				);
+				delete_transient( self::deploy_health_chunk_key( $run_id ) );
+			} else {
+				$report = Radius_Deploy_Health_Check::run( $check_mode );
+			}
 		} catch ( \Throwable $e ) {
 			if ( class_exists( 'Radius_Operation_Log' ) ) {
 				Radius_Operation_Log::error(
@@ -925,6 +1030,26 @@ class Radius_Ajax {
 		}
 
 		wp_send_json_success( $report );
+	}
+
+	/**
+	 * @param string $run_id Client run ID.
+	 * @return string
+	 */
+	private static function deploy_health_chunk_key( $run_id ) {
+		return 'radius_health_chunk_' . md5( (string) $run_id );
+	}
+
+	/**
+	 * @param string $run_id Client run ID.
+	 * @return array<string,mixed>|null
+	 */
+	private static function deploy_health_chunk_load( $run_id ) {
+		if ( $run_id === '' ) {
+			return null;
+		}
+		$raw = get_transient( self::deploy_health_chunk_key( $run_id ) );
+		return is_array( $raw ) ? $raw : null;
 	}
 
 	/**

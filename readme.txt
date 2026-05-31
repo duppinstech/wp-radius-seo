@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.103
+Stable tag: 1.6.104
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,13 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.104 =
+* **Performance:** Health check now supports **quick vs full** modes (daily cron uses quick mode), while retaining chunked AJAX execution and progressive UI updates.
+* **Performance:** Added deploy scope ID caching keyed to service-area anchor configuration, reducing repeated scope recomputation on large libraries.
+* **Performance:** Replaced deep `OFFSET` paging in geo place scans with `term_id` cursor pagination (`term_id > last`) for better large-taxonomy behavior.
+* **Admin UX:** Health tab now shows a large-site time-budget hint and separate **Run quick check** / **Run full check** actions.
+* **System checks:** Added plugin write-access preflight on Deploy → System to flag environments likely to fail one-click updates due to file permissions/ownership.
 
 = 1.6.103 =
 * **Fix:** Resolved plugin-check findings around dynamic SQL inspection paths by tightening table-name validation usage and clarifying safe PHPCS/PluginCheck annotations for schema/index checks.

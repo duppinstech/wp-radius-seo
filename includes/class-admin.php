@@ -669,6 +669,7 @@ class Radius_Admin {
 					'storedReport' => class_exists( 'Radius_Deploy_Health_Cron' ) ? self::build_stored_health_report_for_js() : null,
 					'i18n'       => array(
 						'running'       => __( 'Running checks…', 'radius' ),
+						'progressFmt'   => __( 'Running check {done} of {total}…', 'radius' ),
 						'errorPrefix'   => __( 'Error:', 'radius' ),
 						'htmlNotJson'   => __( 'The server returned an HTML error page instead of JSON — usually a timeout, security block, or PHP fatal error. Check your host error log or Radius → Logs, then try again. Large sites may need radius_health_redirect_scan_max_urls lowered or radius_deploy_health_include_redirect_scan disabled.', 'radius' ),
 						'runAgain'      => __( 'Run health check', 'radius' ),
@@ -1978,6 +1979,10 @@ class Radius_Admin {
 		if ( class_exists( 'Radius_Deploy_Service' ) && method_exists( 'Radius_Deploy_Service', 'get_deferred_seo_queue_status' ) ) {
 			$deferred_seo_status = Radius_Deploy_Service::get_deferred_seo_queue_status();
 		}
+		$published_deploy_pages = 0;
+		if ( class_exists( 'Radius_Health_Url_Conflicts' ) && method_exists( 'Radius_Health_Url_Conflicts', 'count_published_deployed_posts' ) ) {
+			$published_deploy_pages = max( 0, (int) Radius_Health_Url_Conflicts::count_published_deployed_posts() );
+		}
 
 		$migration_state = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_state() : '';
 		$migration_steps = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::build_steps_status() : array();
@@ -2618,6 +2623,20 @@ class Radius_Admin {
 			<p class="description">
 				<?php esc_html_e( 'Validates migration steps, service-area coverage, and landing pages per template against the same place list used when you deploy (places inside your service areas, minus slug-pattern and duplicate-name exclusions).', 'radius' ); ?>
 			</p>
+			<p class="description">
+				<?php esc_html_e( 'Quick check (recommended for routine use) skips duplicate/orphan deep scans. Full check includes every validation and can take longer on large libraries.', 'radius' ); ?>
+			</p>
+			<?php if ( $published_deploy_pages >= 5000 ) : ?>
+				<p class="description">
+					<?php
+					printf(
+						/* translators: %d: published deploy page count. */
+						esc_html__( 'Large site detected (%d published deploy pages). Checks run in chunked AJAX requests; full scans may take several minutes.', 'radius' ),
+						(int) $published_deploy_pages
+					);
+					?>
+				</p>
+			<?php endif; ?>
 			<?php if ( class_exists( 'Radius_Deploy_Health_Cron' ) && Radius_Deploy_Health_Cron::is_enabled() ) : ?>
 				<p class="description">
 					<?php esc_html_e( 'A background check runs once per day (WP-Cron). When issues are found, a badge appears on Deploy and an admin notice links here.', 'radius' ); ?>
@@ -2625,7 +2644,10 @@ class Radius_Admin {
 			<?php endif; ?>
 			<p class="radius-deploy-health-toolbar">
 				<button type="button" class="button button-primary" id="radius-deploy-health-run">
-					<?php esc_html_e( 'Run health check', 'radius' ); ?>
+					<?php esc_html_e( 'Run quick check', 'radius' ); ?>
+				</button>
+				<button type="button" class="button button-secondary" id="radius-deploy-health-run-full">
+					<?php esc_html_e( 'Run full check', 'radius' ); ?>
 				</button>
 				<button type="button" class="button button-secondary" id="radius-deploy-health-fix-all" hidden>
 					<?php esc_html_e( 'Fix all issues', 'radius' ); ?>
