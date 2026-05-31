@@ -888,6 +888,31 @@
 	margin-top: 4px;
 }
 
+.radius-deploy-missing-meta {
+	margin: 16px 0 20px;
+	max-width: 1200px;
+}
+
+.radius-deploy-missing-meta__table {
+	margin-top: 12px;
+}
+
+.radius-deploy-missing-meta__form {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 8px;
+}
+
+.radius-deploy-missing-meta__select {
+	min-width: 220px;
+	max-width: 100%;
+}
+
+.radius-deploy-missing-meta__bulk {
+	margin-top: 14px;
+}
+
 #wpbody-content .wrap.radius-admin.radius-deploy .radius-deploy-grid,
 .radius-deploy-grid {
 	display: grid !important;
@@ -1776,6 +1801,15 @@ progress.radius-mw-overall-bar {
 }
 .radius-deploy-health-item__summary {
 	margin: 0 0 4px;
+}
+
+.radius-deploy-health-orphan-pages {
+	margin: 8px 0 0;
+	padding-left: 1.2em;
+}
+
+.radius-deploy-health-orphan-pages li {
+	margin: 0.25em 0;
 }
 .radius-nav-badge {
 	margin-left: 4px;

@@ -493,13 +493,17 @@ final class Radius_Deploy_Health_Check {
 			'groups' => 0,
 			'extra'  => 0,
 		);
-		$orphan = 0;
-		$seen   = array();
+		$orphan         = 0;
+		$orphan_samples = array();
+		$seen           = array();
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT p.post_type,
+				"SELECT p.ID,
+					p.post_title,
+					p.post_name,
+					p.post_type,
 					p.post_status,
 					CAST(pm_tid.meta_value AS UNSIGNED) AS tid,
 					CAST(pm_place.meta_value AS UNSIGNED) AS place_id,
@@ -546,6 +550,18 @@ final class Radius_Deploy_Health_Check {
 			$pid_missing = empty( $row['place_meta_id'] ) || ! isset( $row['place_raw'] ) || (string) $row['place_raw'] === '';
 			if ( $tid_missing || $pid_missing ) {
 				++$orphan;
+				if ( count( $orphan_samples ) < 25 ) {
+					$post_id = (int) ( $row['ID'] ?? 0 );
+					if ( $post_id > 0 ) {
+						$orphan_samples[] = array(
+							'post_id'   => $post_id,
+							'title'     => isset( $row['post_title'] ) ? (string) $row['post_title'] : '',
+							'slug'      => isset( $row['post_name'] ) ? (string) $row['post_name'] : '',
+							'post_type' => $post_type,
+							'edit_url'  => get_edit_post_link( $post_id, 'raw' ),
+						);
+					}
+				}
 				continue;
 			}
 
@@ -579,6 +595,7 @@ final class Radius_Deploy_Health_Check {
 			'duplicate_groups'  => (int) $dup['groups'],
 			'duplicate_extra'   => (int) $dup['extra'],
 			'orphan_count'      => (int) $orphan,
+			'orphan_samples'    => $orphan_samples,
 		);
 	}
 
@@ -1699,9 +1716,13 @@ final class Radius_Deploy_Health_Check {
 	 * @return array<string,mixed>
 	 */
 	private static function check_orphan_deploy_meta( ?array $shared_context = null ) {
-		$orphan = 0;
+		$orphan  = 0;
+		$samples = array();
 		if ( is_array( $shared_context ) ) {
-			$orphan = isset( $shared_context['orphan_count'] ) ? (int) $shared_context['orphan_count'] : 0;
+			$orphan  = isset( $shared_context['orphan_count'] ) ? (int) $shared_context['orphan_count'] : 0;
+			$samples = isset( $shared_context['orphan_samples'] ) && is_array( $shared_context['orphan_samples'] )
+				? $shared_context['orphan_samples']
+				: array();
 		}
 		if ( $orphan < 1 ) {
 			return self::make_check(
@@ -1711,6 +1732,17 @@ final class Radius_Deploy_Health_Check {
 				__( 'All deployed pages have template and place meta.', 'radius' )
 			);
 		}
+		$sample_types = array();
+		foreach ( $samples as $sample ) {
+			if ( ! is_array( $sample ) ) {
+				continue;
+			}
+			$t = isset( $sample['post_type'] ) ? sanitize_key( (string) $sample['post_type'] ) : '';
+			if ( in_array( $t, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+				$sample_types[ $t ] = true;
+			}
+		}
+		$fix_tab = ( 1 === count( $sample_types ) && isset( $sample_types['radius_service_area'] ) ) ? 'service-areas' : 'landings';
 		return self::make_check(
 			'deploy_meta',
 			__( 'Deploy page metadata', 'radius' ),
@@ -1719,6 +1751,12 @@ final class Radius_Deploy_Health_Check {
 				/* translators: %d: page count */
 				_n( '%d deployed page is missing template or place meta.', '%d deployed pages are missing template or place meta.', $orphan, 'radius' ),
 				$orphan
+			),
+			__( 'This is different from Reconnect. Reconnect fixes pages still linked to deleted templates; this check flags pages missing deploy meta entirely.', 'radius' ),
+			array(
+				'orphan_count' => $orphan,
+				'orphan_pages' => array_slice( $samples, 0, 25 ),
+				'fix_url'      => admin_url( 'admin.php?page=radius-deploy&tab=' . $fix_tab . '#radius-deploy-missing-meta-' . ( 'service-areas' === $fix_tab ? 'radius_service_area' : 'radius_landing' ) ),
 			)
 		);
 	}

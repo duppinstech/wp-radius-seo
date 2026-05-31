@@ -646,6 +646,30 @@ class Radius_Admin {
 		);
 		wp_localize_script(
 			'radius-deploy-cards',
+			'radiusDeployMetaRepair',
+			array(
+				'ajaxurl'           => admin_url( 'admin-ajax.php' ),
+				'nonce'             => wp_create_nonce( 'radius_deploy_meta_repair' ),
+				'deployPageUrl'     => admin_url( 'admin.php?page=radius-deploy' ),
+				'batchSize'         => $reconnect_batch,
+				'interBatchDelayMs' => max( 0, $inter_reconnect ),
+				'i18n'              => array(
+					'working'        => __( 'Working…', 'radius' ),
+					'repairing'      => __( 'Restoring deploy meta…', 'radius' ),
+					'progressTpl'    => __( 'Processed {done} of {total} pages…', 'radius' ),
+					'doneTpl'        => __( 'Done. Restored deploy meta for {n} page(s), trashed {t} duplicate(s). Reloading…', 'radius' ),
+					'bulkDoneTpl'    => __( 'Done. Restored deploy meta for {n} page(s) across {g} batch(es). Reloading…', 'radius' ),
+					'errorPrefix'    => __( 'Error:', 'radius' ),
+					'networkError'   => __( 'Network error. Please try again.', 'radius' ),
+					'pickTemplate'   => __( 'Choose a template first.', 'radius' ),
+					'pickPlace'      => __( 'Choose a place first.', 'radius' ),
+					'noSuggested'    => __( 'No suggested page matches are available to repair.', 'radius' ),
+					'bulkConfirm'    => __( 'Restore deploy meta for all suggested rows now?', 'radius' ),
+				),
+			)
+		);
+		wp_localize_script(
+			'radius-deploy-cards',
 			'radiusDeployMigration',
 			array(
 				'ajaxurl'      => admin_url( 'admin-ajax.php' ),
@@ -1634,7 +1658,7 @@ class Radius_Admin {
 	/**
 	 * Readiness stats for the summary bar (locations, service areas, places in scope).
 	 *
-	 * @return array{total_places:int,places_in_scope:int,skipped_no_coords:int,prefilter_blacklist:int,prefilter_duplicates:int,anchor_rows:int,has_anchors:bool,batch_size:int}
+	 * @return array{total_places:int,places_in_scope:int,skipped_no_coords:int,prefilter_blacklist:int,prefilter_duplicates:int,anchor_rows:int,has_anchors:bool,batch_size:int,scope_known:bool}
 	 */
 	private static function get_deploy_readiness_stats() {
 		$tax   = Radius_Place_Taxonomy::TAXONOMY;
@@ -1654,15 +1678,30 @@ class Radius_Admin {
 		$skipped = 0;
 		$pre_bl  = 0;
 		$pre_dup = 0;
+		$scope_known = false;
 		if ( $has ) {
-			$geo     = Radius_Geo_Service::collect_place_ids_for_anchors( $anchors );
-			$scope   = is_array( $geo['ids'] ) ? count( $geo['ids'] ) : 0;
-			$skipped = isset( $geo['skipped_no_coords'] ) ? (int) $geo['skipped_no_coords'] : 0;
-			if ( $scope > 0 && is_array( $geo['ids'] ) ) {
-				$pref = Radius_Place_Taxonomy::filter_place_ids_for_deploy( array_map( 'intval', $geo['ids'] ) );
-				$pre_bl  = (int) $pref['removed_blacklist'];
-				$pre_dup = (int) $pref['removed_duplicate'];
-				$scope   = count( $pref['ids'] );
+			$use_live_fallback = (bool) apply_filters( 'radius_deploy_readiness_live_scope_fallback', false );
+			if ( class_exists( 'Radius_Deploy_Health_Cron' ) ) {
+				$snap = Radius_Deploy_Health_Cron::get_snapshot();
+				if ( is_array( $snap ) && isset( $snap['scope'] ) && is_array( $snap['scope'] ) ) {
+					$scope = isset( $snap['scope']['expected_places'] ) ? max( 0, (int) $snap['scope']['expected_places'] ) : 0;
+					$skipped = isset( $snap['scope']['skipped_no_coords'] ) ? max( 0, (int) $snap['scope']['skipped_no_coords'] ) : 0;
+					$pre_bl = isset( $snap['scope']['removed_blacklist'] ) ? max( 0, (int) $snap['scope']['removed_blacklist'] ) : 0;
+					$pre_dup = isset( $snap['scope']['removed_duplicate'] ) ? max( 0, (int) $snap['scope']['removed_duplicate'] ) : 0;
+					$scope_known = true;
+				}
+			}
+			if ( ! $scope_known && $use_live_fallback ) {
+				$geo     = Radius_Geo_Service::collect_place_ids_for_anchors( $anchors );
+				$scope   = is_array( $geo['ids'] ) ? count( $geo['ids'] ) : 0;
+				$skipped = isset( $geo['skipped_no_coords'] ) ? (int) $geo['skipped_no_coords'] : 0;
+				if ( $scope > 0 && is_array( $geo['ids'] ) ) {
+					$pref = Radius_Place_Taxonomy::filter_place_ids_for_deploy( array_map( 'intval', $geo['ids'] ) );
+					$pre_bl  = (int) $pref['removed_blacklist'];
+					$pre_dup = (int) $pref['removed_duplicate'];
+					$scope   = count( $pref['ids'] );
+				}
+				$scope_known = true;
 			}
 		}
 		$batch = max( 1, min( 200, (int) Radius_Settings::get()['deploy_batch'] ) );
@@ -1675,6 +1714,7 @@ class Radius_Admin {
 			'anchor_rows'            => count( $anchors ),
 			'has_anchors'            => $has,
 			'batch_size'             => $batch,
+			'scope_known'            => $scope_known,
 		);
 	}
 
@@ -1745,13 +1785,17 @@ class Radius_Admin {
 			return;
 		}
 
-		$report   = Radius_Deploy_Reconnect::get_report( $post_type );
-		$clusters = isset( $report['clusters'] ) && is_array( $report['clusters'] ) ? $report['clusters'] : array();
-		$targets  = isset( $report['active_templates'] ) && is_array( $report['active_templates'] ) ? $report['active_templates'] : array();
+		$snapshot = method_exists( 'Radius_Deploy_Reconnect', 'get_snapshot' ) ? Radius_Deploy_Reconnect::get_snapshot( $post_type ) : null;
+		$clusters = is_array( $snapshot ) && isset( $snapshot['clusters'] ) && is_array( $snapshot['clusters'] ) ? $snapshot['clusters'] : array();
+		$targets  = is_array( $snapshot ) && isset( $snapshot['active_templates'] ) && is_array( $snapshot['active_templates'] ) ? $snapshot['active_templates'] : array();
 
 		$label = 'radius_service_area' === $post_type
 			? __( 'service area hub', 'radius' )
 			: __( 'landing', 'radius' );
+
+		if ( ! is_array( $snapshot ) ) {
+			return;
+		}
 
 		if ( empty( $clusters ) ) {
 			return;
@@ -1916,6 +1960,196 @@ class Radius_Admin {
 	}
 
 	/**
+	 * Place dropdown options for meta-repair rows.
+	 *
+	 * @param int   $limit       Additional places to include.
+	 * @param int[] $include_ids Place IDs that must be present first.
+	 * @return array<int,array{id:int,name:string,slug:string}>
+	 */
+	private static function get_place_select_options_for_repair( $limit = 500, array $include_ids = array() ) {
+		$limit       = max( 1, min( 1000, (int) $limit ) );
+		$include_ids = array_values( array_unique( array_filter( array_map( 'intval', $include_ids ) ) ) );
+		$options     = array();
+		$seen        = array();
+
+		foreach ( $include_ids as $pid ) {
+			$term = get_term( $pid, Radius_Place_Taxonomy::TAXONOMY );
+			if ( ! $term || is_wp_error( $term ) ) {
+				continue;
+			}
+			$options[]      = array(
+				'id'   => (int) $term->term_id,
+				'name' => (string) $term->name,
+				'slug' => (string) $term->slug,
+			);
+			$seen[ $pid ] = true;
+		}
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => Radius_Place_Taxonomy::TAXONOMY,
+				'hide_empty' => false,
+				'number'     => $limit,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+			)
+		);
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return $options;
+		}
+		foreach ( $terms as $term ) {
+			$tid = (int) $term->term_id;
+			if ( isset( $seen[ $tid ] ) ) {
+				continue;
+			}
+			$options[] = array(
+				'id'   => $tid,
+				'name' => (string) $term->name,
+				'slug' => (string) $term->slug,
+			);
+		}
+		return $options;
+	}
+
+	/**
+	 * Missing deploy meta repair panel.
+	 *
+	 * @param string $post_type  radius_landing|radius_service_area.
+	 * @param string $action     admin-post URL (unused; kept for UI parity).
+	 * @param int    $batch_size Deploy batch size.
+	 * @return void
+	 */
+	private static function render_deploy_missing_meta_panel( $post_type, $action, $batch_size = 25 ) {
+		unset( $action );
+		if ( ! class_exists( 'Radius_Deploy_Meta_Repair' ) ) {
+			return;
+		}
+		$post_type = sanitize_key( (string) $post_type );
+		if ( ! in_array( $post_type, array( Radius_Data_Registry::CPT_LANDING, Radius_Data_Registry::CPT_SERVICE_AREA ), true ) ) {
+			return;
+		}
+
+		$report = Radius_Deploy_Meta_Repair::get_report( $post_type );
+		$pages  = isset( $report['pages'] ) && is_array( $report['pages'] ) ? $report['pages'] : array();
+		if ( empty( $pages ) ) {
+			return;
+		}
+
+		$targets         = isset( $report['active_templates'] ) && is_array( $report['active_templates'] ) ? $report['active_templates'] : array();
+		$suggested_count = isset( $report['suggested_count'] ) ? (int) $report['suggested_count'] : 0;
+		$include_places  = array();
+		foreach ( $pages as $row ) {
+			$pid = isset( $row['suggested_place_id'] ) ? (int) $row['suggested_place_id'] : 0;
+			if ( $pid > 0 ) {
+				$include_places[] = $pid;
+			}
+		}
+		$place_options = self::get_place_select_options_for_repair( 500, $include_places );
+		?>
+		<div class="radius-card radius-deploy-missing-meta" id="<?php echo esc_attr( 'radius-deploy-missing-meta-' . $post_type ); ?>" data-radius-meta-repair-post-type="<?php echo esc_attr( $post_type ); ?>">
+			<h2><?php esc_html_e( 'Restore deploy meta', 'radius' ); ?></h2>
+			<p class="radius-deploy-missing-meta__status description" id="<?php echo esc_attr( 'radius-missing-meta-status-' . $post_type ); ?>" hidden aria-live="polite"></p>
+			<p class="description">
+				<?php
+				printf(
+					/* translators: %d: deploy batch size */
+					esc_html__( 'These pages were deployed but are missing template/place meta links (often from interrupted deploys). Restore links in batches of %d.', 'radius' ),
+					(int) $batch_size
+				);
+				?>
+			</p>
+			<table class="widefat striped radius-deploy-missing-meta__table">
+				<thead>
+					<tr>
+						<th scope="col"><?php esc_html_e( 'Page', 'radius' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Suggested match', 'radius' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Restore meta', 'radius' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $pages as $row ) : ?>
+						<?php
+						$post_id      = (int) ( $row['post_id'] ?? 0 );
+						$template_sug = (int) ( $row['suggested_template_id'] ?? 0 );
+						$place_sug    = (int) ( $row['suggested_place_id'] ?? 0 );
+						$has_suggest  = $template_sug > 0 && $place_sug > 0;
+						?>
+						<tr>
+							<td>
+								<strong><?php echo esc_html( (string) ( $row['title'] ?? '' ) ); ?></strong>
+								<?php if ( ! empty( $row['slug'] ) ) : ?>
+									<br /><code><?php echo esc_html( (string) $row['slug'] ); ?></code>
+								<?php endif; ?>
+								<?php if ( ! empty( $row['edit_url'] ) ) : ?>
+									<p class="description"><a href="<?php echo esc_url( (string) $row['edit_url'] ); ?>"><?php esc_html_e( 'Edit page', 'radius' ); ?></a></p>
+								<?php endif; ?>
+							</td>
+							<td>
+								<?php if ( $has_suggest ) : ?>
+									<strong><?php echo esc_html( (string) ( $row['suggested_template'] ?? '' ) ); ?></strong>
+									<br />
+									<span><?php echo esc_html( (string) ( $row['suggested_place'] ?? '' ) ); ?></span>
+								<?php else : ?>
+									<span class="description"><?php esc_html_e( 'No automatic match found.', 'radius' ); ?></span>
+								<?php endif; ?>
+							</td>
+							<td>
+								<form class="radius-deploy-missing-meta__form" data-radius-meta-repair-form="1">
+									<input type="hidden" name="post_type" value="<?php echo esc_attr( $post_type ); ?>" />
+									<input type="hidden" name="post_id" value="<?php echo esc_attr( (string) $post_id ); ?>" />
+									<label class="screen-reader-text" for="<?php echo esc_attr( 'radius-meta-template-' . $post_type . '-' . (string) $post_id ); ?>">
+										<?php esc_html_e( 'Template', 'radius' ); ?>
+									</label>
+									<select id="<?php echo esc_attr( 'radius-meta-template-' . $post_type . '-' . (string) $post_id ); ?>" name="template_id" class="radius-deploy-missing-meta__select" required>
+										<option value=""><?php esc_html_e( '— Select template —', 'radius' ); ?></option>
+										<?php foreach ( $targets as $target ) : ?>
+											<option value="<?php echo esc_attr( (string) (int) $target['id'] ); ?>"<?php selected( $template_sug, (int) $target['id'] ); ?>>
+												<?php echo esc_html( (string) $target['title'] ); ?>
+											</option>
+										<?php endforeach; ?>
+									</select>
+									<label class="screen-reader-text" for="<?php echo esc_attr( 'radius-meta-place-' . $post_type . '-' . (string) $post_id ); ?>">
+										<?php esc_html_e( 'Place', 'radius' ); ?>
+									</label>
+									<select id="<?php echo esc_attr( 'radius-meta-place-' . $post_type . '-' . (string) $post_id ); ?>" name="place_id" class="radius-deploy-missing-meta__select" required>
+										<option value=""><?php esc_html_e( '— Select place —', 'radius' ); ?></option>
+										<?php foreach ( $place_options as $option ) : ?>
+											<option value="<?php echo esc_attr( (string) (int) $option['id'] ); ?>"<?php selected( $place_sug, (int) $option['id'] ); ?>>
+												<?php echo esc_html( (string) $option['name'] ); ?> (<?php echo esc_html( (string) $option['slug'] ); ?>)
+											</option>
+										<?php endforeach; ?>
+									</select>
+									<?php submit_button( __( 'Restore meta', 'radius' ), 'secondary', 'submit', false ); ?>
+								</form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+			<?php if ( $suggested_count > 0 ) : ?>
+				<p class="radius-deploy-missing-meta__bulk">
+					<button
+						type="button"
+						class="button button-primary"
+						data-radius-meta-repair-bulk="1"
+					>
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: %d: rows with suggested matches */
+								__( 'Restore all suggested matches (%d pages)', 'radius' ),
+								$suggested_count
+							)
+						);
+						?>
+					</button>
+				</p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Deploy summary + template cards.
 	 *
 	 * @return void
@@ -1971,9 +2205,12 @@ class Radius_Admin {
 		} elseif ( (int) $stats['total_places'] === 0 ) {
 			$ready_class = 'radius-deploy-summary--bad';
 			$ready_msg   = __( 'No locations in the library yet — import or add places before deploying.', 'radius' );
-		} elseif ( (int) $stats['places_in_scope'] === 0 ) {
+		} elseif ( ! empty( $stats['scope_known'] ) && (int) $stats['places_in_scope'] === 0 ) {
 			$ready_class = 'radius-deploy-summary--warn';
 			$ready_msg   = __( 'No places fall inside your service areas (check radii and coordinates).', 'radius' );
+		} elseif ( $stats['has_anchors'] && empty( $stats['scope_known'] ) ) {
+			$ready_class = 'radius-deploy-summary--warn';
+			$ready_msg   = __( 'Deploy scope is loading from scheduled health snapshots. Scope counts may appear after the nightly cron run.', 'radius' );
 		}
 
 		$deferred_seo_status = null;
@@ -2024,9 +2261,9 @@ class Radius_Admin {
 					</li>
 					<li class="radius-deploy-summary__stat">
 						<span class="radius-deploy-summary__label"><?php esc_html_e( 'Places in deploy scope', 'radius' ); ?></span>
-						<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['places_in_scope'] ); ?></span>
+						<span class="radius-deploy-summary__value"><?php echo esc_html( ! empty( $stats['scope_known'] ) ? (string) (int) $stats['places_in_scope'] : '—' ); ?></span>
 					</li>
-					<?php if ( (int) $stats['prefilter_blacklist'] > 0 || (int) $stats['prefilter_duplicates'] > 0 ) : ?>
+					<?php if ( ! empty( $stats['scope_known'] ) && ( (int) $stats['prefilter_blacklist'] > 0 || (int) $stats['prefilter_duplicates'] > 0 ) ) : ?>
 						<li class="radius-deploy-summary__stat radius-deploy-summary__stat--sub">
 							<span class="radius-deploy-summary__label"><?php esc_html_e( 'Excluded before deploy (slug patterns)', 'radius' ); ?></span>
 							<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['prefilter_blacklist'] ); ?></span>
@@ -2038,7 +2275,7 @@ class Radius_Admin {
 					<?php endif; ?>
 					<li class="radius-deploy-summary__stat">
 						<span class="radius-deploy-summary__label"><?php esc_html_e( 'Skipped (no lat/lng)', 'radius' ); ?></span>
-						<span class="radius-deploy-summary__value"><?php echo esc_html( (string) (int) $stats['skipped_no_coords'] ); ?></span>
+						<span class="radius-deploy-summary__value"><?php echo esc_html( ! empty( $stats['scope_known'] ) ? (string) (int) $stats['skipped_no_coords'] : '—' ); ?></span>
 					</li>
 					<li class="radius-deploy-summary__stat">
 						<span class="radius-deploy-summary__label"><?php esc_html_e( 'Places per deploy request', 'radius' ); ?></span>
@@ -2105,6 +2342,7 @@ class Radius_Admin {
 		<?php if ( 'landings' === $deploy_tab ) : ?>
 		<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Landings', 'radius' ); ?></h2>
 		<?php self::render_deploy_reconnect_panel( 'radius_landing', $action, (int) $stats['batch_size'] ); ?>
+		<?php self::render_deploy_missing_meta_panel( 'radius_landing', $action, (int) $stats['batch_size'] ); ?>
 		<?php if ( empty( $templates ) ) : ?>
 				<div class="radius-card radius-card-muted">
 					<p><?php esc_html_e( 'No templates yet. Create a template under Templates, then return here to deploy.', 'radius' ); ?></p>
@@ -2135,7 +2373,7 @@ class Radius_Admin {
 							? sprintf( '%d / %d', $deployed, $deploy_target )
 							: sprintf( '%d / —', $deployed );
 						?>
-						<article class="radius-deploy-card" data-radius-template-id="<?php echo esc_attr( (string) $tid ); ?>" data-radius-q-left="<?php echo esc_attr( (string) $q_left ); ?>" data-radius-scope="<?php echo esc_attr( (string) $scope ); ?>">
+						<article class="radius-deploy-card" data-radius-template-id="<?php echo esc_attr( (string) $tid ); ?>" data-radius-q-left="<?php echo esc_attr( (string) $q_left ); ?>" data-radius-scope="<?php echo esc_attr( (string) $scope ); ?>" data-radius-has-anchors="<?php echo esc_attr( $stats['has_anchors'] ? '1' : '0' ); ?>">
 							<header class="radius-deploy-card__head">
 								<h2 class="radius-deploy-card__title"><?php echo esc_html( get_the_title( $tpl ) ); ?></h2>
 								<div class="radius-deploy-card__badges">
@@ -2245,7 +2483,7 @@ class Radius_Admin {
 								<?php endif; ?>
 								<?php
 								$deploy_btn_attrs = array();
-								if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
+								if ( ! $stats['has_anchors'] || ( ! empty( $stats['scope_known'] ) && (int) $stats['places_in_scope'] === 0 ) ) {
 									$deploy_btn_attrs['disabled'] = 'disabled';
 									$deploy_btn_attrs['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
 								}
@@ -2329,6 +2567,7 @@ class Radius_Admin {
 			?>
 			<h2 class="radius-deploy-section-title" id="radius-deploy-service-areas"><?php esc_html_e( 'Service areas', 'radius' ); ?></h2>
 			<?php self::render_deploy_reconnect_panel( 'radius_service_area', $action, (int) $stats['batch_size'] ); ?>
+			<?php self::render_deploy_missing_meta_panel( 'radius_service_area', $action, (int) $stats['batch_size'] ); ?>
 			<p class="description">
 				<?php esc_html_e( 'Hub pages use your service area URL prefix plus the place slug only (no template slug). Landings use the site root and the landing slug pattern from each template.', 'radius' ); ?>
 				<?php
@@ -2438,7 +2677,7 @@ class Radius_Admin {
 						<?php else : ?>
 							<?php
 							$sa_btn = array();
-							if ( ! $stats['has_anchors'] || (int) $stats['places_in_scope'] === 0 ) {
+							if ( ! $stats['has_anchors'] || ( ! empty( $stats['scope_known'] ) && (int) $stats['places_in_scope'] === 0 ) ) {
 								$sa_btn['disabled'] = 'disabled';
 								$sa_btn['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
 							}

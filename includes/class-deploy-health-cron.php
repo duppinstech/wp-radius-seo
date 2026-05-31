@@ -219,6 +219,9 @@ final class Radius_Deploy_Health_Cron {
 		try {
 			$report = Radius_Deploy_Health_Check::run( 'light' );
 			self::store_report( $report, 'cron' );
+			if ( class_exists( 'Radius_Deploy_Reconnect' ) && method_exists( 'Radius_Deploy_Reconnect', 'refresh_snapshots' ) ) {
+				Radius_Deploy_Reconnect::refresh_snapshots();
+			}
 			self::maybe_send_issue_email( $report );
 			if ( class_exists( 'Radius_Operation_Log' ) ) {
 				$counts = self::get_attention_counts();
@@ -290,6 +293,14 @@ final class Radius_Deploy_Health_Cron {
 				'fail'   => isset( $summary['fail'] ) ? (int) $summary['fail'] : 0,
 				'skip'   => isset( $summary['skip'] ) ? (int) $summary['skip'] : 0,
 			),
+			'scope'        => isset( $report['scope'] ) && is_array( $report['scope'] )
+				? array(
+					'expected_places'   => isset( $report['scope']['expected_places'] ) ? (int) $report['scope']['expected_places'] : 0,
+					'skipped_no_coords' => isset( $report['scope']['skipped_no_coords'] ) ? (int) $report['scope']['skipped_no_coords'] : 0,
+					'removed_blacklist' => isset( $report['scope']['removed_blacklist'] ) ? (int) $report['scope']['removed_blacklist'] : 0,
+					'removed_duplicate' => isset( $report['scope']['removed_duplicate'] ) ? (int) $report['scope']['removed_duplicate'] : 0,
+				)
+				: array(),
 			'issues'       => $issues,
 		);
 		update_option( self::OPTION, $snapshot, false );

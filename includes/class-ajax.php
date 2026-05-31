@@ -32,6 +32,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_deploy_health_remediate', array( __CLASS__, 'deploy_health_remediate' ) );
 		add_action( 'wp_ajax_radius_landing_gap_counts', array( __CLASS__, 'landing_gap_counts' ) );
 		add_action( 'wp_ajax_radius_deploy_reconnect', array( __CLASS__, 'deploy_reconnect' ) );
+		add_action( 'wp_ajax_radius_deploy_meta_repair', array( __CLASS__, 'deploy_meta_repair' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
 		add_action( 'wp_ajax_radius_magic_page_option_unautoload', array( __CLASS__, 'magic_page_option_unautoload' ) );
 		add_action( 'wp_ajax_radius_magic_page_option_delete', array( __CLASS__, 'magic_page_option_delete' ) );
@@ -1479,6 +1480,56 @@ class Radius_Ajax {
 			);
 		}
 
+		wp_send_json_success( $batch );
+	}
+
+	/**
+	 * Repair deployed pages missing template/place meta links.
+	 *
+	 * @return void
+	 */
+	public static function deploy_meta_repair() {
+		check_ajax_referer( 'radius_deploy_meta_repair', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+		if ( ! class_exists( 'Radius_Deploy_Meta_Repair' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Repair service unavailable.', 'radius' ) ) );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+			@set_time_limit( 120 );
+		}
+
+		$post_type = isset( $_POST['post_type'] ) ? sanitize_key( wp_unslash( $_POST['post_type'] ) ) : Radius_Data_Registry::CPT_LANDING; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $post_type, array( Radius_Data_Registry::CPT_LANDING, Radius_Data_Registry::CPT_SERVICE_AREA ), true ) ) {
+			$post_type = Radius_Data_Registry::CPT_LANDING;
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $post_id > 0 ) {
+			$template_id = isset( $_POST['template_id'] ) ? absint( $_POST['template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+			$place_id    = isset( $_POST['place_id'] ) ? absint( $_POST['place_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+			$single      = Radius_Deploy_Meta_Repair::repair_single( $post_type, $post_id, $template_id, $place_id );
+			if ( ! empty( $single['errors'] ) ) {
+				wp_send_json_error(
+					array(
+						'message' => implode( ' ', array_unique( array_map( 'strval', $single['errors'] ) ) ),
+					)
+				);
+			}
+			wp_send_json_success( $single );
+		}
+
+		$page            = isset( $_POST['page'] ) ? max( 1, absint( $_POST['page'] ) ) : 1; // phpcs:ignore WordPress.Security.NonceVerification
+		$use_suggestions = ! empty( $_POST['use_suggestions'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		$batch           = Radius_Deploy_Meta_Repair::repair_batch( $post_type, $page, $use_suggestions );
 		wp_send_json_success( $batch );
 	}
 

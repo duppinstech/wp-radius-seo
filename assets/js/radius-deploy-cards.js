@@ -715,6 +715,180 @@
 		} );
 	}
 
+	function initMetaRepairForms() {
+		var cfg = typeof window.radiusDeployMetaRepair !== 'undefined' ? window.radiusDeployMetaRepair : null;
+		if ( ! cfg || ! cfg.ajaxurl ) {
+			return;
+		}
+
+		var interDelay = parseInt( cfg.interBatchDelayMs, 10 ) || 0;
+
+		function statusElFor( postType ) {
+			return document.getElementById( 'radius-missing-meta-status-' + postType );
+		}
+
+		function setStatus( postType, text, show ) {
+			var el = statusElFor( postType );
+			if ( ! el ) {
+				return;
+			}
+			if ( show ) {
+				el.removeAttribute( 'hidden' );
+				el.textContent = text;
+			} else {
+				el.setAttribute( 'hidden', 'hidden' );
+				el.textContent = '';
+			}
+		}
+
+		function progressText( done, total ) {
+			var tpl = cfg.i18n.progressTpl || 'Processed {done} of {total} pages…';
+			return tpl.replace( '{done}', String( done ) ).replace( '{total}', String( total ) );
+		}
+
+		function setPanelBusy( panel, busy ) {
+			if ( ! panel ) {
+				return;
+			}
+			panel.querySelectorAll( 'input, select, button' ).forEach( function ( node ) {
+				node.disabled = !! busy;
+			} );
+		}
+
+		function delayPromise( ms ) {
+			return new Promise( function ( resolve ) {
+				window.setTimeout( resolve, ms );
+			} );
+		}
+
+		function postRepair( params ) {
+			var body = new URLSearchParams();
+			body.set( 'action', 'radius_deploy_meta_repair' );
+			body.set( 'nonce', cfg.nonce || '' );
+			body.set( 'post_type', params.postType );
+			if ( params.postId ) {
+				body.set( 'post_id', String( params.postId ) );
+				body.set( 'template_id', String( params.templateId || 0 ) );
+				body.set( 'place_id', String( params.placeId || 0 ) );
+			} else {
+				body.set( 'page', String( params.page || 1 ) );
+				body.set( 'use_suggestions', params.useSuggestions ? '1' : '0' );
+			}
+			return fetch( cfg.ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } ).then( function ( r ) {
+				return r.json();
+			} );
+		}
+
+		function finishRedirect( postType, message ) {
+			var tab = postType === 'radius_service_area' ? 'service-areas' : 'landings';
+			var base = cfg.deployPageUrl || window.location.pathname + window.location.search;
+			var join = base.indexOf( '?' ) >= 0 ? '&' : '?';
+			window.location.href =
+				base + join + 'tab=' + encodeURIComponent( tab ) + '&radius_notice=' + encodeURIComponent( message );
+		}
+
+		function runBatchedRepair( postType, page, totals ) {
+			return postRepair( {
+				postType: postType,
+				page: page,
+				useSuggestions: true,
+			} ).then( function ( json ) {
+				if ( ! json || ! json.success ) {
+					var msg = json && json.data && json.data.message ? json.data.message : cfg.i18n.networkError || 'Request failed.';
+					throw new Error( msg );
+				}
+				var d = json.data || {};
+				totals.total += d.total && totals.total === 0 ? d.total : 0;
+				totals.fixed += d.fixed || 0;
+				totals.duplicates += d.duplicates_trashed || 0;
+				totals.done += d.processed || 0;
+				var total = d.total || totals.total || totals.done;
+				setStatus( postType, progressText( totals.done, total ), true );
+				if ( d.done ) {
+					return totals;
+				}
+				var chain = Promise.resolve();
+				if ( interDelay > 0 ) {
+					chain = delayPromise( interDelay );
+				}
+				return chain.then( function () {
+					return runBatchedRepair( postType, page + 1, totals );
+				} );
+			} );
+		}
+
+		document.querySelectorAll( 'form[data-radius-meta-repair-form="1"]' ).forEach( function ( form ) {
+			form.addEventListener( 'submit', function ( e ) {
+				e.preventDefault();
+				var panel = form.closest( '[data-radius-meta-repair-post-type]' );
+				var postType = panel ? panel.getAttribute( 'data-radius-meta-repair-post-type' ) : 'radius_landing';
+				var postId = parseInt( ( form.querySelector( 'input[name="post_id"]' ) || {} ).value || '0', 10 );
+				var templateId = parseInt( ( form.querySelector( 'select[name="template_id"]' ) || {} ).value || '0', 10 );
+				var placeId = parseInt( ( form.querySelector( 'select[name="place_id"]' ) || {} ).value || '0', 10 );
+				if ( ! templateId ) {
+					window.alert( cfg.i18n.pickTemplate || 'Choose a template first.' );
+					return;
+				}
+				if ( ! placeId ) {
+					window.alert( cfg.i18n.pickPlace || 'Choose a place first.' );
+					return;
+				}
+				setPanelBusy( panel, true );
+				setStatus( postType, cfg.i18n.repairing || cfg.i18n.working || 'Working…', true );
+				postRepair( {
+					postType: postType,
+					postId: postId,
+					templateId: templateId,
+					placeId: placeId,
+				} ).then( function ( json ) {
+					if ( ! json || ! json.success ) {
+						throw new Error(
+							json && json.data && json.data.message
+								? json.data.message
+								: ( cfg.i18n.errorPrefix || 'Error:' ) + ' ' + ( cfg.i18n.networkError || '' )
+						);
+					}
+					var d = json.data || {};
+					var msg = ( cfg.i18n.doneTpl || 'Done. Restored deploy meta for {n} page(s), trashed {t} duplicate(s). Reloading…' )
+						.replace( '{n}', String( d.repaired ? 1 : 0 ) )
+						.replace( '{t}', String( d.duplicate_trashed ? 1 : 0 ) );
+					finishRedirect( postType, msg );
+				} ).catch( function ( err ) {
+					setPanelBusy( panel, false );
+					setStatus( postType, '', false );
+					window.alert( err && err.message ? err.message : cfg.i18n.networkError );
+				} );
+			} );
+		} );
+
+		document.querySelectorAll( '[data-radius-meta-repair-bulk="1"]' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', function () {
+				var panel = btn.closest( '[data-radius-meta-repair-post-type]' );
+				var postType = panel ? panel.getAttribute( 'data-radius-meta-repair-post-type' ) : 'radius_landing';
+				if ( cfg.i18n.bulkConfirm && ! window.confirm( cfg.i18n.bulkConfirm ) ) {
+					return;
+				}
+				setPanelBusy( panel, true );
+				setStatus( postType, cfg.i18n.repairing || cfg.i18n.working || 'Working…', true );
+				runBatchedRepair( postType, 1, { done: 0, total: 0, fixed: 0, duplicates: 0 } )
+					.then( function (totals) {
+						if ( ! totals.fixed ) {
+							throw new Error( cfg.i18n.noSuggested || 'No suggested page matches are available to repair.' );
+						}
+						var msg = ( cfg.i18n.bulkDoneTpl || 'Done. Restored deploy meta for {n} page(s) across {g} batch(es). Reloading…' )
+							.replace( '{n}', String( totals.fixed ) )
+							.replace( '{g}', String( Math.max( 1, Math.ceil( totals.done / ( parseInt( cfg.batchSize, 10 ) || 1 ) ) ) ) );
+						finishRedirect( postType, msg );
+					} )
+					.catch( function ( err ) {
+						setPanelBusy( panel, false );
+						setStatus( postType, '', false );
+						window.alert( err && err.message ? err.message : cfg.i18n.networkError );
+					} );
+			} );
+		} );
+	}
+
 	function initLandingGapChecks() {
 		if ( typeof radiusDeployBatch === 'undefined' ) {
 			return;
@@ -796,6 +970,7 @@
 				var templateId = parseInt( card.getAttribute( 'data-radius-template-id' ) || '0', 10 );
 				var qLeft = parseInt( card.getAttribute( 'data-radius-q-left' ) || '0', 10 );
 				var scopeCount = parseInt( card.getAttribute( 'data-radius-scope' ) || '0', 10 );
+				var hasAnchors = card.getAttribute( 'data-radius-has-anchors' ) === '1';
 				var statusEl = card.querySelector( '.radius-deploy-card__missing-status' );
 				if ( qLeft > 0 ) {
 					if ( statusEl ) {
@@ -804,11 +979,11 @@
 					}
 					return Promise.resolve();
 				}
-				if ( statusEl && scopeCount > 0 ) {
+				if ( statusEl && hasAnchors ) {
 					statusEl.removeAttribute( 'hidden' );
 					statusEl.textContent = textFor( 'missingCheckRunning', 'Checking missing places…' );
 				}
-				if ( ! templateId || scopeCount <= 0 ) {
+				if ( ! templateId || ! hasAnchors ) {
 					if ( statusEl ) {
 						statusEl.setAttribute( 'hidden', 'hidden' );
 						statusEl.textContent = '';
@@ -841,6 +1016,7 @@
 		initDedupeLandingsButton();
 		initChainedDeploy();
 		initReconnectForms();
+		initMetaRepairForms();
 		initLandingGapChecks();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {

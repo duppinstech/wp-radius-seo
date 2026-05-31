@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Detect orphaned template links and update _radius_template_id in bulk.
  */
 class Radius_Deploy_Reconnect {
+	private const SNAPSHOT_OPTION_PREFIX = 'radius_deploy_reconnect_snapshot_';
 
 	/**
 	 * Places per HTTP request (same setting as Deploy → Settings → deploy batch size).
@@ -22,6 +23,63 @@ class Radius_Deploy_Reconnect {
 	public static function get_batch_size() {
 		$settings = Radius_Settings::get();
 		return max( 1, min( 200, (int) ( $settings['deploy_batch'] ?? 25 ) ) );
+	}
+
+	/**
+	 * Snapshot option key for a post type.
+	 *
+	 * @param string $post_type radius_landing|radius_service_area.
+	 * @return string
+	 */
+	private static function snapshot_option_key( $post_type ) {
+		$post_type = sanitize_key( (string) $post_type );
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$post_type = 'radius_landing';
+		}
+		return self::SNAPSHOT_OPTION_PREFIX . $post_type;
+	}
+
+	/**
+	 * Read last stored reconnect snapshot (if available).
+	 *
+	 * @param string $post_type radius_landing|radius_service_area.
+	 * @return array<string,mixed>|null
+	 */
+	public static function get_snapshot( $post_type ) {
+		$raw = get_option( self::snapshot_option_key( $post_type ), null );
+		return is_array( $raw ) ? $raw : null;
+	}
+
+	/**
+	 * Recompute and persist reconnect snapshot for a post type.
+	 *
+	 * @param string $post_type radius_landing|radius_service_area.
+	 * @return array<string,mixed>
+	 */
+	public static function refresh_snapshot( $post_type ) {
+		$post_type = sanitize_key( (string) $post_type );
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			$post_type = 'radius_landing';
+		}
+		$report   = self::get_report( $post_type );
+		$snapshot = array(
+			'generated_at'     => gmdate( 'c' ),
+			'post_type'        => $post_type,
+			'clusters'         => isset( $report['clusters'] ) && is_array( $report['clusters'] ) ? $report['clusters'] : array(),
+			'active_templates' => isset( $report['active_templates'] ) && is_array( $report['active_templates'] ) ? $report['active_templates'] : array(),
+		);
+		update_option( self::snapshot_option_key( $post_type ), $snapshot, false );
+		return $snapshot;
+	}
+
+	/**
+	 * Recompute and persist reconnect snapshots for both deploy post types.
+	 *
+	 * @return void
+	 */
+	public static function refresh_snapshots() {
+		self::refresh_snapshot( 'radius_landing' );
+		self::refresh_snapshot( 'radius_service_area' );
 	}
 
 	/**

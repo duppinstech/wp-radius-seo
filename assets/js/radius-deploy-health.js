@@ -134,6 +134,22 @@
 		if (c.detail) {
 			html += '<p class="description">' + esc(c.detail) + '</p>';
 		}
+		if (c.orphan_pages && c.orphan_pages.length) {
+			html += '<ul class="radius-deploy-health-orphan-pages">';
+			c.orphan_pages.forEach(function (row) {
+				if (!row) {
+					return;
+				}
+				var title = row.title || ('#' + String(row.post_id || ''));
+				var slug = row.slug ? ' <code>' + esc(row.slug) + '</code>' : '';
+				if (row.edit_url) {
+					html += '<li><a href="' + esc(row.edit_url) + '">' + esc(title) + '</a>' + slug + '</li>';
+				} else {
+					html += '<li>' + esc(title) + slug + '</li>';
+				}
+			});
+			html += '</ul>';
+		}
 		if (c.missing_slugs && c.missing_slugs.length) {
 			html +=
 				'<p class="description"><strong>' +
