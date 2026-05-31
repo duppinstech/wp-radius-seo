@@ -1,9 +1,9 @@
 === Radius SEO ===
 Contributors: duppinstech
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.102
+Stable tag: 1.6.103
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.103 =
+* **Fix:** Resolved plugin-check findings around dynamic SQL inspection paths by tightening table-name validation usage and clarifying safe PHPCS/PluginCheck annotations for schema/index checks.
+* **Fix:** Sanitized remaining migration/redirect/AJAX request inputs flagged by plugin-check and removed prohibited `suppress_filters` usage from `WP_Query` args.
+* **Compatibility:** Updated `Tested up to` to WordPress 7.0.
 
 = 1.6.102 =
 * **Performance:** Added deploy DB index management (`radius_meta_key_value`) with health check detection/remediation, schema-upgrade scheduling, and background-safe creation paths for large libraries.

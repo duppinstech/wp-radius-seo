@@ -244,7 +244,7 @@ final class Radius_Operation_Log {
 		if ( isset( $_SERVER['REQUEST_METHOD'] ) ) {
 			$ctx['method'] = sanitize_text_field( wp_unslash( (string) $_SERVER['REQUEST_METHOD'] ) );
 		}
-		if ( isset( $_POST['action'] ) ) {
+		if ( isset( $_POST['action'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Diagnostic context only; no state mutation.
 			$ctx['ajax_action'] = sanitize_key( wp_unslash( (string) $_POST['action'] ) );
 		}
 		return $ctx;

@@ -494,7 +494,6 @@ class Radius_Plugin {
 				'post_type'        => 'radius_landing',
 				'post_status'      => 'publish',
 				'posts_per_page'   => 1,
-				'suppress_filters' => true,
 			)
 		);
 		if ( empty( $posts ) ) {

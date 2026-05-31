@@ -393,15 +393,14 @@ final class Radius_Health_Url_Conflicts {
 		if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) ) {
 			return array();
 		}
-		$table_sql = '`' . $table . '`';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
 			return array();
 		}
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Table identifier cannot be parameterized; regex-validated above.
 		$rows = $wpdb->get_results(
 			"SELECT id, url, action_code, action_data, match_type, regex, status
-			FROM {$table_sql}
+			FROM `{$table}`
 			WHERE status = 'enabled' AND regex = 0",
 			ARRAY_A
 		);

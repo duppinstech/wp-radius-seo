@@ -2418,7 +2418,7 @@ class Radius_Legacy_Import_Service {
 			)";
 
 		$params = array_merge( array( $tax ), $params_outer, array( $tax ), $params_inner );
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic fragment count; placeholders match $params.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Dynamic fragment count; placeholders match $params.
 		$n = $wpdb->get_var( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ( '' !== $wpdb->last_error ) {

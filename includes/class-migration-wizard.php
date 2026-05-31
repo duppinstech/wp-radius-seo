@@ -754,10 +754,9 @@ final class Radius_Migration_Wizard {
 				return;
 			case 'steps_reset':
 				// Comma-separated step keys — single round-trip instead of N× step_reset (fewer admin-ajax POSTs).
-				$raw = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-				if ( is_string( $raw ) ) {
-					$raw = sanitize_text_field( $raw );
-				}
+				$raw = isset( $_POST['steps'] ) // phpcs:ignore WordPress.Security.NonceVerification
+					? sanitize_text_field( wp_unslash( (string) $_POST['steps'] ) ) // phpcs:ignore WordPress.Security.NonceVerification
+					: '';
 				$list = array();
 				if ( is_string( $raw ) && $raw !== '' ) {
 					foreach ( explode( ',', $raw ) as $part ) {
@@ -946,10 +945,9 @@ final class Radius_Migration_Wizard {
 				return;
 		case 'rerun':
 			// Reset selected steps and re-open the wizard so the user can run them again.
-			$raw  = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-			if ( is_string( $raw ) ) {
-				$raw = sanitize_text_field( $raw );
-			}
+			$raw  = isset( $_POST['steps'] ) // phpcs:ignore WordPress.Security.NonceVerification
+				? sanitize_text_field( wp_unslash( (string) $_POST['steps'] ) ) // phpcs:ignore WordPress.Security.NonceVerification
+				: '';
 			$list = array();
 			if ( is_string( $raw ) && $raw !== '' ) {
 				foreach ( explode( ',', $raw ) as $part ) {

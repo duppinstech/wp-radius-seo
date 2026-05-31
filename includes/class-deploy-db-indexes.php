@@ -112,10 +112,10 @@ final class Radius_Deploy_Db_Indexes {
 			return $base;
 		}
 
-		$table_sql = '`' . $table . '`';
-		$sql = "ALTER TABLE {$table_sql} ADD INDEX `" . self::INDEX_NAME . "` (`meta_key`, `meta_value`(64), `post_id`)";
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- DDL operation for optional performance index.
-		$ran = $wpdb->query( $sql );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- DDL requires literal table/index identifiers; table name is regex-validated.
+		$ran = $wpdb->query(
+			"ALTER TABLE `{$table}` ADD INDEX `" . self::INDEX_NAME . "` (`meta_key`, `meta_value`(64), `post_id`)"
+		);
 
 		$base['duration_ms'] = (int) round( ( microtime( true ) - $started ) * 1000 );
 		if ( false === $ran ) {
@@ -192,15 +192,20 @@ final class Radius_Deploy_Db_Indexes {
 		if ( ! self::is_safe_table_name( $table ) ) {
 			return false;
 		}
-		$table_sql = '`' . $table . '`';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- schema inspection.
-		$found = $wpdb->get_var(
-			$wpdb->prepare(
-				"SHOW INDEX FROM {$table_sql} WHERE Key_name = %s",
-				$index_name
-			)
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Table identifier cannot be parameterized; regex-validated above.
+		$rows = $wpdb->get_results(
+			"SHOW INDEX FROM `{$table}`",
+			ARRAY_A
 		);
-		return ! empty( $found );
+		if ( ! is_array( $rows ) ) {
+			return false;
+		}
+		foreach ( $rows as $row ) {
+			if ( isset( $row['Key_name'] ) && (string) $row['Key_name'] === (string) $index_name ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -214,10 +219,9 @@ final class Radius_Deploy_Db_Indexes {
 		if ( ! self::is_safe_table_name( $table ) ) {
 			return false;
 		}
-		$table_sql = '`' . $table . '`';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- schema inspection.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Table identifier cannot be parameterized; regex-validated above.
 		$rows = $wpdb->get_results(
-			"SHOW INDEX FROM {$table_sql}",
+			"SHOW INDEX FROM `{$table}`",
 			ARRAY_A
 		);
 		if ( ! is_array( $rows ) || empty( $rows ) ) {
@@ -257,10 +261,14 @@ final class Radius_Deploy_Db_Indexes {
 	private static function count_place_lookup_rows() {
 		global $wpdb;
 		$key = Radius_Data_Registry::META_PLACE_ID;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- lightweight cardinality probe.
+		$table = $wpdb->postmeta;
+		if ( ! self::is_safe_table_name( $table ) ) {
+			return 0;
+		}
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Table identifier cannot be parameterized; regex-validated above.
 		$n = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = %s",
+				"SELECT COUNT(*) FROM `{$table}` WHERE meta_key = %s",
 				$key
 			)
 		);

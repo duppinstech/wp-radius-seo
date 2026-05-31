@@ -185,7 +185,9 @@ final class Radius_Redirect_Service {
 			return '';
 		}
 		$scheme = is_ssl() ? 'https' : 'http';
-		$uri    = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+		$uri    = isset( $_SERVER['REQUEST_URI'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			? sanitize_text_field( wp_unslash( (string) $_SERVER['REQUEST_URI'] ) ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			: '/';
 		$host   = sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_HOST'] ) );
 		$host   = preg_replace( '/[^A-Za-z0-9\.\-\:\[\]]/', '', $host );
 		if ( ! is_string( $host ) || '' === $host ) {

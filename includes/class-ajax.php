@@ -54,10 +54,9 @@ class Radius_Ajax {
 		if ( $message === '' ) {
 			wp_send_json_error( array( 'message' => __( 'Empty message.', 'radius' ) ), 400 );
 		}
-		$ctx_raw = isset( $_POST['context'] ) ? wp_unslash( $_POST['context'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( is_string( $ctx_raw ) ) {
-			$ctx_raw = sanitize_text_field( $ctx_raw );
-		}
+		$ctx_raw = isset( $_POST['context'] ) // phpcs:ignore WordPress.Security.NonceVerification
+			? sanitize_text_field( wp_unslash( (string) $_POST['context'] ) ) // phpcs:ignore WordPress.Security.NonceVerification
+			: '';
 		$ctx     = array();
 		if ( is_string( $ctx_raw ) && $ctx_raw !== '' ) {
 			$decoded = json_decode( $ctx_raw, true );
@@ -1405,11 +1404,9 @@ class Radius_Ajax {
 		}
 
 		$mode = isset( $_POST['bulk_mode'] ) ? sanitize_key( wp_unslash( $_POST['bulk_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		$raw  = isset( $_POST['option_names'] ) ? wp_unslash( $_POST['option_names'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$raw  = isset( $_POST['option_names'] ) ? wp_unslash( $_POST['option_names'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		if ( is_string( $raw ) ) {
-			$raw = sanitize_text_field( $raw );
-		}
-		if ( is_string( $raw ) ) {
+			$raw     = sanitize_text_field( $raw );
 			$decoded = json_decode( $raw, true );
 			$names   = is_array( $decoded ) ? $decoded : array();
 		} elseif ( is_array( $raw ) ) {
