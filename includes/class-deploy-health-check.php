@@ -1245,15 +1245,20 @@ final class Radius_Deploy_Health_Check {
 		if ( ! is_array( $scope ) || ! isset( $scope['ids'] ) ) {
 			$scope = self::get_expected_scope_place_ids();
 		}
-		if ( ! is_array( $deployed_landings ) ) {
-			$deployed_landings = self::get_deployed_place_ids_map( 'radius_landing' );
-		}
 		$tid = (int) $template_id;
 		$expected          = array_fill_keys( $scope['ids'], true );
 		$have              = array();
-		if ( $tid > 0 && isset( $deployed_landings[ $tid ] ) ) {
-			foreach ( $deployed_landings[ $tid ] as $pid ) {
-				$have[ (int) $pid ] = true;
+		if ( $tid > 0 ) {
+			if ( is_array( $deployed_landings ) ) {
+				if ( isset( $deployed_landings[ $tid ] ) && is_array( $deployed_landings[ $tid ] ) ) {
+					foreach ( $deployed_landings[ $tid ] as $pid ) {
+						$have[ (int) $pid ] = true;
+					}
+				}
+			} else {
+				foreach ( self::get_deployed_place_ids_for_template( $tid, 'radius_landing' ) as $pid ) {
+					$have[ (int) $pid ] = true;
+				}
 			}
 		}
 		$missing = array();
@@ -1275,6 +1280,50 @@ final class Radius_Deploy_Health_Check {
 			'expected_count'    => count( $expected ),
 			'deployed_count'    => count( $have ),
 		);
+	}
+
+	/**
+	 * Get deployed place IDs for one template and post type.
+	 *
+	 * @param int    $template_id Template ID.
+	 * @param string $post_type   radius_landing|radius_service_area.
+	 * @return int[]
+	 */
+	private static function get_deployed_place_ids_for_template( $template_id, $post_type ) {
+		global $wpdb;
+		$template_id = (int) $template_id;
+		$post_type   = sanitize_key( (string) $post_type );
+		if ( $template_id <= 0 || ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			return array();
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Targeted deploy-gap lookup for one template.
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT CAST(pm_place.meta_value AS UNSIGNED) AS place_id
+				FROM {$wpdb->posts} p
+				INNER JOIN {$wpdb->postmeta} pm_tid ON pm_tid.post_id = p.ID AND pm_tid.meta_key = %s
+				INNER JOIN {$wpdb->postmeta} pm_place ON pm_place.post_id = p.ID AND pm_place.meta_key = %s
+				WHERE p.post_type = %s
+				AND p.post_status IN ('publish','draft','pending','private')
+				AND pm_tid.meta_value = %d
+				AND pm_place.meta_value != ''",
+				Radius_Data_Registry::META_TEMPLATE_ID,
+				Radius_Data_Registry::META_PLACE_ID,
+				$post_type,
+				$template_id
+			)
+		);
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $rows as $pid ) {
+			$pid = (int) $pid;
+			if ( $pid > 0 ) {
+				$out[ $pid ] = $pid;
+			}
+		}
+		return array_values( $out );
 	}
 
 	/**

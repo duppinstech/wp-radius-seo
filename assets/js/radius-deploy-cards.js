@@ -715,12 +715,133 @@
 		} );
 	}
 
+	function initLandingGapChecks() {
+		if ( typeof radiusDeployBatch === 'undefined' ) {
+			return;
+		}
+		var cfg = radiusDeployBatch;
+		if ( ! cfg.ajaxurl || ! cfg.landingGapNonce ) {
+			return;
+		}
+
+		var cards = Array.prototype.slice.call(
+			document.querySelectorAll( '.radius-deploy-grid .radius-deploy-card[data-radius-template-id]' )
+		);
+		if ( ! cards.length ) {
+			return;
+		}
+
+		function textFor( key, fallback ) {
+			return cfg.i18n && cfg.i18n[ key ] ? cfg.i18n[ key ] : fallback;
+		}
+
+		function postGapCheck( templateId ) {
+			var body = new URLSearchParams();
+			body.set( 'action', 'radius_landing_gap_counts' );
+			body.set( 'nonce', cfg.landingGapNonce );
+			body.set( 'template_id', String( templateId ) );
+			return fetch( cfg.ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } ).then( function ( r ) {
+				return r.json();
+			} );
+		}
+
+		function updateMissingUi( card, missingCount, expectedCount, qLeft ) {
+			var statusEl = card.querySelector( '.radius-deploy-card__missing-status' );
+			var missingForm = card.querySelector( '.radius-deploy-card__form--missing' );
+			if ( ! statusEl || ! missingForm ) {
+				return;
+			}
+			if ( qLeft > 0 || missingCount <= 0 ) {
+				statusEl.setAttribute( 'hidden', 'hidden' );
+				statusEl.textContent = '';
+				missingForm.setAttribute( 'hidden', 'hidden' );
+				return;
+			}
+			var statusTpl = textFor(
+				'missingStatusTpl',
+				'{missing} place(s) in deploy scope do not have a landing for this template yet (of {expected} expected).'
+			);
+			statusEl.removeAttribute( 'hidden' );
+			statusEl.textContent = statusTpl
+				.replace( /\{missing\}/g, String( missingCount ) )
+				.replace( /\{expected\}/g, String( expectedCount ) );
+
+			var btn = missingForm.querySelector( 'input[type="submit"], button[type="submit"]' );
+			if ( btn ) {
+				var labelTpl = textFor( 'deployMissingLabelTpl', 'Deploy missing places ({missing})' );
+				btn.value = labelTpl.replace( /\{missing\}/g, String( missingCount ) );
+				if ( btn.textContent && btn.tagName.toLowerCase() === 'button' ) {
+					btn.textContent = labelTpl.replace( /\{missing\}/g, String( missingCount ) );
+				}
+			}
+			var missingInput = missingForm.querySelector( 'input[name="radius_deploy_missing_count"]' );
+			if ( missingInput ) {
+				missingInput.value = String( missingCount );
+			}
+			missingForm.removeAttribute( 'hidden' );
+		}
+
+		function markCheckError( card ) {
+			var statusEl = card.querySelector( '.radius-deploy-card__missing-status' );
+			if ( ! statusEl ) {
+				return;
+			}
+			statusEl.removeAttribute( 'hidden' );
+			statusEl.textContent = textFor( 'missingCheckError', 'Could not check missing places right now.' );
+		}
+
+		var queue = Promise.resolve();
+		cards.forEach( function ( card ) {
+			queue = queue.then( function () {
+				var templateId = parseInt( card.getAttribute( 'data-radius-template-id' ) || '0', 10 );
+				var qLeft = parseInt( card.getAttribute( 'data-radius-q-left' ) || '0', 10 );
+				var scopeCount = parseInt( card.getAttribute( 'data-radius-scope' ) || '0', 10 );
+				var statusEl = card.querySelector( '.radius-deploy-card__missing-status' );
+				if ( qLeft > 0 ) {
+					if ( statusEl ) {
+						statusEl.setAttribute( 'hidden', 'hidden' );
+						statusEl.textContent = '';
+					}
+					return Promise.resolve();
+				}
+				if ( statusEl && scopeCount > 0 ) {
+					statusEl.removeAttribute( 'hidden' );
+					statusEl.textContent = textFor( 'missingCheckRunning', 'Checking missing places…' );
+				}
+				if ( ! templateId || scopeCount <= 0 ) {
+					if ( statusEl ) {
+						statusEl.setAttribute( 'hidden', 'hidden' );
+						statusEl.textContent = '';
+					}
+					return Promise.resolve();
+				}
+				return postGapCheck( templateId )
+					.then( function ( json ) {
+						if ( ! json || ! json.success || ! json.data ) {
+							markCheckError( card );
+							return;
+						}
+						updateMissingUi(
+							card,
+							parseInt( json.data.missing_count || 0, 10 ),
+							parseInt( json.data.expected_count || scopeCount || 0, 10 ),
+							qLeft
+						);
+					} )
+					.catch( function () {
+						markCheckError( card );
+					} );
+			} );
+		} );
+	}
+
 	document.addEventListener( 'DOMContentLoaded', function () {
 		initDeployHelpModal();
 		initMigrationRerunButton();
 		initDedupeLandingsButton();
 		initChainedDeploy();
 		initReconnectForms();
+		initLandingGapChecks();
 
 		document.querySelectorAll( '.radius-deploy-card .radius-deploy-card__form' ).forEach( function ( form ) {
 			if ( form.getAttribute( 'data-radius-chained-deploy' ) === '1' ) {

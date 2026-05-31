@@ -596,6 +596,7 @@ class Radius_Admin {
 				array(
 					'ajaxurl'             => admin_url( 'admin-ajax.php' ),
 					'nonce'               => wp_create_nonce( 'radius_deploy_batch' ),
+					'landingGapNonce'     => wp_create_nonce( 'radius_landing_gap_counts' ),
 					'deployPageUrl'       => admin_url( 'admin.php?page=radius-deploy' ),
 					'interBatchDelayMs'   => max( 0, $inter_deploy_ms ),
 					'i18n'                => array(
@@ -609,6 +610,10 @@ class Radius_Admin {
 						'gatewayTimeout' => __( 'Gateway or upstream timeout. Lower “Deploy batch size” under Settings, or try again.', 'radius' ),
 						'serverError'    => __( 'Server error (5xx). Try a smaller batch or check the site error log.', 'radius' ),
 					'networkError'  => __( 'Network error or request was blocked before a response arrived.', 'radius' ),
+					'missingCheckRunning' => __( 'Checking missing places…', 'radius' ),
+					'missingCheckError'   => __( 'Could not check missing places right now.', 'radius' ),
+					'missingStatusTpl'    => __( '{missing} place(s) in deploy scope do not have a landing for this template yet (of {expected} expected).', 'radius' ),
+					'deployMissingLabelTpl' => __( 'Deploy missing places ({missing})', 'radius' ),
 				),
 			)
 		);
@@ -1938,15 +1943,15 @@ class Radius_Admin {
 		$lf_cfg     = Radius_Settings::get();
 		$sa_tid     = isset( $lf_cfg['service_area_template_id'] ) ? (int) $lf_cfg['service_area_template_id'] : 0;
 		$sa_tpl_ok  = $sa_tid > 0 && get_post_type( $sa_tid ) === 'radius_template';
+		$deploy_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'landings'; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check', 'system' ), true ) ) {
+			$deploy_tab = 'landings';
+		}
 		$sa_queue              = null;
 		$sa_run_tid            = $sa_tpl_ok ? $sa_tid : 0;
-		$scope_for_deploy      = null;
-		$landings_deployed_map = null;
 		$sa_coverage_gaps      = null;
-		if ( class_exists( 'Radius_Deploy_Health_Check' ) ) {
-			$scope_for_deploy      = Radius_Deploy_Health_Check::get_expected_scope_place_ids();
-			$landings_deployed_map = Radius_Deploy_Health_Check::get_deployed_place_ids_map( 'radius_landing' );
-			$sa_coverage_gaps      = Radius_Deploy_Health_Check::get_service_area_coverage_gaps( $scope_for_deploy );
+		if ( 'service-areas' === $deploy_tab && class_exists( 'Radius_Deploy_Health_Check' ) ) {
+			$sa_coverage_gaps = Radius_Deploy_Health_Check::get_service_area_coverage_gaps();
 		}
 		foreach ( $templates as $tpl_q ) {
 			$q_try = Radius_Form_Handlers::get_deploy_queue_for_template( (int) $tpl_q->ID, 'radius_service_area' );
@@ -1971,10 +1976,6 @@ class Radius_Admin {
 			$ready_msg   = __( 'No places fall inside your service areas (check radii and coordinates).', 'radius' );
 		}
 
-		$deploy_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'landings'; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check', 'system' ), true ) ) {
-			$deploy_tab = 'landings';
-		}
 		$deferred_seo_status = null;
 		if ( class_exists( 'Radius_Deploy_Service' ) && method_exists( 'Radius_Deploy_Service', 'get_deferred_seo_queue_status' ) ) {
 			$deferred_seo_status = Radius_Deploy_Service::get_deferred_seo_queue_status();
@@ -2122,12 +2123,6 @@ class Radius_Admin {
 						$edit   = get_edit_post_link( $tid, 'raw' );
 						$queue  = Radius_Form_Handlers::get_deploy_queue_for_template( $tid );
 						$q_left = ( $queue && ! empty( $queue['remaining'] ) && is_array( $queue['remaining'] ) ) ? count( $queue['remaining'] ) : 0;
-						$landing_gaps = class_exists( 'Radius_Deploy_Health_Check' )
-							? Radius_Deploy_Health_Check::get_landing_template_gaps( $tid, $scope_for_deploy, $landings_deployed_map )
-							: array( 'missing_place_ids' => array(), 'expected_count' => 0, 'deployed_count' => 0 );
-						$missing_n    = isset( $landing_gaps['missing_place_ids'] ) && is_array( $landing_gaps['missing_place_ids'] )
-							? count( $landing_gaps['missing_place_ids'] )
-							: 0;
 						$scope   = max( 0, (int) $stats['places_in_scope'] );
 						$spintax_n = self::count_template_spintax_shortcodes( $tid );
 						/*
@@ -2140,7 +2135,7 @@ class Radius_Admin {
 							? sprintf( '%d / %d', $deployed, $deploy_target )
 							: sprintf( '%d / —', $deployed );
 						?>
-						<article class="radius-deploy-card">
+						<article class="radius-deploy-card" data-radius-template-id="<?php echo esc_attr( (string) $tid ); ?>" data-radius-q-left="<?php echo esc_attr( (string) $q_left ); ?>" data-radius-scope="<?php echo esc_attr( (string) $scope ); ?>">
 							<header class="radius-deploy-card__head">
 								<h2 class="radius-deploy-card__title"><?php echo esc_html( get_the_title( $tpl ) ); ?></h2>
 								<div class="radius-deploy-card__badges">
@@ -2254,40 +2249,28 @@ class Radius_Admin {
 									$deploy_btn_attrs['disabled'] = 'disabled';
 									$deploy_btn_attrs['title']    = __( 'Fix service areas and ensure places fall inside them (see Pre-flight above).', 'radius' );
 								}
-								$can_deploy_missing = $missing_n > 0 && $q_left <= 0 && empty( $deploy_btn_attrs['disabled'] );
+								$can_deploy_missing = false;
 								?>
-								<?php if ( $can_deploy_missing ) : ?>
-									<p class="radius-deploy-card__pending description">
-										<?php
-										printf(
-											/* translators: 1: missing count, 2: expected in scope */
-											esc_html__( '%1$d place(s) in deploy scope do not have a landing for this template yet (of %2$d expected).', 'radius' ),
-											(int) $missing_n,
-											(int) ( $landing_gaps['expected_count'] ?? $scope )
-										);
-										?>
-									</p>
-									<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--missing" data-radius-chained-deploy="1">
+								<p class="radius-deploy-card__pending description radius-deploy-card__missing-status" hidden>
+									<?php esc_html_e( 'Checking missing places…', 'radius' ); ?>
+								</p>
+								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form radius-deploy-card__form--missing" data-radius-chained-deploy="1" hidden>
 										<input type="hidden" name="action" value="radius_deploy" />
 										<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />
 										<input type="hidden" name="radius_deploy_target" value="radius_landing" />
 										<input type="hidden" name="radius_deploy_missing" value="1" />
+										<input type="hidden" name="radius_deploy_missing_count" value="0" />
 										<?php wp_nonce_field( 'radius_deploy', 'radius_deploy_nonce' ); ?>
 										<?php
 										submit_button(
-											sprintf(
-												/* translators: %d: places missing a landing */
-												__( 'Deploy missing places (%d)', 'radius' ),
-												(int) $missing_n
-											),
+											__( 'Deploy missing places', 'radius' ),
 											'primary large',
 											'submit',
 											false,
 											$deploy_btn_attrs
 										);
 										?>
-									</form>
-								<?php endif; ?>
+								</form>
 								<form method="post" action="<?php echo esc_url( $action ); ?>" class="radius-deploy-card__form" data-radius-chained-deploy="1">
 									<input type="hidden" name="action" value="radius_deploy" />
 									<input type="hidden" name="radius_template_id" value="<?php echo esc_attr( (string) $tid ); ?>" />

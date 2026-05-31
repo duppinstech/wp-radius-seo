@@ -30,6 +30,7 @@ class Radius_Ajax {
 		add_action( 'wp_ajax_radius_dedupe_landings', array( __CLASS__, 'dedupe_landings' ) );
 		add_action( 'wp_ajax_radius_deploy_health_check', array( __CLASS__, 'deploy_health_check' ) );
 		add_action( 'wp_ajax_radius_deploy_health_remediate', array( __CLASS__, 'deploy_health_remediate' ) );
+		add_action( 'wp_ajax_radius_landing_gap_counts', array( __CLASS__, 'landing_gap_counts' ) );
 		add_action( 'wp_ajax_radius_deploy_reconnect', array( __CLASS__, 'deploy_reconnect' ) );
 		add_action( 'wp_ajax_radius_operation_log_client', array( __CLASS__, 'operation_log_client' ) );
 		add_action( 'wp_ajax_radius_magic_page_option_unautoload', array( __CLASS__, 'magic_page_option_unautoload' ) );
@@ -1030,6 +1031,52 @@ class Radius_Ajax {
 		}
 
 		wp_send_json_success( $report );
+	}
+
+	/**
+	 * Get landing gap counts for one template (used by Deploy → Landings async cards).
+	 *
+	 * @return void
+	 */
+	public static function landing_gap_counts() {
+		check_ajax_referer( 'radius_landing_gap_counts', 'nonce' );
+
+		if ( ! Radius_API_License::is_unlocked() ) {
+			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
+		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );
+		}
+
+		$template_id = isset( $_POST['template_id'] ) ? (int) wp_unslash( (string) $_POST['template_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( $template_id <= 0 || 'radius_template' !== get_post_type( $template_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid template.', 'radius' ) ), 400 );
+		}
+
+		try {
+			$scope = Radius_Deploy_Health_Check::get_expected_scope_place_ids();
+			$gaps  = Radius_Deploy_Health_Check::get_landing_template_gaps( $template_id, $scope, null );
+			$missing = isset( $gaps['missing_place_ids'] ) && is_array( $gaps['missing_place_ids'] )
+				? count( $gaps['missing_place_ids'] )
+				: 0;
+			wp_send_json_success(
+				array(
+					'template_id'    => $template_id,
+					'missing_count'  => (int) $missing,
+					'expected_count' => isset( $gaps['expected_count'] ) ? (int) $gaps['expected_count'] : 0,
+					'deployed_count' => isset( $gaps['deployed_count'] ) ? (int) $gaps['deployed_count'] : 0,
+				)
+			);
+		} catch ( \Throwable $e ) {
+			wp_send_json_error(
+				array(
+					'message' => ( defined( 'WP_DEBUG' ) && WP_DEBUG )
+						? $e->getMessage()
+						: __( 'Could not calculate landing gaps right now. Try again.', 'radius' ),
+				),
+				500
+			);
+		}
 	}
 
 	/**
