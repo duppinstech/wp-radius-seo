@@ -55,6 +55,9 @@ class Radius_Ajax {
 			wp_send_json_error( array( 'message' => __( 'Empty message.', 'radius' ) ), 400 );
 		}
 		$ctx_raw = isset( $_POST['context'] ) ? wp_unslash( $_POST['context'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( is_string( $ctx_raw ) ) {
+			$ctx_raw = sanitize_text_field( $ctx_raw );
+		}
 		$ctx     = array();
 		if ( is_string( $ctx_raw ) && $ctx_raw !== '' ) {
 			$decoded = json_decode( $ctx_raw, true );
@@ -943,7 +946,7 @@ class Radius_Ajax {
 
 		$action = isset( $_POST['remediate_action'] ) ? sanitize_key( wp_unslash( $_POST['remediate_action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 
-		$redirect_heavy = in_array( $action, array( 'scan_redirect_conflicts_all', 'remove_redirect_conflicts', 'fix_all_issues' ), true );
+		$redirect_heavy = in_array( $action, array( 'scan_redirect_conflicts_all', 'remove_redirect_conflicts', 'fix_all_issues', 'ensure_deploy_lookup_index' ), true );
 		if ( function_exists( 'set_time_limit' ) ) {
 			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
 			@set_time_limit( $redirect_heavy ? 600 : 300 );
@@ -1059,6 +1062,20 @@ class Radius_Ajax {
 					wp_send_json_error( array( 'message' => $message ) );
 					return;
 				}
+			} elseif ( 'ensure_deploy_lookup_index' === $action ) {
+				if ( ! class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Deploy DB index manager unavailable.', 'radius' ) ), 500 );
+					return;
+				}
+				$result  = Radius_Deploy_Db_Indexes::ensure_index( 'health_manual' );
+				$log_msg = isset( $result['message'] ) ? (string) $result['message'] : __( 'Deploy DB index action finished.', 'radius' );
+				$message = ! empty( $result['ok'] )
+					? (string) ( $result['message'] ?? __( 'Deploy DB index action completed.', 'radius' ) )
+					: (string) ( $result['error'] ?? __( 'Could not create deploy DB index.', 'radius' ) );
+				if ( empty( $result['ok'] ) ) {
+					wp_send_json_error( array( 'message' => $message ) );
+					return;
+				}
 			} elseif ( 'fix_all_issues' === $action ) {
 				$steps   = Radius_Deploy_Health_Check::run_all_remediations();
 				$log_msg = 'Health check fix-all completed.';
@@ -1093,6 +1110,11 @@ class Radius_Ajax {
 						__( '%d landing page(s) trashed', 'radius' ),
 						$landing_trashed
 					);
+				}
+				if ( ! empty( $steps['ensure_deploy_lookup_index']['created'] ) ) {
+					$parts[] = __( 'Deploy lookup DB index created', 'radius' );
+				} elseif ( ! empty( $steps['ensure_deploy_lookup_index']['exists'] ) ) {
+					$parts[] = __( 'Deploy lookup DB index already present', 'radius' );
 				}
 				$message = empty( $parts )
 					? __( 'No automated fixes were applied.', 'radius' )
@@ -1385,10 +1407,18 @@ class Radius_Ajax {
 		$mode = isset( $_POST['bulk_mode'] ) ? sanitize_key( wp_unslash( $_POST['bulk_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 		$raw  = isset( $_POST['option_names'] ) ? wp_unslash( $_POST['option_names'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( is_string( $raw ) ) {
+			$raw = sanitize_text_field( $raw );
+		}
+		if ( is_string( $raw ) ) {
 			$decoded = json_decode( $raw, true );
 			$names   = is_array( $decoded ) ? $decoded : array();
 		} elseif ( is_array( $raw ) ) {
-			$names = $raw;
+			$names = array_map(
+				static function ( $name ) {
+					return sanitize_key( (string) $name );
+				},
+				$raw
+			);
 		} else {
 			$names = array();
 		}

@@ -51,9 +51,13 @@ class Radius_Plugin {
 		Radius_Place_Term_Admin::init();
 		Radius_Analytics::init();
 		Radius_Ajax::init();
+		Radius_Deploy_Service::init();
 		Radius_Template_Metabox::init();
 		Radius_Rotation_Cron::init();
 		Radius_Deploy_Health_Cron::init();
+		if ( class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+			Radius_Deploy_Db_Indexes::init();
+		}
 		Radius_Elementor_Compat::init();
 		Radius_Beaver_Builder_Compat::init();
 		add_action( 'admin_init', array( $this, 'maybe_flush_rewrite_rules' ), 5 );
@@ -308,6 +312,13 @@ class Radius_Plugin {
 		if ( $v < 3 ) {
 			update_option( 'radius_schema_version', 3 );
 			update_option( 'radius_needs_rewrite_flush', true );
+		}
+		// v4: schedule one-time background creation of deploy lookup DB index.
+		if ( $v < 4 ) {
+			update_option( 'radius_schema_version', 4 );
+			if ( class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+				Radius_Deploy_Db_Indexes::schedule_background_ensure( 30 );
+			}
 		}
 	}
 

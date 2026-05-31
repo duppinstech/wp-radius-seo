@@ -943,19 +943,21 @@ class Radius_Legacy_Import_Service {
 				'post_status'    => 'any',
 				'posts_per_page' => -1,
 				'fields'         => 'ids',
-				'meta_query'     => array(
-					'relation' => 'OR',
-					array(
-						'key'     => '_radius_imported_from',
-						'compare' => 'EXISTS',
-					),
-					array(
-						'key'     => '_radius_migration_clone_of',
-						'compare' => 'EXISTS',
-					),
-				),
+				'meta_key'       => '_radius_imported_from',
+				'meta_compare'   => 'EXISTS',
 			)
 		);
+		$clone_ids = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_key'       => '_radius_migration_clone_of',
+				'meta_compare'   => 'EXISTS',
+			)
+		);
+		$ids = array_values( array_unique( array_merge( (array) $ids, (array) $clone_ids ) ) );
 		if ( empty( $ids ) ) {
 			delete_option( self::OPTION_MIGRATION_DEPLOY_TEMPLATE_MAP );
 			return 0;
@@ -1120,10 +1122,9 @@ class Radius_Legacy_Import_Service {
 			WHERE p.post_type IN ($pt_in)
 			AND p.post_status NOT IN ('trash','auto-draft')";
 
-		$args     = array_merge( $loc_keys, $grp_keys, $post_types );
-		$prepared = $wpdb->prepare( $sql, $args );
+		$args = array_merge( $loc_keys, $grp_keys, $post_types );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- assembled IN (...) lists from sanitized keys.
-		$n = $wpdb->get_var( $prepared );
+		$n = $wpdb->get_var( $wpdb->prepare( $sql, $args ) );
 		return is_numeric( $n ) ? (int) $n : 0;
 	}
 
@@ -1164,10 +1165,9 @@ class Radius_Legacy_Import_Service {
 			ORDER BY p.ID ASC
 			LIMIT %d";
 
-		$args     = array_merge( $loc_keys, $grp_keys, $post_types, array( max( 0, (int) $after_post_id ), $lim ) );
-		$prepared = $wpdb->prepare( $sql, $args );
+		$args = array_merge( $loc_keys, $grp_keys, $post_types, array( max( 0, (int) $after_post_id ), $lim ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- assembled IN (...) lists from sanitized keys.
-		$rows = $wpdb->get_col( $prepared );
+		$rows = $wpdb->get_col( $wpdb->prepare( $sql, $args ) );
 		if ( empty( $rows ) || ! is_array( $rows ) ) {
 			return array();
 		}
@@ -2419,8 +2419,7 @@ class Radius_Legacy_Import_Service {
 
 		$params = array_merge( array( $tax ), $params_outer, array( $tax ), $params_inner );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Dynamic fragment count; placeholders match $params.
-		$sql = $wpdb->prepare( $sql, $params );
-		$n   = $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$n = $wpdb->get_var( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ( '' !== $wpdb->last_error ) {
 			return null;
@@ -4010,12 +4009,8 @@ class Radius_Legacy_Import_Service {
 				'post_status'    => 'any',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
-				'meta_query'     => array(
-					array(
-						'key'   => '_radius_imported_from',
-						'value' => $lid,
-					),
-				),
+				'meta_key'       => '_radius_imported_from',
+				'meta_value'     => $lid,
 			)
 		);
 		return empty( $found ) ? 0 : (int) $found[0];
@@ -4869,12 +4864,8 @@ class Radius_Legacy_Import_Service {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => array(
-					array(
-						'key'   => '_radius_imported_from',
-						'value' => $legacy_post_id,
-					),
-				),
+				'meta_key'               => '_radius_imported_from',
+				'meta_value'             => $legacy_post_id,
 			)
 		);
 		return empty( $found[0] ) ? 0 : (int) $found[0];
@@ -5004,12 +4995,8 @@ class Radius_Legacy_Import_Service {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => array(
-					array(
-						'key'   => '_radius_migration_group_slug',
-						'value' => $group_slug,
-					),
-				),
+				'meta_key'               => '_radius_migration_group_slug',
+				'meta_value'             => $group_slug,
 			)
 		);
 		return empty( $by_meta[0] ) ? 0 : (int) $by_meta[0];
@@ -5052,12 +5039,8 @@ class Radius_Legacy_Import_Service {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => array(
-					array(
-						'key'   => '_radius_migration_group_slug',
-						'value' => $group_slug,
-					),
-				),
+				'meta_key'               => '_radius_migration_group_slug',
+				'meta_value'             => $group_slug,
 			)
 		);
 		return empty( $by_meta[0] ) ? 0 : (int) $by_meta[0];
@@ -5117,7 +5100,55 @@ class Radius_Legacy_Import_Service {
 	 * @return array<string,int> Group slug => post ID.
 	 */
 	public static function rebuild_migration_deploy_template_map_from_site() {
-		$posts = get_posts(
+		$imported_ids = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'publish',
+				'posts_per_page'         => -1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_key'               => '_radius_imported_from',
+				'meta_compare'           => 'EXISTS',
+			)
+		);
+		$group_slug_ids = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'publish',
+				'posts_per_page'         => -1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_key'               => '_radius_migration_group_slug',
+				'meta_compare'           => 'EXISTS',
+			)
+		);
+		$clone_ids = get_posts(
+			array(
+				'post_type'              => 'radius_template',
+				'post_status'            => 'publish',
+				'posts_per_page'         => -1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_key'               => '_radius_migration_clone_of',
+				'meta_compare'           => 'EXISTS',
+			)
+		);
+		$post_ids = array_values(
+			array_unique(
+				array_merge(
+					(array) $imported_ids,
+					(array) $group_slug_ids,
+					(array) $clone_ids
+				)
+			)
+		);
+		$posts = empty( $post_ids ) ? array() : get_posts(
 			array(
 				'post_type'              => 'radius_template',
 				'post_status'            => 'publish',
@@ -5127,21 +5158,7 @@ class Radius_Legacy_Import_Service {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => true,
 				'update_post_term_cache' => false,
-				'meta_query'             => array(
-					'relation' => 'OR',
-					array(
-						'key'     => '_radius_imported_from',
-						'compare' => 'EXISTS',
-					),
-					array(
-						'key'     => '_radius_migration_group_slug',
-						'compare' => 'EXISTS',
-					),
-					array(
-						'key'     => '_radius_migration_clone_of',
-						'compare' => 'EXISTS',
-					),
-				),
+				'post__in'               => $post_ids,
 			)
 		);
 
@@ -5775,12 +5792,8 @@ class Radius_Legacy_Import_Service {
 				'posts_per_page' => 1,
 				'orderby'        => 'ID',
 				'order'          => 'ASC',
-				'meta_query'     => array(
-					array(
-						'key'     => '_radius_imported_from',
-						'compare' => 'EXISTS',
-					),
-				),
+				'meta_key'       => '_radius_imported_from',
+				'meta_compare'   => 'EXISTS',
 				'fields'         => 'ids',
 			)
 		);
@@ -7297,18 +7310,26 @@ class Radius_Legacy_Import_Service {
 				'orderby'        => 'ID',
 				'order'          => 'ASC',
 				'fields'         => 'ids',
-				'meta_query'     => array(
-					'relation' => 'OR',
-					array(
-						'key'     => '_radius_imported_from',
-						'compare' => 'EXISTS',
-					),
-					array(
-						'key'     => '_radius_migration_clone_of',
-						'compare' => 'EXISTS',
-					),
-				),
+				'meta_key'       => '_radius_imported_from',
+				'meta_compare'   => 'EXISTS',
 			)
+		);
+		$clone_ids = get_posts(
+			array(
+				'post_type'      => 'radius_template',
+				'post_status'    => 'any',
+				'posts_per_page' => 50,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'fields'         => 'ids',
+				'meta_key'       => '_radius_migration_clone_of',
+				'meta_compare'   => 'EXISTS',
+			)
+		);
+		$post_ids = array_slice(
+			array_values( array_unique( array_merge( (array) $post_ids, (array) $clone_ids ) ) ),
+			0,
+			50
 		);
 		if ( empty( $post_ids ) ) {
 			return array();
@@ -7699,12 +7720,8 @@ class Radius_Legacy_Import_Service {
 				'taxonomy'   => $radius_tax,
 				'hide_empty' => false,
 				'number'     => 1,
-				'meta_query' => array(
-					array(
-						'key'   => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
-						'value' => (string) $legacy_term_id,
-					),
-				),
+				'meta_key'   => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
+				'meta_value' => (string) $legacy_term_id,
 			)
 		);
 		if ( ! is_wp_error( $imported ) && ! empty( $imported[0] ) ) {
@@ -7716,14 +7733,9 @@ class Radius_Legacy_Import_Service {
 				'taxonomy'   => $radius_tax,
 				'hide_empty' => false,
 				'number'     => 1,
-				'meta_query' => array(
-					array(
-						'key'     => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
-						'value'   => $legacy_term_id,
-						'compare' => '=',
-						'type'    => 'NUMERIC',
-					),
-				),
+				'meta_key'   => Radius_Data_Registry::META_IMPORTED_FROM_TERM,
+				'meta_value' => $legacy_term_id,
+				'meta_type'  => 'NUMERIC',
 			)
 		);
 		if ( ! is_wp_error( $imported ) && ! empty( $imported[0] ) ) {
@@ -7804,21 +7816,33 @@ class Radius_Legacy_Import_Service {
 				'taxonomy'   => $radius_tax,
 				'hide_empty' => false,
 				'number'     => 15,
-				'meta_query' => array(
-					'relation' => 'OR',
-					array(
-						'key'     => Radius_Data_Registry::TERM_META_POSTAL,
-						'value'   => $zip_norm,
-						'compare' => '=',
-					),
-					array(
-						'key'     => Radius_Data_Registry::TERM_META_POSTAL,
-						'value'   => $zip_norm . '-',
-						'compare' => 'LIKE',
-					),
-				),
+				'meta_key'   => Radius_Data_Registry::TERM_META_POSTAL,
+				'meta_value' => $zip_norm,
+				'meta_compare' => '=',
 			)
 		);
+		$zip_like = get_terms(
+			array(
+				'taxonomy'     => $radius_tax,
+				'hide_empty'   => false,
+				'number'       => 15,
+				'meta_key'     => Radius_Data_Registry::TERM_META_POSTAL,
+				'meta_value'   => $zip_norm . '-',
+				'meta_compare' => 'LIKE',
+			)
+		);
+		if ( ! is_wp_error( $zip_like ) && ! empty( $zip_like ) ) {
+			$by_id = array();
+			if ( ! is_wp_error( $candidates ) && ! empty( $candidates ) ) {
+				foreach ( $candidates as $cand ) {
+					$by_id[ (int) $cand->term_id ] = $cand;
+				}
+			}
+			foreach ( $zip_like as $cand ) {
+				$by_id[ (int) $cand->term_id ] = $cand;
+			}
+			$candidates = array_values( $by_id );
+		}
 		if ( is_wp_error( $candidates ) || empty( $candidates ) ) {
 			return 0;
 		}

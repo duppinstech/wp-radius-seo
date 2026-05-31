@@ -307,7 +307,7 @@ final class Radius_Operation_Log {
 	 * @return bool
 	 */
 	private static function truncate_file( $path ) {
-		if ( file_exists( $path ) && ! is_writable( $path ) ) {
+		if ( file_exists( $path ) && ! wp_is_writable( $path ) ) {
 			return false;
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents

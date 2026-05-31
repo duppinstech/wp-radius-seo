@@ -702,6 +702,11 @@
 	line-height: 1;
 }
 
+.radius-deploy-queue-status {
+	margin: 10px 0 2px;
+	max-width: 1100px;
+}
+
 /* Deploy: help modal (fixed overlay — reliable in wp-admin) */
 .radius-deploy-help-overlay {
 	position: fixed;

@@ -360,12 +360,8 @@ final class Radius_Migration_Wizard {
 				'post_status'    => 'any',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
-				'meta_query'     => array(
-					array(
-						'key'     => '_radius_imported_from',
-						'compare' => 'EXISTS',
-					),
-				),
+				'meta_key'       => '_radius_imported_from',
+				'meta_compare'   => 'EXISTS',
 			)
 		);
 		return ! empty( $imported );
@@ -759,6 +755,9 @@ final class Radius_Migration_Wizard {
 			case 'steps_reset':
 				// Comma-separated step keys — single round-trip instead of N× step_reset (fewer admin-ajax POSTs).
 				$raw = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+				if ( is_string( $raw ) ) {
+					$raw = sanitize_text_field( $raw );
+				}
 				$list = array();
 				if ( is_string( $raw ) && $raw !== '' ) {
 					foreach ( explode( ',', $raw ) as $part ) {
@@ -948,6 +947,9 @@ final class Radius_Migration_Wizard {
 		case 'rerun':
 			// Reset selected steps and re-open the wizard so the user can run them again.
 			$raw  = isset( $_POST['steps'] ) ? wp_unslash( $_POST['steps'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+			if ( is_string( $raw ) ) {
+				$raw = sanitize_text_field( $raw );
+			}
 			$list = array();
 			if ( is_string( $raw ) && $raw !== '' ) {
 				foreach ( explode( ',', $raw ) as $part ) {

@@ -62,26 +62,49 @@ class Radius_GitHub_Updater {
 		}
 		$installed = $transient->checked[ $file ];
 		$release     = self::get_latest_release_payload();
-		if ( is_wp_error( $release ) || empty( $release['version'] ) || empty( $release['package'] ) ) {
-			return $transient;
-		}
-		if ( version_compare( $release['version'], $installed, '<=' ) ) {
-			return $transient;
-		}
 		if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
 			$transient->response = array();
 		}
-		$transient->response[ $file ] = (object) array(
+		if ( ! isset( $transient->no_update ) || ! is_array( $transient->no_update ) ) {
+			$transient->no_update = array();
+		}
+		unset( $transient->response[ $file ], $transient->no_update[ $file ] );
+
+		if ( is_wp_error( $release ) || empty( $release['version'] ) ) {
+			$transient->no_update[ $file ] = self::build_update_object( $file, (string) $installed, '', '' );
+			return $transient;
+		}
+
+		$release_version = (string) $release['version'];
+		$release_url     = isset( $release['url'] ) ? (string) $release['url'] : '';
+		$release_package = isset( $release['package'] ) ? (string) $release['package'] : '';
+		if ( $release_package !== '' && version_compare( $release_version, (string) $installed, '>' ) ) {
+			$transient->response[ $file ] = self::build_update_object( $file, $release_version, $release_url, $release_package );
+			return $transient;
+		}
+
+		$transient->no_update[ $file ] = self::build_update_object( $file, (string) $installed, $release_url, '' );
+		return $transient;
+	}
+
+	/**
+	 * @param string $file        Plugin file basename.
+	 * @param string $new_version Version for WP update row.
+	 * @param string $url         Release URL.
+	 * @param string $package     Download package URL.
+	 * @return object
+	 */
+	private static function build_update_object( $file, $new_version, $url, $package ) {
+		return (object) array(
 			'slug'         => dirname( $file ),
 			'plugin'       => $file,
-			'new_version'  => $release['version'],
-			'url'          => $release['url'],
-			'package'      => $release['package'],
+			'new_version'  => $new_version,
+			'url'          => $url,
+			'package'      => $package,
 			'requires'     => '6.0',
 			'requires_php' => '7.4',
 			'id'           => $file,
 		);
-		return $transient;
 	}
 
 	/**

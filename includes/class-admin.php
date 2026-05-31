@@ -260,9 +260,11 @@ class Radius_Admin {
 		// Also load on the deploy page when migration is completed (rerun button available)
 		// OR when the rerun redirect lands (?radius_open_migration=1), so the wizard JS
 		// is present and can auto-open regardless of the saved migration state.
-		$is_deploy_page  = ( 'radius_page_radius-deploy' === $hook_suffix );
-		$has_open_param  = $is_deploy_page // phpcs:ignore WordPress.Security.NonceVerification
-			&& isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration']; // phpcs:ignore WordPress.Security.NonceVerification
+		$is_deploy_page = ( 'radius_page_radius-deploy' === $hook_suffix );
+		$open_param     = isset( $_GET['radius_open_migration'] ) // phpcs:ignore WordPress.Security.NonceVerification
+			? sanitize_text_field( wp_unslash( (string) $_GET['radius_open_migration'] ) ) // phpcs:ignore WordPress.Security.NonceVerification
+			: '';
+		$has_open_param = $is_deploy_page && '1' === $open_param;
 		$is_deploy_rerun = $is_deploy_page
 			&& class_exists( 'Radius_API_License' )
 			&& Radius_API_License::is_unlocked()
@@ -340,7 +342,7 @@ class Radius_Admin {
 				'operationLogsUrl'      => admin_url( 'admin.php?page=radius-logs' ),
 				'wizardAction'          => 'radius_migration_wizard',
 				'deployBatchNonce'      => wp_create_nonce( 'radius_deploy_batch' ),
-				'openOnLoad'            => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+				'openOnLoad'            => '1' === $open_param,
 				'deployPageUrl'         => admin_url( 'admin.php?page=radius-deploy' ),
 				'systemRequirementsUrl' => admin_url( 'admin.php?page=radius-deploy&tab=system' ),
 				'importPageUrl'         => admin_url( 'admin.php?page=radius-import&tab=migration' ),
@@ -697,6 +699,9 @@ class Radius_Admin {
 						'deactivateMagicPage' => __( 'Deactivate Magic Page plugin', 'radius' ),
 						'deactivateMagicPageConfirm' => __( 'Deactivate the Magic Page plugin?', 'radius' ),
 						'deactivateMagicPageRunning' => __( 'Deactivating…', 'radius' ),
+						'ensureDeployLookupIndex' => __( 'Add deploy DB index', 'radius' ),
+						'ensureDeployLookupIndexConfirm' => __( 'Create the recommended deploy lookup DB index now? This can take time on very large postmeta tables.', 'radius' ),
+						'ensureDeployLookupIndexRunning' => __( 'Creating DB index…', 'radius' ),
 						'conflictPaths' => __( 'Sample conflicting URL paths', 'radius' ),
 						'sampleOptions' => __( 'Sample autoload=yes options', 'radius' ),
 						'checkAllRedirects' => __( 'Check all now', 'radius' ),
@@ -769,6 +774,9 @@ class Radius_Admin {
 					RADIUS_VERSION,
 					true
 				);
+				$open_param = isset( $_GET['radius_open_migration'] ) // phpcs:ignore WordPress.Security.NonceVerification
+					? sanitize_text_field( wp_unslash( (string) $_GET['radius_open_migration'] ) ) // phpcs:ignore WordPress.Security.NonceVerification
+					: '';
 				wp_localize_script(
 					'radius-migration-wizard',
 					'radiusMigrationWizard',
@@ -780,7 +788,7 @@ class Radius_Admin {
 						'operationLogsUrl'     => admin_url( 'admin.php?page=radius-logs' ),
 						'wizardAction'         => 'radius_migration_wizard',
 						'deployBatchNonce'     => wp_create_nonce( 'radius_deploy_batch' ),
-						'openOnLoad'           => isset( $_GET['radius_open_migration'] ) && '1' === (string) $_GET['radius_open_migration'], // phpcs:ignore WordPress.Security.NonceVerification
+						'openOnLoad'           => '1' === $open_param,
 						'deployPageUrl'        => admin_url( 'admin.php?page=radius-deploy' ),
 						'systemRequirementsUrl' => admin_url( 'admin.php?page=radius-deploy&tab=system' ),
 						'importPageUrl'        => admin_url( 'admin.php?page=radius-import&tab=migration' ),
@@ -1966,6 +1974,10 @@ class Radius_Admin {
 		if ( ! in_array( $deploy_tab, array( 'landings', 'service-areas', 'migration', 'health-check', 'system' ), true ) ) {
 			$deploy_tab = 'landings';
 		}
+		$deferred_seo_status = null;
+		if ( class_exists( 'Radius_Deploy_Service' ) && method_exists( 'Radius_Deploy_Service', 'get_deferred_seo_queue_status' ) ) {
+			$deferred_seo_status = Radius_Deploy_Service::get_deferred_seo_queue_status();
+		}
 
 		$migration_state = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::get_state() : '';
 		$migration_steps = class_exists( 'Radius_Migration_Wizard' ) ? Radius_Migration_Wizard::build_steps_status() : array();
@@ -2045,6 +2057,44 @@ class Radius_Admin {
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=health-check' ) ); ?>" class="nav-tab<?php echo 'health-check' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Health check', 'radius' ); ?><?php echo class_exists( 'Radius_Deploy_Health_Cron' ) ? Radius_Deploy_Health_Cron::health_check_tab_badge_html() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=radius-deploy&tab=system' ) ); ?>" class="nav-tab<?php echo 'system' === $deploy_tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'System', 'radius' ); ?></a>
 		</h2>
+		<?php if ( is_array( $deferred_seo_status ) ) : ?>
+			<?php
+			$queued_count = isset( $deferred_seo_status['queued_count'] ) ? max( 0, (int) $deferred_seo_status['queued_count'] ) : 0;
+			$last_run     = isset( $deferred_seo_status['last_run'] ) ? (int) $deferred_seo_status['last_run'] : 0;
+			$next_run     = isset( $deferred_seo_status['next_scheduled'] ) ? (int) $deferred_seo_status['next_scheduled'] : 0;
+			$seo_note     = '';
+			if ( $queued_count > 0 ) {
+				$seo_note = sprintf(
+					/* translators: %d: number of pages waiting for deferred SEO post-processing. */
+					_n( 'Deferred SEO queue: %d page pending.', 'Deferred SEO queue: %d pages pending.', $queued_count, 'radius' ),
+					$queued_count
+				);
+			} else {
+				$seo_note = __( 'Deferred SEO queue: empty.', 'radius' );
+			}
+			if ( $next_run > 0 ) {
+				$eta = $next_run > time()
+					? sprintf(
+						/* translators: %s: human-readable relative duration. */
+						__( 'in %s', 'radius' ),
+						human_time_diff( time(), $next_run )
+					)
+					: __( 'due now', 'radius' );
+				$seo_note .= ' ' . sprintf(
+					/* translators: %s: next cron run relative time. */
+					__( 'Next background run: %s.', 'radius' ),
+					$eta
+				);
+			} elseif ( $last_run > 0 ) {
+				$seo_note .= ' ' . sprintf(
+					/* translators: %s: human-readable relative duration. */
+					__( 'Last background run: %s ago.', 'radius' ),
+					human_time_diff( $last_run, time() )
+				);
+			}
+			?>
+			<p class="description radius-deploy-queue-status"><?php echo esc_html( $seo_note ); ?></p>
+		<?php endif; ?>
 
 		<?php if ( 'landings' === $deploy_tab ) : ?>
 		<h2 class="radius-deploy-section-title"><?php esc_html_e( 'Landings', 'radius' ); ?></h2>

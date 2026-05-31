@@ -14,6 +14,41 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Radius_Deploy_Service {
 
+	private const SEO_DEFER_OPTION = 'radius_deploy_deferred_seo_ids';
+	private const SEO_DEFER_CRON_HOOK = 'radius_deploy_process_deferred_seo';
+	private const SEO_DEFER_STATUS_OPTION = 'radius_deploy_deferred_seo_status';
+
+	/**
+	 * Runtime queue for post IDs whose expensive SEO post-processing is deferred.
+	 *
+	 * @var int[]
+	 */
+	private static $deferred_seo_ids = array();
+
+	/**
+	 * @return void
+	 */
+	public static function init() {
+		add_action( self::SEO_DEFER_CRON_HOOK, array( __CLASS__, 'process_deferred_seo_queue' ) );
+	}
+
+	/**
+	 * @return array<string,int>
+	 */
+	public static function get_deferred_seo_queue_status() {
+		$queued = get_option( self::SEO_DEFER_OPTION, array() );
+		$queued = is_array( $queued ) ? array_values( array_unique( array_map( 'intval', $queued ) ) ) : array();
+		$saved  = get_option( self::SEO_DEFER_STATUS_OPTION, array() );
+		$saved  = is_array( $saved ) ? $saved : array();
+		$next   = wp_next_scheduled( self::SEO_DEFER_CRON_HOOK );
+		return array(
+			'queued_count'    => count( $queued ),
+			'last_run'        => isset( $saved['last_run'] ) ? (int) $saved['last_run'] : 0,
+			'last_processed'  => isset( $saved['last_processed'] ) ? (int) $saved['last_processed'] : 0,
+			'next_scheduled'  => $next ? (int) $next : 0,
+		);
+	}
+
 	/**
 	 * Create or update landings for each place ID.
 	 *
@@ -51,8 +86,14 @@ class Radius_Deploy_Service {
 
 		$place_ids = array_unique( array_map( 'intval', $place_ids ) );
 		$place_ids = array_filter( $place_ids );
+		$defer_seo_postprocess = self::should_defer_seo_postprocess( count( $place_ids ) );
+		$defer_term_counting   = function_exists( 'wp_defer_term_counting' );
+		if ( $defer_term_counting ) {
+			wp_defer_term_counting( true );
+		}
 
-		foreach ( $place_ids as $place_id ) {
+		try {
+			foreach ( $place_ids as $place_id ) {
 			$tokens = Radius_Template_Tokens::build_map( $template_id, $place_id );
 			if ( empty( $tokens ) || empty( $tokens['place_name'] ) ) {
 				++$out['skipped'];
@@ -71,11 +112,22 @@ class Radius_Deploy_Service {
 				? self::compute_service_area_slug_base( $tokens )
 				: self::compute_landing_slug_base( $template, $tokens, $seed, false, $ph_landing );
 
-			$existing = self::find_deployed( $template_id, $place_id, $target_pt );
+			$matched_ids = self::find_deployed_ids_for_template_place( $template_id, $place_id, $target_pt );
+			$existing    = ! empty( $matched_ids ) ? (int) $matched_ids[0] : 0;
 
 			// Trash any extra copies (from crashed/restarted deploys) BEFORE computing
 			// unique_slug so the canonical post can reclaim the unprefixed base slug.
-			self::trash_extra_deployed( $template_id, $place_id, (int) $existing, $target_pt );
+			if ( count( $matched_ids ) > 1 ) {
+				$extras = array_slice( $matched_ids, 1 );
+				foreach ( $extras as $eid ) {
+					$eid = (int) $eid;
+					if ( class_exists( 'Radius_Redirect_Service' ) ) {
+						Radius_Redirect_Service::trash_deployed_post_with_redirect( $eid );
+					} else {
+						wp_trash_post( $eid );
+					}
+				}
+			}
 
 			if ( $existing ) {
 				if ( ! $update ) {
@@ -96,7 +148,7 @@ class Radius_Deploy_Service {
 					continue;
 				}
 				self::attach_meta( (int) $existing, $template_id, $place_id );
-				$err = self::sync_deployed_landing( (int) $existing, $template_id, $place_id, $tokens, $seed, $ph_landing );
+				$err = self::sync_deployed_landing( (int) $existing, $template_id, $place_id, $tokens, $seed, $ph_landing, $defer_seo_postprocess );
 				if ( $err !== '' ) {
 					$out['errors'][] = $err;
 				}
@@ -123,13 +175,22 @@ class Radius_Deploy_Service {
 			}
 
 			self::attach_meta( (int) $post_id, $template_id, $place_id );
-			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $place_id, $tokens, $seed, $ph_landing );
+			$err = self::sync_deployed_landing( (int) $post_id, $template_id, $place_id, $tokens, $seed, $ph_landing, $defer_seo_postprocess );
 			if ( $err !== '' ) {
 				$out['errors'][] = $err;
 			}
 			wp_set_object_terms( (int) $post_id, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
 			$out['placeholders_removed'] += $ph_landing;
 			++$out['created'];
+		}
+		} finally {
+			if ( $defer_term_counting ) {
+				wp_defer_term_counting( false );
+			}
+		}
+
+		if ( $defer_seo_postprocess ) {
+			self::flush_deferred_seo_queue();
 		}
 
 		return $out;
@@ -312,31 +373,8 @@ class Radius_Deploy_Service {
 		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
 			$post_type = 'radius_landing';
 		}
-
-		$q = new WP_Query(
-			array(
-				'post_type'      => $post_type,
-				'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
-				'posts_per_page' => 1,
-				'fields'         => 'ids',
-				'meta_query'     => array(
-					'relation' => 'AND',
-					array(
-						'key'   => '_radius_template_id',
-						'value' => (string) $template_id,
-					),
-					array(
-						'key'   => '_radius_place_id',
-						'value' => (string) $place_id,
-					),
-				),
-			)
-		);
-
-		if ( $q->have_posts() ) {
-			return (int) $q->posts[0];
-		}
-		return 0;
+		$ids = self::find_deployed_ids_for_template_place( $template_id, $place_id, $post_type );
+		return ! empty( $ids ) ? (int) $ids[0] : 0;
 	}
 
 	/**
@@ -369,12 +407,8 @@ class Radius_Deploy_Service {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => array(
-					array(
-						'key'   => '_radius_place_id',
-						'value' => (string) $place_id,
-					),
-				),
+				'meta_key'               => '_radius_place_id',
+				'meta_value'             => (string) $place_id,
 			)
 		);
 
@@ -406,37 +440,60 @@ class Radius_Deploy_Service {
 	 * @return int[]
 	 */
 	private static function find_extra_deployed_ids( $template_id, $place_id, $post_type, $exclude_id = 0 ) {
-		$q = new WP_Query(
-			array(
-				'post_type'      => sanitize_key( (string) $post_type ),
-				'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'orderby'        => 'ID',
-				'order'          => 'ASC',
-				'meta_query'     => array(
-					'relation' => 'AND',
-					array(
-						'key'   => '_radius_template_id',
-						'value' => (string) (int) $template_id,
-					),
-					array(
-						'key'   => '_radius_place_id',
-						'value' => (string) (int) $place_id,
-					),
-				),
-			)
-		);
-
 		$exclude_id = (int) $exclude_id;
+		$template_id = (int) $template_id;
+		$ids         = self::find_deployed_ids_for_template_place( $template_id, (int) $place_id, sanitize_key( (string) $post_type ) );
 		$extras     = array();
-		foreach ( (array) $q->posts as $pid ) {
+		foreach ( $ids as $pid ) {
 			$pid = (int) $pid;
 			if ( $pid !== $exclude_id ) {
 				$extras[] = $pid;
 			}
 		}
 		return $extras;
+	}
+
+	/**
+	 * Get all deployed IDs for one template/place pair in canonical order.
+	 *
+	 * @param int    $template_id Template post ID.
+	 * @param int    $place_id    radius_place term ID.
+	 * @param string $post_type   radius_landing or radius_service_area.
+	 * @return int[]
+	 */
+	private static function find_deployed_ids_for_template_place( $template_id, $place_id, $post_type ) {
+		$template_id = (int) $template_id;
+		$place_id    = (int) $place_id;
+		$post_type   = sanitize_key( (string) $post_type );
+		if ( $template_id <= 0 || $place_id <= 0 ) {
+			return array();
+		}
+		if ( ! in_array( $post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			return array();
+		}
+
+		$q = new WP_Query(
+			array(
+				'post_type'      => $post_type,
+				'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'no_found_rows'  => true,
+				'meta_key'       => '_radius_place_id',
+				'meta_value'     => (string) $place_id,
+			)
+		);
+
+		$matched = array();
+		foreach ( (array) $q->posts as $pid ) {
+			$pid = (int) $pid;
+			if ( (int) get_post_meta( $pid, '_radius_template_id', true ) === $template_id ) {
+				$matched[] = $pid;
+			}
+		}
+		return $matched;
 	}
 
 	/**
@@ -687,9 +744,10 @@ class Radius_Deploy_Service {
 	 * @param array<string,string> $tokens      Token map.
 	 * @param int                  $seed        Spintax seed.
 	 * @param int|null             $placeholder_removed Optional. Passed through to meta / Elementor string renders.
+	 * @param bool                 $defer_seo_postprocess Queue Yoast/SEO post-processing to cron.
 	 * @return string Empty on success, short error message on failure.
 	 */
-	private static function sync_deployed_landing( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null ) {
+	private static function sync_deployed_landing( $landing_id, $template_id, $place_id, array $tokens, $seed, &$placeholder_removed = null, $defer_seo_postprocess = false ) {
 		self::copy_selected_template_meta( $landing_id, $template_id, (int) $place_id, $tokens, $seed, $placeholder_removed );
 
 		$elementor_ok = false;
@@ -709,7 +767,7 @@ class Radius_Deploy_Service {
 			}
 		}
 
-		if ( $elementor_ok ) {
+		if ( $elementor_ok && ! $defer_seo_postprocess ) {
 			self::maybe_sync_elementor_rendered_html_for_yoast( $landing_id );
 		}
 
@@ -730,11 +788,15 @@ class Radius_Deploy_Service {
 			}
 		}
 
-		if ( $bb_ok ) {
+		if ( $bb_ok && ! $defer_seo_postprocess ) {
 			self::maybe_sync_beaver_builder_rendered_html_for_yoast( $landing_id );
 		}
 
-		self::maybe_ping_yoast_indexable( $landing_id );
+		if ( $defer_seo_postprocess ) {
+			self::enqueue_deferred_seo_postprocess( $landing_id );
+		} else {
+			self::maybe_ping_yoast_indexable( $landing_id );
+		}
 
 		return '';
 	}
@@ -829,6 +891,120 @@ class Radius_Deploy_Service {
 		if ( $t !== false && $t !== '' ) {
 			update_post_meta( $landing_id, '_yoast_wpseo_title', (string) $t );
 		}
+	}
+
+	/**
+	 * Decide whether SEO post-processing should be deferred for this deploy batch.
+	 *
+	 * @param int $place_count Number of places in the current batch.
+	 * @return bool
+	 */
+	private static function should_defer_seo_postprocess( $place_count ) {
+		$place_count = max( 0, (int) $place_count );
+		$default     = defined( 'WPSEO_VERSION' ) && $place_count >= 50;
+
+		/**
+		 * Defer Yoast/SEO post-processing to cron for faster page creation throughput.
+		 *
+		 * @param bool $defer       Default true for large Yoast-enabled batches.
+		 * @param int  $place_count Current deploy batch size.
+		 */
+		return (bool) apply_filters( 'radius_deploy_defer_seo_postprocess', $default, $place_count );
+	}
+
+	/**
+	 * @param int $landing_id Post ID.
+	 * @return void
+	 */
+	private static function enqueue_deferred_seo_postprocess( $landing_id ) {
+		$landing_id = (int) $landing_id;
+		if ( $landing_id <= 0 ) {
+			return;
+		}
+		self::$deferred_seo_ids[ $landing_id ] = $landing_id;
+	}
+
+	/**
+	 * Persist queued IDs and schedule background processing.
+	 *
+	 * @return void
+	 */
+	private static function flush_deferred_seo_queue() {
+		if ( empty( self::$deferred_seo_ids ) ) {
+			return;
+		}
+		$queued = get_option( self::SEO_DEFER_OPTION, array() );
+		$queued = is_array( $queued ) ? array_map( 'intval', $queued ) : array();
+		$merged = array_values( array_unique( array_merge( $queued, array_values( self::$deferred_seo_ids ) ) ) );
+		update_option( self::SEO_DEFER_OPTION, $merged, false );
+		self::$deferred_seo_ids = array();
+
+		if ( ! wp_next_scheduled( self::SEO_DEFER_CRON_HOOK ) ) {
+			wp_schedule_single_event( time() + 15, self::SEO_DEFER_CRON_HOOK );
+		}
+	}
+
+	/**
+	 * Process deferred SEO queue in small chunks.
+	 *
+	 * @return void
+	 */
+	public static function process_deferred_seo_queue() {
+		$queued = get_option( self::SEO_DEFER_OPTION, array() );
+		$queued = is_array( $queued ) ? array_values( array_unique( array_map( 'intval', $queued ) ) ) : array();
+		if ( empty( $queued ) ) {
+			update_option(
+				self::SEO_DEFER_STATUS_OPTION,
+				array(
+					'last_run'       => time(),
+					'last_processed' => 0,
+				),
+				false
+			);
+			return;
+		}
+
+		$chunk_size = max( 1, (int) apply_filters( 'radius_deploy_deferred_seo_chunk_size', 25 ) );
+		$chunk      = array_slice( $queued, 0, $chunk_size );
+		$remaining  = array_slice( $queued, $chunk_size );
+
+		foreach ( $chunk as $landing_id ) {
+			self::run_deferred_seo_postprocess( (int) $landing_id );
+		}
+
+		update_option( self::SEO_DEFER_OPTION, $remaining, false );
+		update_option(
+			self::SEO_DEFER_STATUS_OPTION,
+			array(
+				'last_run'       => time(),
+				'last_processed' => count( $chunk ),
+			),
+			false
+		);
+		if ( ! empty( $remaining ) ) {
+			wp_schedule_single_event( time() + 30, self::SEO_DEFER_CRON_HOOK );
+		}
+	}
+
+	/**
+	 * Heavy SEO post-processing that is safe to run after deploy page creation.
+	 *
+	 * @param int $landing_id Post ID.
+	 * @return void
+	 */
+	private static function run_deferred_seo_postprocess( $landing_id ) {
+		$landing_id = (int) $landing_id;
+		if ( $landing_id <= 0 ) {
+			return;
+		}
+		$post = get_post( $landing_id );
+		if ( ! $post || ! in_array( $post->post_type, array( 'radius_landing', 'radius_service_area' ), true ) ) {
+			return;
+		}
+
+		self::maybe_sync_elementor_rendered_html_for_yoast( $landing_id );
+		self::maybe_sync_beaver_builder_rendered_html_for_yoast( $landing_id );
+		self::maybe_ping_yoast_indexable( $landing_id );
 	}
 
 	/**
@@ -1397,12 +1573,8 @@ class Radius_Deploy_Service {
 					'posts_per_page' => 1,
 					'fields'         => 'ids',
 					'no_found_rows'  => true,
-					'meta_query'     => array(
-						array(
-							'key'   => '_radius_place_id',
-							'value' => (string) $place_id,
-						),
-					),
+					'meta_key'       => '_radius_place_id',
+					'meta_value'     => (string) $place_id,
 				)
 			);
 			if ( $q->have_posts() ) {
@@ -1437,9 +1609,9 @@ class Radius_Deploy_Service {
 					'name'             => $slug,
 					'post_type'        => $target_post_type,
 					'post_status'      => 'any',
-					'posts_per_page'   => -1,
+					'posts_per_page'   => 2,
 					'fields'           => 'ids',
-					'suppress_filters' => true,
+					'no_found_rows'    => true,
 				)
 			);
 			$conflict = false;
@@ -1454,9 +1626,9 @@ class Radius_Deploy_Service {
 						'name'             => $slug,
 						'post_type'        => array( 'post', 'page' ),
 						'post_status'      => 'publish',
-						'posts_per_page'   => -1,
+						'posts_per_page'   => 1,
 						'fields'           => 'ids',
-						'suppress_filters' => true,
+						'no_found_rows'    => true,
 					)
 				);
 				if ( ! empty( $others ) ) {

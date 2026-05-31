@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.101
+Stable tag: 1.6.102
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,6 +85,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.102 =
+* **Performance:** Added deploy DB index management (`radius_meta_key_value`) with health check detection/remediation, schema-upgrade scheduling, and background-safe creation paths for large libraries.
+* **Performance:** Reduced deploy query overhead by collapsing duplicate lookup scans, deferring heavy Yoast post-processing to cron for large batches, and adding a Deploy status line for deferred SEO queue depth.
+* **Fix:** Improved GitHub updater transient handling (`response`/`no_update`) to keep WordPress plugin auto-update state stable across refreshes.
 
 = 1.6.101 =
 * **Fix:** “Remove conflicting redirects” now scans all published deploy URLs (same scope as “Check all now”), not only the ~800-URL routine sample — so rules found on a full scan are actually deleted. After removal, the health report re-runs a full redirect check; clearer errors when deletion fails.

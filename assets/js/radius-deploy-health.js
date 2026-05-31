@@ -70,6 +70,9 @@
 		if (action === 'deactivate_magic_page_plugin') {
 			return i18n.deactivateMagicPage || 'Deactivate Magic Page plugin';
 		}
+		if (action === 'ensure_deploy_lookup_index') {
+			return i18n.ensureDeployLookupIndex || 'Add deploy DB index';
+		}
 		return 'Fix';
 	}
 
@@ -348,6 +351,12 @@
 				i18n.deactivateMagicPageConfirm || 'Deactivate the Magic Page plugin?'
 			);
 		}
+		if (action === 'ensure_deploy_lookup_index') {
+			return window.confirm(
+				i18n.ensureDeployLookupIndexConfirm ||
+					'Create the recommended deploy lookup DB index now? On large databases this can take a moment.'
+			);
+		}
 		if (action === 'scan_redirect_conflicts_all') {
 			return window.confirm(
 				i18n.checkAllRedirectsConfirm ||
@@ -390,6 +399,9 @@
 		}
 		if (action === 'deactivate_magic_page_plugin') {
 			return i18n.deactivateMagicPageRunning || 'Deactivating…';
+		}
+		if (action === 'ensure_deploy_lookup_index') {
+			return i18n.ensureDeployLookupIndexRunning || 'Creating DB index…';
 		}
 		if (action === 'scan_redirect_conflicts_all') {
 			return i18n.checkAllRedirectsRunning || 'Scanning all URLs…';

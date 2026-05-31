@@ -390,6 +390,10 @@ final class Radius_Health_Url_Conflicts {
 	private static function load_redirection_rules() {
 		global $wpdb;
 		$table = $wpdb->prefix . 'redirection_items';
+		if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) ) {
+			return array();
+		}
+		$table_sql = '`' . $table . '`';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
 			return array();
@@ -397,7 +401,7 @@ final class Radius_Health_Url_Conflicts {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$rows = $wpdb->get_results(
 			"SELECT id, url, action_code, action_data, match_type, regex, status
-			FROM {$table}
+			FROM {$table_sql}
 			WHERE status = 'enabled' AND regex = 0",
 			ARRAY_A
 		);

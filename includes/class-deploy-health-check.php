@@ -31,6 +31,7 @@ final class Radius_Deploy_Health_Check {
 		$checks[] = self::check_service_anchors();
 		$checks[] = self::check_site_replacers();
 		$checks[] = self::check_place_library();
+		$checks[] = self::check_deploy_lookup_index();
 		$checks[] = self::check_service_area_template();
 
 		$scope = self::get_expected_scope_place_ids();
@@ -146,6 +147,13 @@ final class Radius_Deploy_Health_Check {
 			}
 			$key = 'trash_extra_landings_' . $tid;
 			$results[ $key ] = self::trash_extra_landings_for_template( $tid );
+		}
+
+		if ( class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+			$index_status = Radius_Deploy_Db_Indexes::get_status();
+			if ( ! empty( $index_status['recommended'] ) ) {
+				$results['ensure_deploy_lookup_index'] = Radius_Deploy_Db_Indexes::ensure_index( 'health_fix_all' );
+			}
 		}
 
 		return $results;
@@ -637,6 +645,100 @@ final class Radius_Deploy_Health_Check {
 				/* translators: %d: place count */
 				__( '%d places in the library.', 'radius' ),
 				$n
+			)
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private static function check_deploy_lookup_index() {
+		if ( ! class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+			return self::make_check(
+				'deploy_lookup_index',
+				__( 'Deploy lookup DB index', 'radius' ),
+				'skip',
+				__( 'Deploy DB index manager unavailable.', 'radius' )
+			);
+		}
+
+		$status = Radius_Deploy_Db_Indexes::get_status();
+		$exists = ! empty( $status['exists'] );
+		$rows   = isset( $status['rows_with_place'] ) ? (int) $status['rows_with_place'] : 0;
+		$threshold = isset( $status['threshold'] ) ? (int) $status['threshold'] : 0;
+		$enabled = ! empty( $status['enabled'] );
+		$manual_sql = isset( $status['manual_sql'] ) ? (string) $status['manual_sql'] : '';
+
+		if ( $exists ) {
+			return self::make_check(
+				'deploy_lookup_index',
+				__( 'Deploy lookup DB index', 'radius' ),
+				'pass',
+				__( 'Deploy lookup index is present on postmeta.', 'radius' ),
+				'',
+				array(
+					'rows_with_place' => $rows,
+					'threshold'       => $threshold,
+				)
+			);
+		}
+
+		if ( ! $enabled ) {
+			return self::make_check(
+				'deploy_lookup_index',
+				__( 'Deploy lookup DB index', 'radius' ),
+				'skip',
+				__( 'Automatic DB index management is disabled by filter.', 'radius' ),
+				'',
+				array(
+					'rows_with_place' => $rows,
+					'threshold'       => $threshold,
+				)
+			);
+		}
+
+		if ( $rows >= max( 1, $threshold ) ) {
+			return self::make_check(
+				'deploy_lookup_index',
+				__( 'Deploy lookup DB index', 'radius' ),
+				'warn',
+				sprintf(
+					/* translators: 1: row count, 2: threshold */
+					__( 'Index missing with %1$d deploy-place meta rows (threshold: %2$d). Deploy and health scans may be slow.', 'radius' ),
+					$rows,
+					max( 1, $threshold )
+				),
+				$manual_sql !== ''
+					? sprintf(
+						/* translators: %s: SQL statement */
+						__( 'If your host blocks schema changes, ask your DBA to run: %s', 'radius' ),
+						$manual_sql
+					)
+					: '',
+				array(
+					'rows_with_place' => $rows,
+					'threshold'       => $threshold,
+					'remediation'     => array(
+						'action' => 'ensure_deploy_lookup_index',
+						'count'  => 1,
+					),
+				)
+			);
+		}
+
+		return self::make_check(
+			'deploy_lookup_index',
+			__( 'Deploy lookup DB index', 'radius' ),
+			'warn',
+			__( 'Index missing. Library size is currently small, but install the index before scaling up.', 'radius' ),
+			'',
+			array(
+				'rows_with_place' => $rows,
+				'threshold'       => $threshold,
+				'remediation'     => array(
+					'action' => 'ensure_deploy_lookup_index',
+					'count'  => 1,
+				),
 			)
 		);
 	}

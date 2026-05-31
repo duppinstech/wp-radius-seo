@@ -186,7 +186,12 @@ final class Radius_Redirect_Service {
 		}
 		$scheme = is_ssl() ? 'https' : 'http';
 		$uri    = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
-		return $scheme . '://' . (string) $_SERVER['HTTP_HOST'] . $uri;
+		$host   = sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_HOST'] ) );
+		$host   = preg_replace( '/[^A-Za-z0-9\.\-\:\[\]]/', '', $host );
+		if ( ! is_string( $host ) || '' === $host ) {
+			return '';
+		}
+		return $scheme . '://' . $host . $uri;
 	}
 
 	/**

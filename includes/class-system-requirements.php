@@ -164,6 +164,7 @@ final class Radius_System_Requirements {
 		$checks[] = self::check_wp_memory_limit();
 		$checks[] = self::check_curl();
 		$checks[] = self::check_multisite_parallel();
+		$checks[] = self::check_deploy_lookup_index();
 
 		/**
 		 * Add or modify environment checks shown on Deploy → System and in the migration pre-flight.
@@ -206,8 +207,8 @@ final class Radius_System_Requirements {
 						<?php
 						printf(
 							/* translators: 1: score 0–100, 2: grade label */
-							esc_html__( 'Readiness score: %1$d%% — %2$s', 'radius' ),
-							$score,
+							esc_html__( 'Readiness score: %1$s%% — %2$s', 'radius' ),
+							esc_html( number_format_i18n( $score ) ),
 							esc_html( (string) ( $grade['label'] ?? '' ) )
 						);
 						?>
@@ -217,9 +218,9 @@ final class Radius_System_Requirements {
 						<p class="radius-sysreq-score__gate">
 							<?php
 							printf(
-								/* translators: %d: minimum score to run migration without bypass */
-								esc_html__( 'Migration requires at least %d%% unless you acknowledge the risk and bypass the check.', 'radius' ),
-								$min
+								/* translators: %s: minimum score to run migration without bypass */
+								esc_html__( 'Migration requires at least %s%% unless you acknowledge the risk and bypass the check.', 'radius' ),
+								esc_html( number_format_i18n( $min ) )
 							);
 							?>
 						</p>
@@ -662,6 +663,60 @@ final class Radius_System_Requirements {
 			'detail'        => $foreign
 				? Radius_Multisite::format_foreign_lock_message( $foreign )
 				: '',
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private static function check_deploy_lookup_index() {
+		if ( ! class_exists( 'Radius_Deploy_Db_Indexes' ) ) {
+			return array(
+				'id'            => 'deploy_lookup_index',
+				'label'         => __( 'Deploy lookup DB index', 'radius' ),
+				'value_display' => __( 'Unavailable', 'radius' ),
+				'recommended'   => __( 'Enabled on large libraries', 'radius' ),
+				'status'        => 'warn',
+				'weight'        => 6,
+				'detail'        => __( 'Index manager class not loaded.', 'radius' ),
+			);
+		}
+
+		$status = Radius_Deploy_Db_Indexes::get_status();
+		$exists = ! empty( $status['exists'] );
+		$rows   = isset( $status['rows_with_place'] ) ? (int) $status['rows_with_place'] : 0;
+		$threshold = isset( $status['threshold'] ) ? (int) $status['threshold'] : 0;
+		$enabled = ! empty( $status['enabled'] );
+
+		$state = $exists ? 'good' : 'warn';
+		$value = $exists ? __( 'Present', 'radius' ) : __( 'Missing', 'radius' );
+		$detail = $exists
+			? __( 'Deploy lookup index is installed for postmeta template/place lookups.', 'radius' )
+			: __( 'Large libraries can become slow when this index is missing.', 'radius' );
+
+		if ( ! $enabled ) {
+			$state = 'warn';
+			$value = __( 'Disabled by filter', 'radius' );
+			$detail = __( 'radius_deploy_db_indexes_enabled is false on this site.', 'radius' );
+		}
+
+		if ( ! $exists && $rows > 0 ) {
+			$detail .= ' ' . sprintf(
+				/* translators: 1: row count, 2: recommendation threshold */
+				__( 'Detected %1$d rows with deploy place meta (recommended threshold: %2$d). Use Deploy → Health check to add the index.', 'radius' ),
+				$rows,
+				max( 1, $threshold )
+			);
+		}
+
+		return array(
+			'id'            => 'deploy_lookup_index',
+			'label'         => __( 'Deploy lookup DB index', 'radius' ),
+			'value_display' => $value,
+			'recommended'   => __( 'Present for large libraries', 'radius' ),
+			'status'        => $state,
+			'weight'        => 6,
+			'detail'        => $detail,
 		);
 	}
 }
