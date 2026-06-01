@@ -83,6 +83,7 @@ class Radius_Deploy_Service {
 			$out['errors'][] = __( 'Template not found.', 'radius' );
 			return $out;
 		}
+		$normalize_block_editor_content = self::should_normalize_block_editor_deploy_content( $template );
 
 		$place_ids = array_unique( array_map( 'intval', $place_ids ) );
 		$place_ids = array_filter( $place_ids );
@@ -103,9 +104,13 @@ class Radius_Deploy_Service {
 			$seed       = $template_id * 100000 + $place_id;
 			$ph_landing = 0;
 			$title      = self::compute_landing_title( $template, $tokens, $seed, false, $ph_landing );
-			$content    = self::expand_cities_shortcode(
-				Radius_Token_Engine::render( $template->post_content, $tokens, $seed, false, true, $ph_landing ),
-				$place_id
+			$content    = self::render_landing_content_for_deploy(
+				$template->post_content,
+				$tokens,
+				$seed,
+				$place_id,
+				$normalize_block_editor_content,
+				$ph_landing
 			);
 
 			$slug_base = 'radius_service_area' === $target_pt
@@ -234,9 +239,12 @@ class Radius_Deploy_Service {
 
 		$seed    = $template_id * 100000 + $place_id;
 		$title   = self::compute_landing_title( $template, $tokens, $seed );
-		$content = self::expand_cities_shortcode(
-			Radius_Token_Engine::render( $template->post_content, $tokens, $seed ),
-			$place_id
+		$content = self::render_landing_content_for_deploy(
+			$template->post_content,
+			$tokens,
+			$seed,
+			$place_id,
+			self::should_normalize_block_editor_deploy_content( $template )
 		);
 		$slug_base = 'radius_service_area' === $post->post_type
 			? self::compute_service_area_slug_base( $tokens )
@@ -263,6 +271,310 @@ class Radius_Deploy_Service {
 		wp_set_object_terms( $landing_id, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
 
 		return $err;
+	}
+
+	/**
+	 * Render landing body for deploy/reprocess with optional Gutenberg-safe normalization.
+	 *
+	 * `phone-number` may intentionally contain HTML (often an `<a href="tel:...">` snippet).
+	 * In attribute contexts (`href`, `src`) we must use `phone-tel` so block markup remains valid.
+	 *
+	 * @param string               $template_content Raw template post_content.
+	 * @param array<string,string> $tokens           Token map.
+	 * @param int                  $seed             Deterministic seed.
+	 * @param int                  $place_id         radius_place term ID.
+	 * @param bool                 $normalize_blocks True for non-builder Gutenberg deploys.
+	 * @param int|null             $placeholder_removed Optional unresolved placeholder counter.
+	 * @return string
+	 */
+	private static function render_landing_content_for_deploy( $template_content, array $tokens, $seed, $place_id, $normalize_blocks = false, &$placeholder_removed = null ) {
+		$content = (string) $template_content;
+		if ( $normalize_blocks ) {
+			$content = self::prepare_template_tokens_for_phone_link_safety( $content );
+		}
+
+		$content = Radius_Token_Engine::render( $content, $tokens, $seed, false, true, $placeholder_removed );
+		$content = self::expand_cities_shortcode( $content, $place_id );
+
+		if ( $normalize_blocks ) {
+			$content = self::normalize_rendered_gutenberg_content( $content, $tokens );
+		}
+
+		return $content;
+	}
+
+	/**
+	 * True when deploy should run Gutenberg safety passes.
+	 *
+	 * Scoped to non-Elementor/non-Beaver templates to preserve current builder behavior.
+	 *
+	 * @param WP_Post $template Template post object.
+	 * @return bool
+	 */
+	private static function should_normalize_block_editor_deploy_content( $template ) {
+		if ( ! $template || empty( $template->post_content ) || ! is_string( $template->post_content ) ) {
+			return false;
+		}
+		if ( strpos( $template->post_content, '<!-- wp:' ) === false ) {
+			return false;
+		}
+		if ( self::template_uses_elementor_on_deploy( (int) $template->ID ) ) {
+			return false;
+		}
+		if ( self::template_uses_beaver_builder_on_deploy( (int) $template->ID ) ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * @param int $template_id Template post ID.
+	 * @return bool
+	 */
+	private static function template_uses_elementor_on_deploy( $template_id ) {
+		if ( empty( Radius_Settings::get()['enable_elementor'] ) ) {
+			return false;
+		}
+		if ( ! class_exists( '\Elementor\Plugin' ) ) {
+			return false;
+		}
+		return get_post_meta( (int) $template_id, '_elementor_edit_mode', true ) === 'builder';
+	}
+
+	/**
+	 * @param int $template_id Template post ID.
+	 * @return bool
+	 */
+	private static function template_uses_beaver_builder_on_deploy( $template_id ) {
+		if ( empty( Radius_Settings::get()['enable_beaver_builder'] ) ) {
+			return false;
+		}
+		if ( ! class_exists( 'FLBuilderModel' ) ) {
+			return false;
+		}
+		return self::post_built_with_beaver_builder( (int) $template_id );
+	}
+
+	/**
+	 * Replace `phone-number` placeholders in attribute contexts before render.
+	 *
+	 * `phone-number` can be HTML, so this guard rewrites risky contexts to `phone-tel` while
+	 * leaving body copy usage of `phone-number` untouched.
+	 *
+	 * @param string $content Template content.
+	 * @return string
+	 */
+	private static function prepare_template_tokens_for_phone_link_safety( $content ) {
+		if ( ! is_string( $content ) || $content === '' ) {
+			return '';
+		}
+		if ( strpos( $content, 'phone-number' ) === false ) {
+			return $content;
+		}
+
+		$content = (string) preg_replace_callback(
+			'/\b(href|src)\s*=\s*(["\'])([^"\']*)(\{\{\s*phone-number\s*\}\}|\[\s*phone-number\s*\])([^"\']*)\2/i',
+			function ( $m ) {
+				$attr   = strtolower( (string) $m[1] );
+				$quote  = (string) $m[2];
+				$before = (string) $m[3];
+				$after  = (string) $m[5];
+				$value  = trim( $before . '{{phone-tel}}' . $after );
+				if ( 'href' === $attr ) {
+					$value = preg_replace( '/^\s*https?:\/\/\s*\{\{phone-tel\}\}\s*$/i', 'tel:{{phone-tel}}', $value );
+					$value = preg_replace( '/^\s*tel:\s*\{\{phone-tel\}\}\s*$/i', 'tel:{{phone-tel}}', $value );
+					if ( '{{phone-tel}}' === trim( $value ) ) {
+						$value = 'tel:{{phone-tel}}';
+					}
+				}
+				return $attr . '=' . $quote . $value . $quote;
+			},
+			$content
+		);
+
+		return $content;
+	}
+
+	/**
+	 * Final safety pass for Gutenberg deploy output after tokens/spintax are resolved.
+	 *
+	 * @param string               $content Rendered content.
+	 * @param array<string,string> $tokens  Token map (for fallback `phone-tel` value).
+	 * @return string
+	 */
+	private static function normalize_rendered_gutenberg_content( $content, array $tokens ) {
+		if ( ! is_string( $content ) || $content === '' ) {
+			return '';
+		}
+		if ( strpos( $content, '<!-- wp:' ) === false ) {
+			return $content;
+		}
+
+		$phone_tel = self::token_phone_tel_value( $tokens );
+
+		$content = self::repair_rendered_phone_href_payloads( $content, $phone_tel );
+		$content = self::flatten_nested_anchor_markup( $content );
+		$content = self::unwrap_block_elements_from_paragraphs( $content );
+
+		return $content;
+	}
+
+	/**
+	 * @param array<string,string> $tokens Token map.
+	 * @return string
+	 */
+	private static function token_phone_tel_value( array $tokens ) {
+		$raw = '';
+		if ( isset( $tokens['phone-tel'] ) ) {
+			$raw = (string) $tokens['phone-tel'];
+		} elseif ( isset( $tokens['phone_tel'] ) ) {
+			$raw = (string) $tokens['phone_tel'];
+		}
+		$raw   = wp_strip_all_tags( $raw );
+		$clean = preg_replace( '/\s+/', '', $raw );
+		return trim( is_string( $clean ) ? $clean : $raw );
+	}
+
+	/**
+	 * Repair broken `href` values that accidentally received HTML payloads.
+	 *
+	 * @param string $content   Rendered content.
+	 * @param string $phone_tel Attribute-safe tel value.
+	 * @return string
+	 */
+	private static function repair_rendered_phone_href_payloads( $content, $phone_tel ) {
+		if ( ! is_string( $content ) || $content === '' ) {
+			return '';
+		}
+
+		$replacement_tel = $phone_tel !== '' ? $phone_tel : '';
+		$content         = (string) preg_replace_callback(
+			'/href\s*=\s*(["\'])\s*(?:https?:\/\/|tel:)\s*<a\b[^>]*href\s*=\s*["\']tel:([^"\']+)["\'][^>]*>.*?<\/a>\s*\1/i',
+			function ( $m ) use ( $replacement_tel ) {
+				$quote = (string) $m[1];
+				$tel   = trim( (string) $m[2] );
+				if ( $tel === '' ) {
+					$tel = $replacement_tel;
+				}
+				return 'href=' . $quote . ( $tel !== '' ? 'tel:' . $tel : '#' ) . $quote;
+			},
+			$content
+		);
+
+		return $content;
+	}
+
+	/**
+	 * Convert nested anchors to one valid anchor (keeps visible inner text).
+	 *
+	 * @param string $content Rendered HTML.
+	 * @return string
+	 */
+	private static function flatten_nested_anchor_markup( $content ) {
+		if ( ! is_string( $content ) || $content === '' || strpos( $content, '<a' ) === false ) {
+			return $content;
+		}
+		for ( $i = 0; $i < 6; $i++ ) {
+			$next = (string) preg_replace( '/<a\b([^>]*)>\s*<a\b[^>]*>(.*?)<\/a>\s*<\/a>/is', '<a$1>$2</a>', $content );
+			if ( $next === $content ) {
+				break;
+			}
+			$content = $next;
+		}
+		return $content;
+	}
+
+	/**
+	 * Paragraph blocks cannot legally wrap block-level HTML nodes.
+	 *
+	 * @param string $content Gutenberg HTML.
+	 * @return string
+	 */
+	private static function unwrap_block_elements_from_paragraphs( $content ) {
+		if ( ! is_string( $content ) || $content === '' || strpos( $content, '<p' ) === false ) {
+			return $content;
+		}
+		return (string) preg_replace(
+			'#<p([^>]*)>\s*(<(?:div|section|article|aside|header|footer|main|figure|table|ul|ol|blockquote|h[1-6])\b.*?</(?:div|section|article|aside|header|footer|main|figure|table|ul|ol|blockquote|h[1-6])>)\s*</p>#is',
+			'$2',
+			$content
+		);
+	}
+
+	/**
+	 * One-time remediation for existing deployed pages with broken phone anchor markup.
+	 *
+	 * @param array<string,mixed> $args { post_types?: string[], dry_run?: bool, limit?: int }
+	 * @return array<string,int>
+	 */
+	public static function remediate_deployed_phone_link_markup( array $args = array() ) {
+		$post_types = isset( $args['post_types'] ) && is_array( $args['post_types'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $args['post_types'] ) ) )
+			: array( 'radius_landing', 'radius_service_area' );
+		$post_types = array_values( array_intersect( $post_types, array( 'radius_landing', 'radius_service_area' ) ) );
+		if ( empty( $post_types ) ) {
+			$post_types = array( 'radius_landing', 'radius_service_area' );
+		}
+		$dry_run = ! empty( $args['dry_run'] );
+		$limit   = isset( $args['limit'] ) ? max( 0, (int) $args['limit'] ) : 0;
+
+		$q = new WP_Query(
+			array(
+				'post_type'              => $post_types,
+				'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
+				'posts_per_page'         => -1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+
+		$scanned = 0;
+		$changed = 0;
+		foreach ( (array) $q->posts as $post_id ) {
+			$post_id = (int) $post_id;
+			if ( $post_id <= 0 ) {
+				continue;
+			}
+			if ( $limit > 0 && $scanned >= $limit ) {
+				break;
+			}
+			++$scanned;
+
+			$content = (string) get_post_field( 'post_content', $post_id );
+			if ( $content === '' || strpos( $content, '<!-- wp:' ) === false ) {
+				continue;
+			}
+
+			$template_id = (int) get_post_meta( $post_id, '_radius_template_id', true );
+			$place_id    = (int) get_post_meta( $post_id, '_radius_place_id', true );
+			$tokens      = array();
+			if ( $template_id > 0 && $place_id > 0 ) {
+				$tokens = Radius_Template_Tokens::build_map( $template_id, $place_id );
+			}
+
+			$fixed = self::normalize_rendered_gutenberg_content( $content, is_array( $tokens ) ? $tokens : array() );
+			if ( $fixed === $content ) {
+				continue;
+			}
+
+			++$changed;
+			if ( ! $dry_run ) {
+				wp_update_post(
+					array(
+						'ID'           => $post_id,
+						'post_content' => $fixed,
+					)
+				);
+			}
+		}
+
+		return array(
+			'scanned' => $scanned,
+			'changed' => $changed,
+			'updated' => $dry_run ? 0 : $changed,
+		);
 	}
 
 	/**
