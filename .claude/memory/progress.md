@@ -4,6 +4,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: 1.6.110 analytics writes, rotation batch continuation, and system checks for object cache and WP-Cron. Click-through not run (`CLAUDE.local.md` has no site path).
 - 2026-10-14: Ownership recorded in `OWNERSHIP.md` and `CLAUDE.md`. Radius SEO is a Duppins Technology product. WhiteRail is the beta client and does not own the source.
 - 2026-10-14: `PLAN.md` P0-02, P0-03, and P0-04 implemented in 1.6.108. Staging proof is still open. P0-01 is still open.
 - 2026-10-14: Claude SDLC scaffold added from the project-structure map. Session contract (`CLAUDE.md`), roster (`AGENTS.md`), path-scoped rules, slash commands, skills, subagents, hooks, team memory, and workflows. Personal overrides are gitignored. These files are `export-ignore` and are not in the plugin ZIP.
@@ -16,6 +17,12 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 - Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
 - Local WordPress path, site URL, and PHP binary in `CLAUDE.local.md`. Until those are filled in, agents cannot run wp-admin or front-end checks.
 - Whether the next engineering investment is a PHPUnit + WordPress test suite under `tests/`. None exists today.
+
+### Outstanding checks
+
+- Open a published landing while logged out. The page should not load jQuery for Radius. Repeat the view within 30 minutes and confirm the visit counter does not climb on each refresh. The analytics screen should still show a daily total.
+- With content rotation on and more landings than the batch size, confirm a second batch is scheduled about two minutes after the first, and that one request does not rewrite the whole library.
+- Deploy → System shows object cache and WP-Cron rows.
 
 ### Engineering gaps
 

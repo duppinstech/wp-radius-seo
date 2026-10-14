@@ -3806,7 +3806,7 @@ Fast roadside help in {{region}}
 									<input type="checkbox" name="content_rotation_enabled" value="1" <?php checked( ! empty( $s['content_rotation_enabled'] ) ); ?> />
 									<?php esc_html_e( 'Re-run deploy-style token resolution on a schedule so spintax block variations are re-randomized while the site stays static between runs.', 'radius' ); ?>
 								</label>
-								<p class="description"><?php esc_html_e( 'Uses WP-Cron. On each run, landings are processed in batches until all have been updated, then the cycle restarts. Requires WP-Cron to be firing on your host.', 'radius' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Uses WP-Cron. Each tick updates one batch. The next batch runs about two minutes later until every page has been updated, then the cycle waits for the interval above.', 'radius' ); ?></p>
 								<p>
 									<label for="content_rotation_interval_days"><?php esc_html_e( 'Every', 'radius' ); ?></label>
 									<select name="content_rotation_interval_days" id="content_rotation_interval_days">

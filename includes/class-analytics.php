@@ -24,19 +24,23 @@ class Radius_Analytics {
 	const LEGACY_META_CLICKS      = 'magicpage_clicks';
 	const LEGACY_META_CLICK_COUNT = 'magicpage_click_count';
 
-	const CACHE_PREFIX = 'radius_analytics_v1_';
+	/** Fixed dashboard cache key. Public hits must not load every landing ID to clear it. */
+	const DASHBOARD_CACHE_KEY = 'radius_analytics_v1_dash';
 
-	/** @var int Max visit timestamps stored per landing (abuse / DB bloat mitigation). */
-	const META_VISITS_MAX_ENTRIES = 500;
+	/** Day => count map. Pruned so a landing cannot accumulate an unbounded history. */
+	const META_VISIT_DAYS = Radius_Data_Registry::META_LANDING_VISIT_DAYS;
 
-	/** @var int Max click log rows stored per landing. */
-	const META_CLICKS_MAX_ENTRIES = 500;
+	/** @var int How many daily visit buckets to keep per landing. */
+	const VISIT_DAY_KEEP = 90;
 
-	/** @var int Sliding window (seconds) for unauthenticated visit/click rate limiting per IP + post. */
-	const ANALYTICS_RATE_WINDOW = 60;
+	/** @var int One counted visit per IP + post inside this window. */
+	const VISIT_RATE_WINDOW = 1800;
 
-	/** @var int Max events per window per IP + post (visits and clicks counted separately). */
-	const ANALYTICS_RATE_MAX = 120;
+	/** @var int Sliding window (seconds) for click counting per IP + post. */
+	const CLICK_RATE_WINDOW = 60;
+
+	/** @var int Max counted clicks per window per IP + post. */
+	const CLICK_RATE_MAX = 20;
 
 	/**
 	 * @return void
@@ -104,28 +108,53 @@ class Radius_Analytics {
 	}
 
 	/**
-	 * True when this IP + post has exceeded the anonymous analytics rate limit.
+	 * @return string
+	 */
+	private static function analytics_user_agent() {
+		if ( empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
+			return '';
+		}
+		return sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_USER_AGENT'] ) );
+	}
+
+	/**
+	 * Empty agents and well-known crawlers are not counted.
 	 *
-	 * @param int    $post_id Post ID.
-	 * @param string $kind    Short label: 'visit' or 'click'.
+	 * @param string $ua User agent.
 	 * @return bool
 	 */
-	private static function analytics_rate_limited( $post_id, $kind ) {
+	private static function analytics_is_bot( $ua ) {
+		$ua = trim( (string) $ua );
+		if ( $ua === '' || strlen( $ua ) < 12 ) {
+			return true;
+		}
+		return (bool) preg_match(
+			'/bot|crawl|spider|slurp|wget|curl\/|python-requests|headless|bytespider|petalbot|semrush|ahrefs|mj12|dotbot|facebookexternalhit|pingdom|uptimerobot|gptbot|claudebot|amazonbot/i',
+			$ua
+		);
+	}
+
+	/**
+	 * True when this hit should not write post meta.
+	 *
+	 * @param int    $post_id Post ID.
+	 * @param string $kind    'visit' or 'click'.
+	 * @return bool
+	 */
+	private static function analytics_skip_write( $post_id, $kind ) {
 		$post_id = (int) $post_id;
-		if ( $post_id <= 0 ) {
+		if ( $post_id <= 0 || self::analytics_is_bot( self::analytics_user_agent() ) ) {
 			return true;
 		}
-		$kind = sanitize_key( (string) $kind );
-		if ( $kind === '' ) {
-			$kind = 'evt';
-		}
-		$ua  = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_USER_AGENT'] ) ) : '';
-		$key = 'radius_al_' . $kind . '_' . $post_id . '_' . md5( self::analytics_client_ip() . '|' . $ua );
-		$n   = (int) get_transient( $key );
-		if ( $n >= self::ANALYTICS_RATE_MAX ) {
+		$kind   = 'click' === $kind ? 'click' : 'visit';
+		$window = 'click' === $kind ? self::CLICK_RATE_WINDOW : self::VISIT_RATE_WINDOW;
+		$max    = 'click' === $kind ? self::CLICK_RATE_MAX : 1;
+		$key    = 'radius_al_' . $kind . '_' . $post_id . '_' . md5( self::analytics_client_ip() );
+		$n      = (int) get_transient( $key );
+		if ( $n >= $max ) {
 			return true;
 		}
-		set_transient( $key, $n + 1, self::ANALYTICS_RATE_WINDOW );
+		set_transient( $key, $n + 1, $window );
 		return false;
 	}
 
@@ -186,6 +215,100 @@ class Radius_Analytics {
 	}
 
 	/**
+	 * Lifetime visit counter, falling back to a stored timestamp list.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return int
+	 */
+	private static function get_visit_count_for_post( $post_id ) {
+		$n = (int) get_post_meta( $post_id, self::META_VISIT_COUNT, true );
+		if ( $n > 0 ) {
+			return $n;
+		}
+		$stamps = self::get_visit_timestamps_for_post( $post_id );
+		return is_array( $stamps ) ? count( $stamps ) : 0;
+	}
+
+	/**
+	 * Daily visit counts for the chart. Reads the compact map, or folds an older timestamp list.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array<string,int>
+	 */
+	private static function get_visit_day_counts( $post_id ) {
+		$days = get_post_meta( $post_id, self::META_VISIT_DAYS, true );
+		if ( is_array( $days ) && $days !== array() ) {
+			return self::prune_visit_days( $days );
+		}
+		return self::timestamps_to_day_counts( self::get_visit_timestamps_for_post( $post_id ) );
+	}
+
+	/**
+	 * @param string[] $stamps MySQL datetimes.
+	 * @return array<string,int>
+	 */
+	private static function timestamps_to_day_counts( $stamps ) {
+		$days = array();
+		if ( ! is_array( $stamps ) ) {
+			return $days;
+		}
+		foreach ( $stamps as $stamp ) {
+			if ( ! is_string( $stamp ) || $stamp === '' ) {
+				continue;
+			}
+			$ts = strtotime( $stamp );
+			if ( false === $ts ) {
+				continue;
+			}
+			$day = wp_date( 'Y-m-d', $ts );
+			$days[ $day ] = isset( $days[ $day ] ) ? (int) $days[ $day ] + 1 : 1;
+		}
+		return self::prune_visit_days( $days );
+	}
+
+	/**
+	 * @param array<mixed,mixed> $days Day => count.
+	 * @return array<string,int>
+	 */
+	private static function prune_visit_days( array $days ) {
+		$cutoff = wp_date( 'Y-m-d', time() - ( self::VISIT_DAY_KEEP * DAY_IN_SECONDS ) );
+		$out    = array();
+		foreach ( $days as $day => $n ) {
+			$day = is_string( $day ) ? $day : '';
+			if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day ) || $day < $cutoff ) {
+				continue;
+			}
+			$out[ $day ] = max( 0, (int) $n );
+		}
+		ksort( $out );
+		return $out;
+	}
+
+	/**
+	 * Increment today's bucket and the lifetime counter. Drops the legacy timestamp list once.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return void
+	 */
+	private static function record_visit_day( $post_id ) {
+		$post_id = (int) $post_id;
+		$days    = get_post_meta( $post_id, self::META_VISIT_DAYS, true );
+		if ( ! is_array( $days ) || $days === array() ) {
+			$days = self::timestamps_to_day_counts( self::get_visit_timestamps_for_post( $post_id ) );
+		}
+		$today           = current_time( 'Y-m-d' );
+		$days[ $today ]  = ( isset( $days[ $today ] ) ? (int) $days[ $today ] : 0 ) + 1;
+		update_post_meta( $post_id, self::META_VISIT_DAYS, self::prune_visit_days( $days ) );
+
+		update_post_meta( $post_id, self::META_VISIT_COUNT, self::get_visit_count_for_post( $post_id ) + 1 );
+
+		$legacy = get_post_meta( $post_id, self::META_VISITS, true );
+		if ( is_array( $legacy ) && $legacy !== array() ) {
+			delete_post_meta( $post_id, self::META_VISITS );
+		}
+	}
+
+	/**
 	 * @param int $post_id Post ID.
 	 * @return int
 	 */
@@ -222,7 +345,7 @@ class Radius_Analytics {
 		$date_counts = array_fill_keys(
 			array_map(
 				function ( $i ) {
-					return gmdate( 'Y-m-d', strtotime( '-' . $i . ' days' ) );
+					return wp_date( 'Y-m-d', time() - ( $i * DAY_IN_SECONDS ) );
 				},
 				range( $days - 1, 0 )
 			),
@@ -235,24 +358,17 @@ class Radius_Analytics {
 		$top_pages_build = array();
 
 		foreach ( $tracked_ids as $post_id ) {
-			$post_id = (int) $post_id;
-			$visits  = self::get_visit_timestamps_for_post( $post_id );
-			if ( ! is_array( $visits ) ) {
-				$visits = array();
-			}
-			$visit_count = count( $visits );
+			$post_id     = (int) $post_id;
+			$visit_count = self::get_visit_count_for_post( $post_id );
 			$click_count = self::get_click_count_for_post( $post_id );
+			$day_counts  = self::get_visit_day_counts( $post_id );
 
 			$total_visits += $visit_count;
 			$total_clicks += $click_count;
 
-			foreach ( $visits as $visit_date ) {
-				if ( ! is_string( $visit_date ) ) {
-					continue;
-				}
-				$key = gmdate( 'Y-m-d', strtotime( $visit_date ) );
-				if ( isset( $date_counts[ $key ] ) ) {
-					$date_counts[ $key ]++;
+			foreach ( $day_counts as $day => $n ) {
+				if ( isset( $date_counts[ $day ] ) ) {
+					$date_counts[ $day ] += (int) $n;
 				}
 			}
 
@@ -326,9 +442,7 @@ class Radius_Analytics {
 	 * @return void
 	 */
 	private static function bust_cache() {
-		$tracked_ids = self::get_tracked_landing_ids();
-		sort( $tracked_ids, SORT_NUMERIC );
-		delete_transient( self::CACHE_PREFIX . md5( implode( ',', $tracked_ids ) ) );
+		delete_transient( self::DASHBOARD_CACHE_KEY );
 	}
 
 	/**
@@ -401,7 +515,7 @@ class Radius_Analytics {
 		wp_enqueue_script(
 			'radius-frontend-analytics',
 			RADIUS_URL . 'assets/js/radius-frontend-analytics.js',
-			array( 'jquery' ),
+			array(),
 			RADIUS_VERSION,
 			true
 		);
@@ -433,8 +547,7 @@ class Radius_Analytics {
 		}
 
 		$tracked_ids = self::get_tracked_landing_ids();
-		sort( $tracked_ids, SORT_NUMERIC );
-		$cache_key = self::CACHE_PREFIX . md5( implode( ',', $tracked_ids ) );
+		$cache_key   = self::DASHBOARD_CACHE_KEY;
 
 		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) && isset( $cached['summary'], $cached['locations_all'], $cached['top_pages_all'], $cached['visits_over_time'] ) ) {
@@ -482,14 +595,12 @@ class Radius_Analytics {
 				continue;
 			}
 
-			$visits = self::get_visit_timestamps_for_post( $post_id );
-			if ( is_array( $visits ) ) {
-				$cleared_visits += count( $visits );
-			}
+			$cleared_visits += self::get_visit_count_for_post( $post_id );
 			$cleared_clicks += self::get_click_count_for_post( $post_id );
 
 			delete_post_meta( $post_id, self::META_VISITS );
 			delete_post_meta( $post_id, self::META_VISIT_COUNT );
+			delete_post_meta( $post_id, self::META_VISIT_DAYS );
 			delete_post_meta( $post_id, self::META_CLICKS );
 			delete_post_meta( $post_id, self::META_CLICK_COUNT );
 			delete_post_meta( $post_id, self::LEGACY_META_VISITS );
@@ -526,24 +637,12 @@ class Radius_Analytics {
 			return;
 		}
 
-		if ( self::analytics_rate_limited( $post_id, 'visit' ) ) {
+		if ( self::analytics_skip_write( $post_id, 'visit' ) ) {
 			wp_send_json_success();
 			return;
 		}
 
-		$count = (int) get_post_meta( $post_id, self::META_VISIT_COUNT, true );
-		update_post_meta( $post_id, self::META_VISIT_COUNT, $count + 1 );
-
-		$visits = get_post_meta( $post_id, self::META_VISITS, true );
-		if ( ! is_array( $visits ) ) {
-			$visits = array();
-		}
-		$visits[] = current_time( 'mysql' );
-		if ( count( $visits ) > self::META_VISITS_MAX_ENTRIES ) {
-			$visits = array_slice( $visits, -self::META_VISITS_MAX_ENTRIES );
-		}
-		update_post_meta( $post_id, self::META_VISITS, $visits );
-
+		self::record_visit_day( $post_id );
 		self::bust_cache();
 		wp_send_json_success();
 	}
@@ -565,31 +664,17 @@ class Radius_Analytics {
 			return;
 		}
 
-		if ( self::analytics_rate_limited( $post_id, 'click' ) ) {
+		if ( self::analytics_skip_write( $post_id, 'click' ) ) {
 			wp_send_json_success();
 			return;
 		}
 
-		$href = isset( $_POST['href'] ) ? esc_url_raw( wp_unslash( $_POST['href'] ) ) : '';
-		$text = isset( $_POST['text'] ) ? sanitize_text_field( wp_unslash( $_POST['text'] ) ) : '';
-		$entry = array(
-			't' => current_time( 'mysql' ),
-			'u' => $href,
-			'l' => mb_substr( $text, 0, 255 ),
-		);
-
-		$clicks = get_post_meta( $post_id, self::META_CLICKS, true );
-		if ( ! is_array( $clicks ) ) {
-			$clicks = array();
-		}
-		$clicks[] = $entry;
-		if ( count( $clicks ) > self::META_CLICKS_MAX_ENTRIES ) {
-			$clicks = array_slice( $clicks, -self::META_CLICKS_MAX_ENTRIES );
-		}
-		update_post_meta( $post_id, self::META_CLICKS, $clicks );
-
-		$total = (int) get_post_meta( $post_id, self::META_CLICK_COUNT, true );
+		$total = self::get_click_count_for_post( $post_id );
 		update_post_meta( $post_id, self::META_CLICK_COUNT, $total + 1 );
+		$log = get_post_meta( $post_id, self::META_CLICKS, true );
+		if ( is_array( $log ) && $log !== array() ) {
+			delete_post_meta( $post_id, self::META_CLICKS );
+		}
 
 		self::bust_cache();
 		wp_send_json_success();

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.109
+Stable tag: 1.6.110
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -87,6 +87,11 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.110 =
+* **Performance:** Landing analytics count one visit per visitor per 30 minutes, store daily totals instead of a timestamp log, and no longer load jQuery or every landing ID on a page view.
+* **Fix:** Scheduled content rotation continues through the library in batches about two minutes apart, then waits for the configured interval.
+* Deploy → System now reports persistent object cache and whether WP-Cron is visitor-triggered.
 
 = 1.6.109 =
 * **Fix:** Deploy health emails with an override address go only to that address. The site admin is removed from To, Cc, and Bcc on that message, including copies added by another mail plugin.

@@ -165,6 +165,8 @@ final class Radius_System_Requirements {
 		$checks[] = self::check_curl();
 		$checks[] = self::check_multisite_parallel();
 		$checks[] = self::check_deploy_lookup_index();
+		$checks[] = self::check_object_cache();
+		$checks[] = self::check_wp_cron_mode();
 		$checks[] = self::check_plugin_write_access();
 
 		/**
@@ -664,6 +666,58 @@ final class Radius_System_Requirements {
 			'detail'        => $foreign
 				? Radius_Multisite::format_foreign_lock_message( $foreign )
 				: '',
+		);
+	}
+
+	/**
+	 * Persistent object cache keeps transients and options off the database.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function check_object_cache() {
+		$on = function_exists( 'wp_using_ext_object_cache' ) && wp_using_ext_object_cache();
+		return array(
+			'id'            => 'object_cache',
+			'label'         => __( 'Persistent object cache', 'radius' ),
+			'value_display' => $on ? __( 'On', 'radius' ) : __( 'Off', 'radius' ),
+			'recommended'   => __( 'Redis or Memcached', 'radius' ),
+			'status'        => $on ? 'good' : 'warn',
+			'weight'        => 4,
+			'detail'        => $on
+				? __( 'Transients and repeated option reads can stay in memory.', 'radius' )
+				: __( 'Without Redis or Memcached, analytics rate limits and other transients write to the options table.', 'radius' ),
+		);
+	}
+
+	/**
+	 * Health checks and content rotation run through WP-Cron.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function check_wp_cron_mode() {
+		$disabled = defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON;
+		$alternate = defined( 'ALTERNATE_WP_CRON' ) && ALTERNATE_WP_CRON;
+		if ( $alternate ) {
+			$status  = 'warn';
+			$display = __( 'Alternate cron', 'radius' );
+			$detail  = __( 'ALTERNATE_WP_CRON runs jobs at the end of a page view. Prefer a system cron that calls wp-cron.php, with DISABLE_WP_CRON set.', 'radius' );
+		} elseif ( $disabled ) {
+			$status  = 'good';
+			$display = __( 'System cron', 'radius' );
+			$detail  = __( 'DISABLE_WP_CRON is set. Confirm the host schedule requests wp-cron.php so health checks and rotation still run.', 'radius' );
+		} else {
+			$status  = 'warn';
+			$display = __( 'Visitor-triggered', 'radius' );
+			$detail  = __( 'WordPress may start wp-cron.php from a front-end visit. A system cron plus DISABLE_WP_CRON keeps health checks and rotation off that request.', 'radius' );
+		}
+		return array(
+			'id'            => 'wp_cron_mode',
+			'label'         => __( 'WP-Cron', 'radius' ),
+			'value_display' => $display,
+			'recommended'   => __( 'System cron', 'radius' ),
+			'status'        => $status,
+			'weight'        => 4,
+			'detail'        => $detail,
 		);
 	}
 

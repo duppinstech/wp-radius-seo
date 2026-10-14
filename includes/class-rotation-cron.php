@@ -16,6 +16,11 @@ class Radius_Rotation_Cron {
 
 	const HOOK = 'radius_rotate_content';
 
+	/** Seconds between batches while a cycle is still walking the library. */
+	const CONTINUE_DELAY = 120;
+
+	const LOCK_KEY = 'radius_rotation_lock';
+
 	/**
 	 * @return void
 	 */
@@ -94,6 +99,21 @@ class Radius_Rotation_Cron {
 	 * @return void
 	 */
 	public static function run_batch() {
+		if ( get_transient( self::LOCK_KEY ) ) {
+			return;
+		}
+		set_transient( self::LOCK_KEY, 1, 10 * MINUTE_IN_SECONDS );
+		try {
+			self::run_batch_locked();
+		} finally {
+			delete_transient( self::LOCK_KEY );
+		}
+	}
+
+	/**
+	 * @return void
+	 */
+	private static function run_batch_locked() {
 		if ( ! Radius_API_License::is_unlocked() ) {
 			return;
 		}
@@ -138,9 +158,24 @@ class Radius_Rotation_Cron {
 
 		if ( count( $ids ) < $batch ) {
 			update_option( 'radius_rotation_offset', 0, false );
-		} else {
-			update_option( 'radius_rotation_offset', $offset + count( $ids ), false );
+			return;
 		}
+
+		update_option( 'radius_rotation_offset', $offset + count( $ids ), false );
+		self::schedule_continuation();
+	}
+
+	/**
+	 * Queue the next batch soon when the library is larger than one tick.
+	 *
+	 * @return void
+	 */
+	private static function schedule_continuation() {
+		$next = wp_next_scheduled( self::HOOK );
+		if ( $next && ( $next - time() ) < 10 * MINUTE_IN_SECONDS ) {
+			return;
+		}
+		wp_schedule_single_event( time() + self::CONTINUE_DELAY, self::HOOK );
 	}
 
 	/**

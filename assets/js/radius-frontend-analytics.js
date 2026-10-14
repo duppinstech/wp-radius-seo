@@ -1,28 +1,41 @@
-jQuery(document).ready(function($) {
-	var cfg = typeof RadiusAnalyticsFrontend !== 'undefined' ? RadiusAnalyticsFrontend : null;
-	if (!cfg || !cfg.post_id) {
+(function () {
+	var cfg = window.RadiusAnalyticsFrontend;
+	if (!cfg || !cfg.post_id || !cfg.ajax_url) {
 		return;
 	}
 
-	$.post(cfg.ajax_url, {
-		action: 'radius_record_visit',
-		nonce: cfg.nonce,
-		post_id: cfg.post_id
-	});
-
-	$(document.body).on('click', 'a[href^="http"]', function() {
-		var $a = $(this);
-		var href = $a.attr('href');
-		var text = $a.text().trim() || $a.attr('title') || '';
-		if (!href) {
+	function post(fields) {
+		var body = new FormData();
+		Object.keys(fields).forEach(function (key) {
+			body.append(key, fields[key]);
+		});
+		if (window.fetch) {
+			window.fetch(cfg.ajax_url, {
+				method: 'POST',
+				body: body,
+				credentials: 'same-origin',
+				keepalive: true
+			});
 			return;
 		}
-		$.post(cfg.ajax_url, {
+	}
+
+	post({
+		action: 'radius_record_visit',
+		nonce: cfg.nonce,
+		post_id: String(cfg.post_id)
+	});
+
+	document.addEventListener('click', function (event) {
+		var target = event.target;
+		var link = target && target.closest ? target.closest('a[href^="http"]') : null;
+		if (!link) {
+			return;
+		}
+		post({
 			action: 'radius_record_click',
-			post_id: cfg.post_id,
-			href: href,
-			text: text,
+			post_id: String(cfg.post_id),
 			click_nonce: cfg.click_nonce
 		});
 	});
-});
+})();

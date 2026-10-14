@@ -14,11 +14,11 @@ Take the items in order. Finish or explicitly defer a blocker before starting th
 
 Status values: `open`, `deferred` (maintainer accepted the current behavior), `done`.
 
-## Before any item can be verified
+## Before a live click-through
 
 - **Status:** open
-- **Do:** Fill `CLAUDE.local.md` with the staging WordPress path, site URL, and PHP binary. Use a copy of the production content if one exists. Do not run deploy, purge, or remediation against an unnamed live site.
-- **Done when:** A named staging site is written in `CLAUDE.local.md`.
+- **Do:** Fill `CLAUDE.local.md` with the staging WordPress path, site URL, and PHP binary when an item must be clicked on a site. Do not run deploy, purge, or remediation against an unnamed live site.
+- **Not a blocker for shipped code.** P0-02, P0-03, and P0-04 are done in 1.6.108. They do not wait on a maintainer decision. A staging path is only for a later click-through.
 
 ## Blockers
 
@@ -35,8 +35,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P0-02 — Published templates are readable without an editor session
 
-- **Status:** open
-- **Code:** 1.6.108 returns 404 for singular template views unless the user can `edit_post`, rejects public REST reads, and omits the type from core and Yoast sitemaps.
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.108. No maintainer decision was required. A live click-through was not run.
 - **Kind:** security
 - **Evidence:** `radius_template` is registered with `public` false, `publicly_queryable` true, and `show_in_rest` true (`includes/class-plugin.php`). Preview token replacement runs only for `edit_post`, but the raw blueprint is still the singular content for everyone else. WordPress treats a publicly queryable type as viewable, so a published template can also appear on the REST index. The license wall blocks these URLs only while the plugin is locked.
 - **Do:** Keep editor preview. For everyone who cannot `edit_post` on that template, return a 404 (or a noindex 403) on the singular URL and do not expose the type on the public REST API.
@@ -45,8 +45,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P0-03 — Deploy and place import are allowed for anyone who can edit posts
 
-- **Status:** open
-- **Code:** 1.6.108 requires `manage_options` for deploy (including cancel and AJAX), place CSV import and export, selected-place export, and template JSON export. Deploy and Import / export menus use the same capability.
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.108. Administrators keep deploy, CSV import, and CSV or template export. No maintainer decision was required.
 - **Kind:** security
 - **Evidence:** `edit_posts` is the gate for deploy (`Radius_Ajax::deploy_batch()`, `Radius_Form_Handlers::handle_deploy()`), CSV import (`handle_csv()`), place CSV export (`handle_export_places_csv()`), and template-slot export (`handle_export_templates_slots_json()`). Deploy inserts posts as `publish`. Delete-all-places and settings correctly require `manage_options`.
 - **Do:** Require a capability that matches mass publishing. `manage_options` matches the settings and purge screens. If editors must deploy, add a dedicated `radius_deploy` capability and grant it only to the roles that should publish a city batch. Do not leave import, full library export, or template export on `edit_posts`.
@@ -55,8 +55,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P0-04 — Operation logs are denied for Apache only
 
-- **Status:** open
-- **Code:** 1.6.108 writes logs outside the document root when that directory is not inside `DOCUMENT_ROOT` and is creatable. Otherwise it keeps the uploads folder and writes Apache 2.4 `Require all denied` plus an IIS `web.config`. A logged-out fetch on the staging host is still required.
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.108. Logs prefer a directory outside the document root, with Apache 2.4 and IIS deny rules. No maintainer decision was required. A logged-out fetch on a specific host was not run.
 - **Kind:** security
 - **Evidence:** `Radius_Operation_Log` writes `uploads/radius-seo-logs/*.log` and adds `.htaccess` with `Deny from all` plus `index.php` (`includes/class-operation-log.php`). Nginx and IIS ignore `.htaccess`. Request context omits the API key, but logs still contain deploy and import detail.
 - **Do:** On the staging host, request the log URL while logged out. If the body is reachable, stop serving it. Add a host-agnostic barrier (move the directory outside the web root, or block it in the site config) and keep the Apache file. Do not log license keys or authorization headers.
@@ -85,12 +85,33 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P1-03 — Public analytics can write post meta at a high rate
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.110. A visit writes a pruned day map and an integer counter, at most once per IP and post per 30 minutes. Clicks increment a counter only, capped at 20 per minute. Empty and known-bot user agents are ignored. The dashboard transient is one fixed key. The front-end script does not load jQuery. A live click-through was not run.
 - **Kind:** security and completeness
-- **Evidence:** `wp_ajax_nopriv_radius_record_visit` and `wp_ajax_nopriv_radius_record_click` accept the public page nonce (`includes/class-analytics.php`). The cap is 120 events per 60 seconds per IP, user agent, and post. Each allowed visit rewrites visit history meta (max 500 rows).
-- **Do:** Decide if production needs this beacon. If it does, drop the per-post cap to a human rate, ignore empty or known bot user agents, and avoid rewriting a 500-row meta array on every hit. If it does not, stop enqueueing the front-end script and remove the nopriv handlers.
-- **Done when:** A tight loop of anonymous visit requests cannot grow post meta without bound, or the beacon is off and the front end no longer calls it.
+- **Evidence:** `wp_ajax_nopriv_radius_record_visit` and `wp_ajax_nopriv_radius_record_click` accept the public page nonce (`includes/class-analytics.php`). The cap is 120 events per 60 seconds per IP, user agent, and post. Each allowed visit rewrites a visit-history array (max 500 timestamps) and each click rewrites a click log (max 500 rows). Clearing the dashboard cache loads every published landing ID on that same public request. The front-end script depends on jQuery.
+- **Do:** Keep the beacon. Count at most one visit per IP and post per 30 minutes, and at most 20 clicks per minute. Ignore an empty or known-bot user agent. Store visit days (pruned) and integer counters. Do not rewrite the timestamp or click-log arrays. Delete the dashboard transient by a fixed key. Load the front-end script without jQuery.
+- **Done when:** A tight loop of anonymous visit requests cannot grow post meta without bound, and a normal page view does not query every landing ID.
 - **Workflow:** `workflows/bug-fix.md`, then `@security-reviewer`.
+
+### P1-09 — Content rotation stops after one batch
+
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.110. A full batch schedules the same hook about two minutes later. The offset resets when the ID list is exhausted. A lock skips an overlapping tick. A live cron run was not observed.
+- **Kind:** completeness
+- **Evidence:** Settings copy says each run processes landings in batches until all have been updated (`includes/class-admin.php`). `Radius_Rotation_Cron::run_batch()` updates the offset and waits for the next `radius_ndays` event, which defaults to 30 days. A library larger than the batch (default 25) does not finish a cycle.
+- **Do:** After a full batch, schedule the next batch about two minutes later on the same hook. When the ID list is exhausted, reset the offset and wait for the interval. Keep one batch inside each request. Skip the tick if a lock is already held.
+- **Done when:** A library larger than one batch advances within minutes until every landing has been visited once, then waits for the configured interval. One request still updates only one batch.
+- **Workflow:** `workflows/bug-fix.md`.
+
+### P1-10 — System screen does not show object cache or cron mode
+
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.110. Deploy → System reports persistent object cache and WP-Cron mode (system cron, visitor-triggered, or alternate). Weights are 4 so a missing Redis install does not fail migration by itself. The screen was not opened on a host.
+- **Kind:** production
+- **Evidence:** `Radius_System_Requirements::run_checks()` scores PHP limits, cURL, and the deploy lookup index. It does not report a persistent object cache or whether `DISABLE_WP_CRON` / `ALTERNATE_WP_CRON` is set. Health and rotation both use WP-Cron.
+- **Do:** Add two checks. Persistent object cache present is good; missing is a warning. `DISABLE_WP_CRON` is good when a system cron is expected to call `wp-cron.php`. Visitor-triggered cron and `ALTERNATE_WP_CRON` are warnings. Keep the weights small so a host without Redis does not fail the migration score by itself.
+- **Done when:** Deploy → System lists object cache and cron mode with the statuses above.
+- **Workflow:** `workflows/bug-fix.md`.
 
 ### P1-04 — Golden-path proof, then automated coverage for that path
 
@@ -148,9 +169,11 @@ Do not reopen these unless a check above fails.
 - New deploy output strips unresolved `{{token}}` placeholders and guards Gutenberg phone hrefs.
 - API keys are AES-256-CBC ciphertext when OpenSSL is present.
 - Deploy health already looks for duplicate pages, orphan meta, redirect conflicts, and the deploy lookup index.
+- Public landings serve stored HTML. `dynamic_content_per_request` defaults to off, so a page cache can store those URLs. Turn that setting on only when a template must spin on every view.
 - Agent docs, `INTENT.md`, and this file are `export-ignore` and are not part of the plugin ZIP.
 
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.
 - `phpcbf` is not vendored. Formatting is not a launch blocker.
+- Deploy does not purge LiteSpeed or WP Rocket. Default landings are stored HTML, so the host page cache can keep them until the post is updated. A purge integration waits until a named host needs it.

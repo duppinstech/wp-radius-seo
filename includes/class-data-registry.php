@@ -31,6 +31,7 @@ final class Radius_Data_Registry {
 	public const META_LANDING_TITLE_PATTERN = '_radius_landing_title_pattern';
 	public const META_DYNAMIC_CONTENT_MODE    = '_radius_dynamic_content_mode';
 	public const META_ROTATION_MODE         = '_radius_rotation_mode';
+	public const META_LANDING_VISIT_DAYS    = 'radius_landing_visit_days';
 	public const META_IMPORTED_FROM           = '_radius_imported_from';
 	public const META_MIGRATION_CLONE_OF      = '_radius_migration_clone_of';
 	public const META_MIGRATION_GROUP_SLUG    = '_radius_migration_group_slug';
