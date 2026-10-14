@@ -3,14 +3,19 @@
 Thumbs.db
 
 # --- Plugin packaging (do not ship in wp-radius-seo.zip) ---
-# Excluded from `git archive` via .gitattributes (`export-ignore`): .cursor/** .github/**
+# Excluded from `git archive` via .gitattributes (`export-ignore`): .cursor/** .github/** .claude/** workflows/** CLAUDE.md AGENTS.md .mcp.json INTENT.md PLAN.md
 # Also listed in .distignore for wp-cli style builds.
-# Do NOT gitignore .github/ here — issue templates must stay tracked on the default branch.
+# Do NOT gitignore .github/ or the shared Claude files here — they stay on the default branch.
+# Personal Claude overrides are gitignored below.
 
 # Cursor — track project rules only; ignore other local Cursor data (never shipped — see .gitattributes)
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+
+# Claude Code — personal overrides only. Shared files under .claude/ stay tracked.
+CLAUDE.local.md
+.claude/settings.local.json
 *.swp
 *.swo
 *~

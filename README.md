@@ -2,6 +2,7 @@
 
 Blueprint-first local SEO for WordPress: templates, CSV-backed place library, batch deploy, tokens, spintax, Markdown slots, and optional Elementor support.
 
+**Product of:** [Duppins Technology](https://duppinstech.com/)  
 **Plugin URI:** [github.com/oduppinsjr/wp-radius-seo](https://github.com/oduppinsjr/wp-radius-seo)  
 **Requires:** WordPress 6.0+, PHP 7.4+  
 **Current version:** see `radius.php` header or `readme.txt` stable tag.

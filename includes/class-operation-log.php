@@ -23,13 +23,67 @@ final class Radius_Operation_Log {
 	/** @var bool */
 	private static $dir_ready = false;
 
+	/** @var string Directory chosen for this request after ensure_log_dir(). */
+	private static $resolved_dir = '';
+
 	/**
 	 * @return string Absolute directory path (no trailing slash).
 	 */
 	public static function log_dir() {
+		if ( self::$resolved_dir !== '' ) {
+			return self::$resolved_dir;
+		}
+		return self::candidate_log_dir();
+	}
+
+	/**
+	 * Prefer a folder beside the WordPress install, outside the document root.
+	 * Fall back to uploads when that path is still web-accessible or not known.
+	 *
+	 * @return string
+	 */
+	private static function candidate_log_dir() {
+		$outside = self::outside_web_root_dir();
+		if ( $outside !== '' ) {
+			return self::with_site_suffix( $outside );
+		}
+		return self::uploads_log_dir();
+	}
+
+	/**
+	 * @return string Empty when the parent of ABSPATH is inside the document root or unknown.
+	 */
+	private static function outside_web_root_dir() {
+		if ( ! defined( 'ABSPATH' ) ) {
+			return '';
+		}
+		$docroot = isset( $_SERVER['DOCUMENT_ROOT'] ) ? wp_normalize_path( (string) wp_unslash( $_SERVER['DOCUMENT_ROOT'] ) ) : '';
+		if ( $docroot === '' ) {
+			return '';
+		}
+		$candidate = wp_normalize_path( dirname( untrailingslashit( ABSPATH ) ) . '/radius-seo-logs' );
+		$root      = untrailingslashit( $docroot );
+		if ( $root !== '' && strpos( $candidate, $root ) === 0 ) {
+			return '';
+		}
+		return $candidate;
+	}
+
+	/**
+	 * @return string
+	 */
+	private static function uploads_log_dir() {
 		$upload = wp_upload_dir();
 		$base   = isset( $upload['basedir'] ) ? (string) $upload['basedir'] : WP_CONTENT_DIR . '/uploads';
-		$dir    = trailingslashit( $base ) . 'radius-seo-logs';
+		return self::with_site_suffix( wp_normalize_path( trailingslashit( $base ) . 'radius-seo-logs' ) );
+	}
+
+	/**
+	 * @param string $dir Directory without a site suffix.
+	 * @return string
+	 */
+	private static function with_site_suffix( $dir ) {
+		$dir = untrailingslashit( (string) $dir );
 		if ( is_multisite() && class_exists( 'Radius_Multisite' ) ) {
 			$bid = Radius_Multisite::blog_id();
 			if ( $bid > 0 ) {
@@ -55,14 +109,22 @@ final class Radius_Operation_Log {
 	 * @return bool
 	 */
 	public static function ensure_log_dir() {
-		if ( self::$dir_ready ) {
+		if ( self::$dir_ready && self::$resolved_dir !== '' ) {
 			return true;
 		}
-		$dir = self::log_dir();
+		$dir = self::candidate_log_dir();
 		if ( ! wp_mkdir_p( $dir ) ) {
-			return false;
+			$dir = self::uploads_log_dir();
+			if ( ! wp_mkdir_p( $dir ) ) {
+				return false;
+			}
 		}
+		self::$resolved_dir = $dir;
 		self::write_protective_files( $dir );
+		$legacy = self::uploads_log_dir();
+		if ( $legacy !== $dir && is_dir( $legacy ) ) {
+			self::write_protective_files( $legacy );
+		}
 		self::$dir_ready = true;
 		return true;
 	}
@@ -73,9 +135,21 @@ final class Radius_Operation_Log {
 	 */
 	private static function write_protective_files( $dir ) {
 		$htaccess = $dir . '/.htaccess';
-		if ( ! file_exists( $htaccess ) ) {
+		$rules    = "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n";
+		$current  = '';
+		if ( is_readable( $htaccess ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$current = (string) file_get_contents( $htaccess );
+		}
+		if ( strpos( $current, 'Require all denied' ) === false ) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-			file_put_contents( $htaccess, "Deny from all\n" );
+			file_put_contents( $htaccess, $rules );
+		}
+		$web_config = $dir . '/web.config';
+		if ( ! file_exists( $web_config ) ) {
+			$iis = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<configuration>\n  <system.webServer>\n    <authorization>\n      <remove users=\"*\" roles=\"\" verbs=\"\" />\n      <add accessType=\"Deny\" users=\"*\" />\n    </authorization>\n  </system.webServer>\n</configuration>\n";
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			file_put_contents( $web_config, $iis );
 		}
 		$index = $dir . '/index.php';
 		if ( ! file_exists( $index ) ) {

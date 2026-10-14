@@ -2,3 +2,12 @@
 # GitHub “Download ZIP” / source archives use the same rules for the chosen ref.
 .cursor/** export-ignore
 .github/** export-ignore
+.claude/** export-ignore
+workflows/** export-ignore
+CLAUDE.md export-ignore
+CLAUDE.local.md export-ignore
+CLAUDE.local.md.example export-ignore
+AGENTS.md export-ignore
+.mcp.json export-ignore
+INTENT.md export-ignore
+PLAN.md export-ignore

@@ -3,11 +3,13 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.107
+Stable tag: 1.6.108
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Blueprint-first local SEO: templates, CSV place library, batch deploy, tokens, spintax, Markdown slots; optional Elementor.
+
+Copyright: Duppins Technology (https://duppinstech.com).
 
 == Quick start ==
 
@@ -85,6 +87,12 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.108 =
+* **Security:** Published blueprint templates are no longer readable by logged-out visitors or the public REST API. Editors who can edit the template can still preview it.
+* **Security:** Deploy, place CSV import, place CSV export, and template JSON export require an administrator (`manage_options`).
+* **Security:** Operation logs prefer a directory outside the web root when the host allows it, and deny direct access with Apache 2.4 and IIS rules in addition to the existing Apache 2.2 file.
+* **Ownership:** Copyright and author metadata name Duppins Technology.
 
 = 1.6.107 =
 * **Fix:** Added Gutenberg-safe deploy normalization for non-Elementor/non-Beaver templates so HTML-capable {{phone-number}} does not break block serialization in href/src contexts; attribute-safe {{phone-tel}} is enforced where needed.

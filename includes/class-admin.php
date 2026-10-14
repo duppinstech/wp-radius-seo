@@ -196,7 +196,7 @@ class Radius_Admin {
 			self::PARENT_SLUG,
 			__( 'Deploy', 'radius' ),
 			__( 'Deploy', 'radius' ),
-			$cap,
+			'manage_options',
 			'radius-deploy',
 			array( __CLASS__, 'render_deploy' )
 		);
@@ -205,7 +205,7 @@ class Radius_Admin {
 			self::PARENT_SLUG,
 			__( 'Import / export', 'radius' ),
 			__( 'Import / export', 'radius' ),
-			$cap,
+			'manage_options',
 			'radius-import',
 			array( __CLASS__, 'render_import' )
 		);
@@ -1411,6 +1411,7 @@ class Radius_Admin {
 						<?php endif; ?>
 					</div>
 				<?php endif; ?>
+				<?php if ( current_user_can( 'manage_options' ) ) : ?>
 				<div class="radius-card">
 					<h2><?php esc_html_e( 'Export', 'radius' ); ?></h2>
 					<div class="radius-card__text">
@@ -1444,6 +1445,7 @@ class Radius_Admin {
 						</form>
 					</div>
 				</div>
+				<?php endif; ?>
 				<?php if ( current_user_can( 'manage_options' ) ) : ?>
 					<div class="radius-card radius-card-muted">
 						<h2><?php esc_html_e( 'Danger zone', 'radius' ); ?></h2>
@@ -1466,8 +1468,8 @@ class Radius_Admin {
 					<label for="radius_places_bulk_action" class="screen-reader-text"><?php esc_html_e( 'Bulk actions', 'radius' ); ?></label>
 					<select name="radius_places_bulk_action" id="radius_places_bulk_action" form="radius-places-bulk-form">
 						<option value=""><?php esc_html_e( 'Bulk actions', 'radius' ); ?></option>
-						<option value="export_csv"><?php esc_html_e( 'Export selected as CSV', 'radius' ); ?></option>
 						<?php if ( current_user_can( 'manage_options' ) ) : ?>
+							<option value="export_csv"><?php esc_html_e( 'Export selected as CSV', 'radius' ); ?></option>
 							<option value="delete"><?php esc_html_e( 'Delete selected (cannot undo)', 'radius' ); ?></option>
 						<?php endif; ?>
 					</select>
@@ -3073,7 +3075,7 @@ class Radius_Admin {
 
 			<?php elseif ( 'templates' === $tab ) : ?>
 				<h2 class="screen-reader-text"><?php esc_html_e( 'Templates and markdown slots', 'radius' ); ?></h2>
-				<?php if ( ! empty( $templates ) && current_user_can( 'edit_posts' ) ) : ?>
+				<?php if ( ! empty( $templates ) && current_user_can( 'manage_options' ) ) : ?>
 					<h3><?php esc_html_e( 'Export', 'radius' ); ?></h3>
 					<p class="description"><?php esc_html_e( 'Download all templates with spintax blocks, X-fields, and markdown slot variations as one JSON file.', 'radius' ); ?></p>
 					<form method="post" action="<?php echo esc_url( $csv_url ); ?>" class="radius-form-block">

@@ -1,0 +1,15 @@
+# Personal overrides
+
+Gitignored. Stacks on top of `CLAUDE.md` and never replaces it. Copy this file to `CLAUDE.local.md` and fill in the values for this machine.
+
+## Local WordPress
+
+- Site path:
+- Site URL:
+- PHP binary:
+- WP-CLI binary:
+- Admin user (local only):
+
+## Preferences
+
+- Editor or test notes for this machine:

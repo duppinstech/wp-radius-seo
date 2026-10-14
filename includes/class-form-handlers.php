@@ -243,7 +243,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	public static function handle_export_places_csv() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
 		self::bail_if_locked();
@@ -271,7 +271,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	public static function handle_csv() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
 		self::bail_if_locked();
@@ -344,7 +344,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	public static function handle_deploy_cancel() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
 		self::bail_if_locked();
@@ -682,7 +682,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	public static function handle_deploy() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
 		self::bail_if_locked();
@@ -974,7 +974,7 @@ class Radius_Form_Handlers {
 	 * @return void
 	 */
 	public static function handle_export_templates_slots_json() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'radius' ) );
 		}
 		self::bail_if_locked();
@@ -1054,6 +1054,9 @@ class Radius_Form_Handlers {
 		}
 
 		if ( 'export_csv' === $action ) {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Forbidden.', 'radius' ) );
+			}
 			Radius_Csv_Place_Importer::stream_export_term_ids( $ids );
 			exit;
 		}

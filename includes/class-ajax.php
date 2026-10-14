@@ -306,7 +306,7 @@ class Radius_Ajax {
 			wp_send_json_error( array( 'message' => __( 'Radius is locked.', 'radius' ) ), 403 );
 		}
 
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			Radius_Operation_Log::error( 'deploy_batch', 'Deploy forbidden.', Radius_Operation_Log::request_context() );
 			self::flush_stray_output_before_json( 'deploy_batch', Radius_Operation_Log::request_context() );
 			wp_send_json_error( array( 'message' => __( 'Forbidden.', 'radius' ) ), 403 );

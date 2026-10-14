@@ -76,6 +76,11 @@ class Radius_Plugin {
 		add_filter( 'the_title', array( $this, 'maybe_filter_landing_the_title' ), 20, 2 );
 		add_filter( 'document_title_parts', array( $this, 'maybe_filter_template_document_title_parts' ), 19 );
 		add_filter( 'document_title_parts', array( $this, 'maybe_filter_document_title_parts' ), 20 );
+		add_action( 'template_redirect', array( $this, 'block_public_template_singular' ), 0 );
+		add_filter( 'template_include', array( $this, 'block_public_template_template' ), 0 );
+		add_filter( 'rest_pre_dispatch', array( $this, 'block_public_template_rest' ), 10, 3 );
+		add_filter( 'wp_sitemaps_post_types', array( $this, 'exclude_template_from_sitemaps' ) );
+		add_filter( 'wpseo_sitemap_exclude_post_type', array( $this, 'exclude_template_from_yoast_sitemap' ), 10, 2 );
 		add_filter( 'post_type_link', array( $this, 'filter_radius_landing_permalink' ), 10, 2 );
 		add_filter( 'pre_handle_404', array( $this, 'resolve_radius_landing_root_on_404' ), 5, 2 );
 		add_filter( 'elementor_cpt_support', array( $this, 'elementor_cpt_support' ) );
@@ -783,5 +788,106 @@ class Radius_Plugin {
 		}
 		self::$template_preview_snapshots[ $template_id ] = $snap;
 		return $snap;
+	}
+
+	/**
+	 * Published templates stay queryable for editor preview. Everyone else gets a 404.
+	 *
+	 * @return void
+	 */
+	public function block_public_template_singular() {
+		if ( ! is_singular( 'radius_template' ) ) {
+			return;
+		}
+		$post_id = (int) get_queried_object_id();
+		if ( $post_id > 0 && current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+		$this->force_template_404();
+	}
+
+	/**
+	 * Swap in the theme 404 template after the query is marked missing.
+	 *
+	 * @param string $template Template path.
+	 * @return string
+	 */
+	public function block_public_template_template( $template ) {
+		if ( ! is_singular( 'radius_template' ) ) {
+			return $template;
+		}
+		$post_id = (int) get_queried_object_id();
+		if ( $post_id > 0 && current_user_can( 'edit_post', $post_id ) ) {
+			return $template;
+		}
+		$this->force_template_404();
+		$missing = get_404_template();
+		return is_string( $missing ) && $missing !== '' ? $missing : $template;
+	}
+
+	/**
+	 * @return void
+	 */
+	private function force_template_404() {
+		global $wp_query;
+		if ( $wp_query instanceof WP_Query ) {
+			$wp_query->set_404();
+		}
+		status_header( 404 );
+		nocache_headers();
+	}
+
+	/**
+	 * Block anonymous and insufficient REST reads of radius_template.
+	 *
+	 * @param mixed           $result  Short-circuit result.
+	 * @param WP_REST_Server  $server  Server instance.
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed|WP_Error
+	 */
+	public function block_public_template_rest( $result, $server, $request ) {
+		unset( $server );
+		if ( ! $request instanceof WP_REST_Request ) {
+			return $result;
+		}
+		$route = (string) $request->get_route();
+		if ( ! preg_match( '#^/wp/v2/radius_template(?:/|$)#', $route ) ) {
+			return $result;
+		}
+		$post_id = (int) $request->get_param( 'id' );
+		$allowed = $post_id > 0
+			? current_user_can( 'edit_post', $post_id )
+			: current_user_can( 'edit_posts' );
+		if ( $allowed ) {
+			return $result;
+		}
+		return new WP_Error(
+			'rest_forbidden',
+			__( 'Sorry, you are not allowed to view Radius templates.', 'radius' ),
+			array( 'status' => rest_authorization_required_code() )
+		);
+	}
+
+	/**
+	 * @param array<string,WP_Post_Type> $post_types Sitemap post types.
+	 * @return array<string,WP_Post_Type>
+	 */
+	public function exclude_template_from_sitemaps( $post_types ) {
+		if ( is_array( $post_types ) ) {
+			unset( $post_types['radius_template'] );
+		}
+		return $post_types;
+	}
+
+	/**
+	 * @param bool   $excluded  Whether Yoast already excludes the type.
+	 * @param string $post_type Post type slug.
+	 * @return bool
+	 */
+	public function exclude_template_from_yoast_sitemap( $excluded, $post_type ) {
+		if ( 'radius_template' === $post_type ) {
+			return true;
+		}
+		return $excluded;
 	}
 }

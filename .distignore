@@ -2,3 +2,12 @@
 # Release ZIPs built with `git archive` use .gitattributes export-ignore (same folders).
 .cursor/
 .github/
+.claude/
+workflows/
+CLAUDE.md
+CLAUDE.local.md
+CLAUDE.local.md.example
+AGENTS.md
+.mcp.json
+INTENT.md
+PLAN.md

@@ -1,5 +1,7 @@
 # License
 
+**Copyright:** Duppins Technology (https://duppinstech.com). Odell Duppins is the author. Radius SEO is a Duppins Technology product.
+
 **SPDX-License-Identifier:** `GPL-2.0-or-later`
 
 Radius SEO is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v2** (or, at your option, any later version) as published by the Free Software Foundation.
