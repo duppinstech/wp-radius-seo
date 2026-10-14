@@ -117,6 +117,16 @@ class Radius_Deploy_Service {
 				? self::compute_service_area_slug_base( $tokens )
 				: self::compute_landing_slug_base( $template, $tokens, $seed, false, $ph_landing );
 
+			$lock = self::acquire_deploy_pair_lock( $template_id, $place_id, $target_pt );
+			if ( $lock === '' ) {
+				$out['errors'][] = sprintf(
+					/* translators: %d: place term ID */
+					__( 'Deploy for place %d is already running.', 'radius' ),
+					$place_id
+				);
+				continue;
+			}
+			try {
 			$matched_ids = self::find_deployed_ids_for_template_place( $template_id, $place_id, $target_pt );
 			$existing    = ! empty( $matched_ids ) ? (int) $matched_ids[0] : 0;
 
@@ -187,6 +197,9 @@ class Radius_Deploy_Service {
 			wp_set_object_terms( (int) $post_id, array( $place_id ), Radius_Place_Taxonomy::TAXONOMY, false );
 			$out['placeholders_removed'] += $ph_landing;
 			++$out['created'];
+			} finally {
+				self::release_deploy_pair_lock( $lock );
+			}
 		}
 		} finally {
 			if ( $defer_term_counting ) {
@@ -199,6 +212,70 @@ class Radius_Deploy_Service {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Option name used as an atomic lock for one template, place, and post type.
+	 *
+	 * @param int    $template_id Template ID.
+	 * @param int    $place_id    Place term ID.
+	 * @param string $post_type   Target post type.
+	 * @return string
+	 */
+	private static function deploy_pair_lock_key( $template_id, $place_id, $post_type ) {
+		return Radius_Data_Registry::OPTION_DEPLOY_PAIR_LOCK_PREFIX . (int) $template_id . '_' . (int) $place_id . '_' . sanitize_key( (string) $post_type );
+	}
+
+	/**
+	 * Hold the pair lock so a second deploy updates the first insert instead of creating another page.
+	 *
+	 * @param int    $template_id Template ID.
+	 * @param int    $place_id    Place term ID.
+	 * @param string $post_type   Target post type.
+	 * @return string Lock option name, or empty when the lock could not be acquired.
+	 */
+	private static function acquire_deploy_pair_lock( $template_id, $place_id, $post_type ) {
+		$key      = self::deploy_pair_lock_key( $template_id, $place_id, $post_type );
+		$deadline = microtime( true ) + 20;
+		while ( microtime( true ) <= $deadline ) {
+			self::forget_deploy_lock_cache( $key );
+			if ( add_option( $key, (string) time(), '', false ) ) {
+				return $key;
+			}
+			self::forget_deploy_lock_cache( $key );
+			$started = (int) get_option( $key, 0 );
+			if ( $started > 0 && ( time() - $started ) > 90 ) {
+				delete_option( $key );
+				continue;
+			}
+			usleep( 250000 );
+		}
+		return '';
+	}
+
+	/**
+	 * Drop this process's option cache so a lock released by another request is visible.
+	 *
+	 * @param string $key Option name.
+	 * @return void
+	 */
+	private static function forget_deploy_lock_cache( $key ) {
+		wp_cache_delete( $key, 'options' );
+		$notoptions = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $notoptions ) && isset( $notoptions[ $key ] ) ) {
+			unset( $notoptions[ $key ] );
+			wp_cache_set( 'notoptions', $notoptions, 'options' );
+		}
+	}
+
+	/**
+	 * @param string $key Lock option name from {@see acquire_deploy_pair_lock()}.
+	 * @return void
+	 */
+	private static function release_deploy_pair_lock( $key ) {
+		if ( $key !== '' ) {
+			delete_option( $key );
+		}
 	}
 
 	/**

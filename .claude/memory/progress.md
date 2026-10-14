@@ -4,6 +4,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: 1.6.111 deploy pair lock checked on the local Docker site. A retry updated the same landing, a planted duplicate was trashed, and two overlapping deploys left one published page. `duplicate_pages` passed.
 - 2026-10-14: Local proof is `docker compose up -d`, then `docker compose down` when the check ends. The stack is not left running.
 - 2026-10-14: 1.6.110 analytics, rotation batching, and system rows checked on the local Docker site at http://127.0.0.1:8088.
 - 2026-10-14: Ownership recorded in `OWNERSHIP.md` and `CLAUDE.md`. Radius SEO is a Duppins Technology product. WhiteRail is the beta client and does not own the source.

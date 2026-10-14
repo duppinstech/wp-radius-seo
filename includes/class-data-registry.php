@@ -53,6 +53,8 @@ final class Radius_Data_Registry {
 	/** Why the banner was shown: e.g. localeforge_migrated (see Radius_Admin_Maintenance). */
 	public const OPTION_MAINTENANCE_BANNER_REASON = 'radius_maintenance_banner_reason';
 	public const OPTION_TEMPLATE_PUBLIC_QUERYABLE_FLAG = 'radius_template_public_queryable_bootstrapped';
+	/** Prefix for the short-lived per template, place, and post type deploy lock. */
+	public const OPTION_DEPLOY_PAIR_LOCK_PREFIX = 'radius_dlock_';
 
 	/**
 	 * Post meta keys: OLD (lf_ era) => NEW (canonical). Used only by Radius_Prefix_Migration.

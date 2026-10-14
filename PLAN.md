@@ -67,9 +67,10 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P1-01 — Prove one current page per place under a retried deploy
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** Shipped in 1.6.111. On the local Docker site, a second deploy of the same template and place updated the existing landing. A hand-inserted duplicate was trashed on the next update. Two overlapping deploys created one page and updated it. `duplicate_pages` passed.
 - **Kind:** completeness
-- **Evidence:** `Radius_Deploy_Service::deploy()` looks up `_radius_template_id` plus `_radius_place_id` and trashes extra matches on the next run. There is no lock between the lookup and `wp_insert_post()`. Health check `duplicate_pages` and `deploy_meta` can report leftovers (`includes/class-deploy-health-check.php`).
+- **Evidence:** `Radius_Deploy_Service::deploy()` looks up `_radius_template_id` plus `_radius_place_id` and trashes extra matches on the next run. A short-lived option lock covers the lookup and insert so a second writer waits and updates. Health check `duplicate_pages` and `deploy_meta` can report leftovers (`includes/class-deploy-health-check.php`).
 - **Do:** On staging, run one template against a small place set, interrupt a batch, and run it again. Then run two overlapping batches if the UI allows it. If two published pages remain for one template and place, add a lock or a unique lookup that the second writer updates instead of inserting.
 - **Done when:** After a retry, each template and place pair has one published landing or service-area post, and the health check reports no duplicate pages for that set.
 - **Workflow:** `workflows/bug-fix.md`.
