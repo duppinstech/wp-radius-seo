@@ -13,6 +13,77 @@
 
 	var state = { rows: [] };
 	var editing = -1;
+	var replReturnFocus = null;
+	var replAoSeq = 0;
+
+	function replFocusable(root) {
+		if (!root) {
+			return [];
+		}
+		return Array.prototype.filter.call(
+			root.querySelectorAll(
+				'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled])'
+			),
+			function (node) {
+				return node.getClientRects().length > 0;
+			}
+		);
+	}
+
+	function tieControl(lab, field, id) {
+		field.id = id;
+		lab.htmlFor = id;
+	}
+
+	function tieSiteValues(body) {
+		if (!body) {
+			return;
+		}
+		body.querySelectorAll('.radius-site-repl-modal-row').forEach(function (wrap, i) {
+			var lab = wrap.querySelector('label');
+			var ta = wrap.querySelector('textarea.radius-site-repl-value-input');
+			if (!lab || !ta) {
+				return;
+			}
+			tieControl(lab, ta, 'radius-site-repl-value-' + (i + 1));
+			lab.textContent = (i18n.valueLabel || 'Value') + ' ' + (i + 1);
+		});
+	}
+
+	function replTrapKeys(e) {
+		var modal = document.getElementById('radius-site-repl-modal');
+		if (!modal || modal.style.display === 'none') {
+			return;
+		}
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeModal();
+			return;
+		}
+		if (e.key !== 'Tab') {
+			return;
+		}
+		var nodes = replFocusable(modal);
+		if (!nodes.length) {
+			e.preventDefault();
+			return;
+		}
+		var first = nodes[0];
+		var last = nodes[nodes.length - 1];
+		var active = document.activeElement;
+		if (!modal.contains(active)) {
+			e.preventDefault();
+			(e.shiftKey ? last : first).focus();
+			return;
+		}
+		if (e.shiftKey && active === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && active === last) {
+			e.preventDefault();
+			first.focus();
+		}
+	}
 
 	function normRow(r) {
 		r = r || {};
@@ -154,6 +225,9 @@
 		wrap.appendChild(sel);
 		wrap.appendChild(labVal);
 		wrap.appendChild(ta);
+		replAoSeq += 1;
+		tieControl(labArea, sel, 'radius-site-repl-ao-area-' + replAoSeq);
+		tieControl(labVal, ta, 'radius-site-repl-ao-value-' + replAoSeq);
 		wrap.appendChild(rm);
 		container.appendChild(wrap);
 	}
@@ -202,6 +276,11 @@
 		}
 		document.body.style.overflow = '';
 		editing = -1;
+		var back = replReturnFocus;
+		replReturnFocus = null;
+		if (back && typeof back.focus === 'function') {
+			back.focus();
+		}
 	}
 
 	function saveModal() {
@@ -302,8 +381,14 @@
 		addAoP.appendChild(addAoBtn);
 		body.appendChild(addAoP);
 
+		tieSiteValues(body);
+		replReturnFocus = document.activeElement;
 		modal.style.display = 'flex';
 		document.body.style.overflow = 'hidden';
+		var replFirst = replFocusable(modal)[0];
+		if (replFirst) {
+			replFirst.focus();
+		}
 	}
 
 	function bindModal() {
@@ -378,6 +463,7 @@
 				} else {
 					body.appendChild(wrap);
 				}
+				tieSiteValues(body);
 			}
 			if (t.classList && t.classList.contains('radius-site-repl-remove-value')) {
 				e.preventDefault();
@@ -391,9 +477,7 @@
 					return;
 				}
 				row.remove();
-				body2.querySelectorAll('.radius-site-repl-modal-row label').forEach(function (labEl, i) {
-					labEl.textContent = (i18n.valueLabel || 'Value') + ' ' + (i + 1);
-				});
+				tieSiteValues(body2);
 			}
 			if (t.classList && t.classList.contains('radius-site-repl-add-area-override')) {
 				e.preventDefault();
@@ -423,6 +507,7 @@
 				srow.remove();
 			}
 		});
+		document.addEventListener('keydown', replTrapKeys);
 	}
 
 	function init() {

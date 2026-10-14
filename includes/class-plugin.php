@@ -79,6 +79,7 @@ class Radius_Plugin {
 		add_action( 'template_redirect', array( $this, 'block_public_template_singular' ), 0 );
 		add_filter( 'template_include', array( $this, 'block_public_template_template' ), 0 );
 		add_filter( 'rest_pre_dispatch', array( $this, 'block_public_template_rest' ), 10, 3 );
+		add_filter( 'rest_radius_template_query', array( $this, 'limit_template_rest_collection' ), 10, 2 );
 		add_filter( 'wp_sitemaps_post_types', array( $this, 'exclude_template_from_sitemaps' ) );
 		add_filter( 'wpseo_sitemap_exclude_post_type', array( $this, 'exclude_template_from_yoast_sitemap' ), 10, 2 );
 		add_filter( 'post_type_link', array( $this, 'filter_radius_landing_permalink' ), 10, 2 );
@@ -854,10 +855,16 @@ class Radius_Plugin {
 		if ( ! preg_match( '#^/wp/v2/radius_template(?:/|$)#', $route ) ) {
 			return $result;
 		}
+		$parent  = (int) $request->get_param( 'parent' );
 		$post_id = (int) $request->get_param( 'id' );
-		$allowed = $post_id > 0
-			? current_user_can( 'edit_post', $post_id )
-			: current_user_can( 'edit_posts' );
+		$check   = $parent > 0 ? $parent : $post_id;
+		if ( $check > 0 ) {
+			$allowed = current_user_can( 'edit_post', $check );
+		} elseif ( current_user_can( 'manage_options' ) || current_user_can( 'edit_others_posts' ) ) {
+			$allowed = true;
+		} else {
+			$allowed = current_user_can( 'edit_posts' );
+		}
 		if ( $allowed ) {
 			return $result;
 		}
@@ -866,6 +873,22 @@ class Radius_Plugin {
 			__( 'Sorry, you are not allowed to view Radius templates.', 'radius' ),
 			array( 'status' => rest_authorization_required_code() )
 		);
+	}
+
+	/**
+	 * Contributors and authors only receive templates they can edit.
+	 *
+	 * @param array<string,mixed> $args    Query args.
+	 * @param WP_REST_Request     $request Request.
+	 * @return array<string,mixed>
+	 */
+	public function limit_template_rest_collection( $args, $request ) {
+		unset( $request );
+		if ( current_user_can( 'manage_options' ) || current_user_can( 'edit_others_posts' ) ) {
+			return $args;
+		}
+		$args['author'] = get_current_user_id();
+		return $args;
 	}
 
 	/**

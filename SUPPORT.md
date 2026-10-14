@@ -1,5 +1,9 @@
 # Support
 
+## Landing analytics
+
+Visit and click counts stay on this site. The visitor IP is a short-lived rate-limit hash, and the user agent is read to ignore bots.
+
 ## Documentation
 
 - **[README.md](README.md)** — install, updates, repository layout  

@@ -426,6 +426,13 @@ class Radius_API_License {
 	}
 
 	/**
+	 * True when this request should print the keyboard lock script.
+	 *
+	 * @var bool
+	 */
+	private static $lock_footer = false;
+
+	/**
 	 * Dim Radius admin screens when locked; on Settings, only the License panel stays active.
 	 *
 	 * @param string $hook_suffix Hook.
@@ -445,6 +452,7 @@ class Radius_API_License {
 			return;
 		}
 
+		self::$lock_footer = true;
 		$css = '/* Locked: dim full screen on Radius pages except Settings (handled below). */'
 			. 'body.radius-license-locked-admin:not(.radius-page-radius-settings) #wpbody-content .wrap { opacity: 0.45; pointer-events: none; user-select: none; filter: grayscale(0.2); }'
 			. 'body.radius-license-locked-admin #wpbody-content .wrap.radius-license-gate-unlock { opacity: 1 !important; pointer-events: auto !important; filter: none !important; }'
@@ -455,6 +463,20 @@ class Radius_API_License {
 		wp_register_style( 'radius-license-lock', false, array(), RADIUS_VERSION );
 		wp_enqueue_style( 'radius-license-lock' );
 		wp_add_inline_style( 'radius-license-lock', $css );
+	}
+
+	/**
+	 * Keep locked screens out of the tab order. The license notice and license gate stay usable.
+	 *
+	 * @return void
+	 */
+	public static function admin_footer_lock() {
+		if ( ! self::$lock_footer ) {
+			return;
+		}
+		echo "<script>\n";
+		echo "(function(){function lock(){var settings=document.body.classList.contains('radius-page-radius-settings');if(settings){document.querySelectorAll('.radius-tab-nav a.nav-tab:not(.radius-tab--license)').forEach(function(tab){tab.setAttribute('aria-disabled','true');tab.setAttribute('tabindex','-1');});document.querySelectorAll('.radius-settings-panel:not(#radius-panel-license)').forEach(function(panel){panel.setAttribute('inert','');});return;}document.querySelectorAll('#wpbody-content .wrap').forEach(function(wrap){if(wrap.classList.contains('radius-license-gate-unlock')){return;}Array.prototype.forEach.call(wrap.children,function(child){if(child.classList&&child.classList.contains('radius-license-banner')){return;}child.setAttribute('inert','');});});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',lock);}else{lock();}})();\n";
+		echo "</script>\n";
 	}
 
 	/**
@@ -591,6 +613,7 @@ class Radius_API_License {
 		add_action( 'admin_init', array( __CLASS__, 'maybe_set_api_key_saved_at_if_missing' ), 6 );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_notice_license' ), 2 );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'admin_enqueue_lock' ), 99 );
+		add_action( 'admin_footer', array( __CLASS__, 'admin_footer_lock' ) );
 		add_filter( 'admin_body_class', array( __CLASS__, 'admin_body_class' ) );
 		add_action( 'template_redirect', array( __CLASS__, 'template_redirect_block_front' ), 5 );
 		add_action( 'wp_ajax_radius_validate_api_key', array( __CLASS__, 'ajax_validate_api_key' ) );

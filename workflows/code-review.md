@@ -9,7 +9,7 @@ A reviewer can merge, or can name the blocking issue, without re-reading the who
 ## Steps
 
 1. Read `INTENT.md`, `git diff` (or the PR diff), and `.claude/memory/decisions.md`. A change that misses the objective in `INTENT.md` is a blocking issue.
-2. Run `/review` or load the `code-review` skill. Delegate `@security-reviewer` when the diff touches AJAX, forms, deploy, import, SQL, or the updater.
+2. Run `/review` or load the `code-review` skill. Then run `workflows/department-review.md` so security, legal, finance, privacy, interface, support, and communications each reply.
 3. Check version consistency if the change is user-facing: `Version`, `RADIUS_VERSION`, and `readme.txt` Stable tag.
 4. Load the `pr-description` skill when the user wants a pull request body.
 5. Load the `testing-patterns` skill and list checks that were run and checks that were not.

@@ -1,6 +1,6 @@
 # Radius SEO
 
-Blueprint-first local SEO for WordPress: templates, CSV-backed place library, batch deploy, tokens, spintax, Markdown slots, and optional Elementor support.
+Blueprint-first local SEO for WordPress: templates, CSV-backed place library, batch deploy, tokens, spintax, Markdown slots, and optional Elementor or Beaver Builder support.
 
 **Product of:** [Duppins Technology](https://duppinstech.com/)  
 **Plugin URI:** [github.com/duppinstech/wp-radius-seo](https://github.com/duppinstech/wp-radius-seo)  
@@ -20,10 +20,11 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 ## Quick start
 
-1. **Radius → Location library** — upload a CSV (`name`, `slug`, `country`, `region`, `state`, `zip`, `lat`, `lng`).
-2. **Templates** — create a blueprint using tokens in title and body.
-3. **Deploy** — pick the template, supply place term IDs, run the batch deploy.
-4. **Settings** — enable Elementor if you want Elementor-editable landings.
+1. **Radius → Settings → License** — an administrator saves an API key. Until that key is saved, the library, templates, and deploy stay locked.
+2. **Radius → Settings → Service areas** — add at least one place and a radius in miles, then save. Only an administrator can upload the place CSV. Include latitude and longitude, or deploy skips those rows. Rows already in the library are skipped unless **Update existing places** is checked.
+3. **Templates** — create a blueprint using tokens in title and body.
+4. **Deploy** — run **Deploy & update all places** for the template. If a batch stops, use **Continue deployment**. If the screen reports a server error, open **Radius → Logs**.
+5. **Settings → Integrations** — if the template is built in Elementor or Beaver Builder, turn that checkbox on, save, then deploy.
 
 ---
 
@@ -53,7 +54,7 @@ WordPress.org–style metadata and hooks are documented in **`readme.txt`** (use
 
 ## License
 
-**GPL-2.0-or-later.** Summary in [`LICENSE.md`](LICENSE.md); full legal text in [`LICENSE`](LICENSE). The plugin header and [`readme.txt`](readme.txt) match.
+**GPL-2.0-or-later.** Summary in [`LICENSE.md`](LICENSE.md); full legal text in [`LICENSE`](LICENSE). The plugin header uses `GPL-2.0-or-later`. [`readme.txt`](readme.txt) uses `GPLv2 or later`, the WordPress readme wording for the same license.
 
 ---
 

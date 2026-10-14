@@ -8,7 +8,7 @@ Take the items in order. Finish or explicitly defer a blocker before starting th
 
 1. Read `INTENT.md` and this item.
 2. Follow `workflows/bug-fix.md` for a fix, or `workflows/feature-build.md` if the item adds behavior.
-3. Security items go through `@security-reviewer` before they are called done.
+3. After the edit, run `workflows/department-review.md`. That meeting writes a note under `.claude/memory/meetings/` and adds new suggestions here.
 4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. A customer site is still unnamed until the maintainer names it.
 5. Record the result on the item. Update `.claude/memory/progress.md` only with the milestone, not a second copy of this list.
 
@@ -17,7 +17,7 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 ## Before a live click-through
 
 - **Status:** open
-- **Do:** Use the repo `docker-compose.yml` for local proof. Start it for the check and stop it with `docker compose down` when the check ends. Do not run deploy, purge, or remediation against an unnamed customer site.
+- **Do:** Use the repo `docker-compose.yml` for local proof. Start it for the check and stop it with `docker compose down` when the check ends. Beeline Transport Inc. is the named production site for read-only checks. Do not deploy, purge, or remediate there unless the maintainer asks for that change.
 - **Not a blocker for shipped code.** Local Docker is the click-through site. P0-01 stays open until the license-server choices are settled. It does not block the next local proof.
 
 ## Blockers
@@ -77,7 +77,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P1-02 — Confirm phone links on new deploys and repair pages already stored
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14. Local Docker deploy of template 17 for place 5 (Proofville P104) wrote landing 18 with one `tel:+15550100199` href, no nested anchor, and no broken href payload. Beeline Transport Inc. (`https://beelinetransportinc.com`, Radius 1.6.111) was read only: 1,610 landing and service-area posts scanned, 0 Gutenberg pages, 0 broken href payloads, 0 nested anchors in stored HTML. No production pages were rewritten.
 - **Kind:** completeness
 - **Evidence:** New Gutenberg deploys rewrite `phone-number` inside `href` and `src` toward `phone-tel` (`Radius_Deploy_Service::prepare_template_tokens_for_phone_link_safety()`). `tools/verify-gutenberg-phone-links.php` and `tools/remediate-broken-phone-links.php` exist because older saved HTML can still contain nested anchors.
 - **Do:** Deploy one staging page from the current template and confirm the phone link is a single `tel:` href. Run the verify tool against existing landings. Remediate only on the named staging site, then production only after that result is accepted.
@@ -116,7 +117,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P1-04 — Golden-path proof, then automated coverage for that path
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14 on local Docker (Apache/2.4.65). CSV import created place 5 `proofville-p104`. Template 17 rendered `{{place_name}}`, spintax `{Alpha|Beta}`, and a phone href. Landing deploy created post 18; the second deploy updated 18 and did not create another. Service-area deploy created post 20. Elementor is not installed locally, and post 18 had no Elementor meta. Beeline Transport Inc. has Elementor on and landing 17674 is an Elementor page; that live site was not redeployed. Automated coverage of this path is deferred (2026-10-14). The proof posts and place were removed after the check. PHPUnit stays limited to the updater.
 - **Kind:** completeness
 - **Evidence:** There is no PHPUnit or wp-env suite. `tools/` holds phone-link maintenance scripts only.
 - **Do:** On staging, walk one place through CSV import, template tokens and spintax, landing deploy, redeploy (update, not a second post), service-area deploy, Elementor off, and Elementor on if that site uses it. Write the results under this item. Add PHPUnit only after that path is stable enough to freeze; put tests in `tests/` and document the command in `.claude/rules/testing-standard.md`.
@@ -125,7 +127,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 ### P1-05 — Updater package is a real GitHub ZIP for this version
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14. GitHub release `v1.6.111` on `duppinstech/wp-radius-seo` is the latest release. Its only asset is `wp-radius-seo.zip`. The archive root contains `wp-radius-seo/radius.php` with Version 1.6.111. Beeline Transport Inc. is running Radius 1.6.111, so Dashboard → Updates has no newer release to offer. The copy on that site still defaults the updater repo to `oduppinsjr/wp-radius-seo`; that repo now resolves to the same release asset.
 - **Kind:** production
 - **Evidence:** `Radius_GitHub_Updater` (standard v1.0.0) installs only `https://github.com/duppinstech/wp-radius-seo/releases/download/<tag>/wp-radius-seo.zip`. It does not verify a signature. Sites see an update only when the latest release tag is newer and that asset is attached. Current plugin version is `RADIUS_VERSION` in `radius.php`.
 - **Do:** Confirm the GitHub release for the version being deployed has `wp-radius-seo.zip`, the archive root is `wp-radius-seo/radius.php`, and a staging site on the previous version is offered that update. Do not add a second download host.
@@ -138,14 +141,16 @@ These do not need new plugin features unless a check fails.
 
 ### P1-06 — Run deploy health and system checks
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14, Beeline Transport Inc., read only. Deploy health (light, plus `duplicate_pages` and `deploy_meta`) returned 0 failures. Duplicate and deploy-meta checks passed. System readiness is 92% (excellent), bypass off. Accepted warning: `max_execution_time` is unlimited. Persistent object cache is on. `DISABLE_WP_CRON` is set (system cron). No rows were cleared or rewritten on the server.
 - **Kind:** production
 - **Do:** On the named site, open Radius → Deploy → Health check and System. Clear or accept every failing row (duplicates, missing coords, URL conflicts, Magic Page leftovers, deploy index). A system-requirements bypass is an administrator override (`Radius_System_Requirements`); do not use it to hide a failed migration on production.
 - **Done when:** The health summary is clean, or each remaining failure is copied here with the reason it is accepted.
 
 ### P1-07 — Confirm the SEO plugin the site actually runs
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14, Beeline Transport Inc. Yoast SEO 28.7 is active. Rank Math and All in One SEO are not. `sitemap_index.xml` lists `landing-sitemap.xml`, `landing-sitemap2.xml`, and `service-area-sitemap.xml`. `https://beelinetransportinc.com/semi-tire-abert/` is in `landing-sitemap2.xml`. `https://beelinetransportinc.com/service-area/coltons-mill/` is in `service-area-sitemap.xml`. The index does not list a template sitemap.
 - **Kind:** completeness
 - **Evidence:** `Radius_SEO_Integrations` adjusts Yoast sitemap slugs for landings and service areas. There is no Rank Math or All in One SEO integration in this repo.
 - **Do:** If the site uses Yoast, confirm landing and service-area URLs appear in the sitemap under the friendly slugs. If it uses another SEO plugin, either add that integration or record that sitemaps are handled outside Radius.
@@ -155,7 +160,7 @@ These do not need new plugin features unless a check fails.
 
 - **Status:** open
 - **Kind:** completeness
-- **Evidence:** There is no `uninstall.php`. Deactivation does not remove `radius_settings`, place terms, or deployed posts.
+- **Evidence:** `uninstall.php` exists and deletes GitHub updater transients only. Deactivation and delete do not remove `radius_settings`, place terms, or deployed posts. Support confirmed this at the 2026-10-14 meeting. The policy choice below is unchanged.
 - **Do:** Decide the production policy. Recommended: deactivation keeps pages so the site does not lose local URLs. Document that in `SUPPORT.md`. Add `uninstall.php` only if a full delete must also remove plugin data, and make that path explicit and irreversible.
 - **Done when:** `SUPPORT.md` states what deactivate and delete do, matching the code.
 - **Workflow:** `workflows/bug-fix.md` if an uninstall file is required.
@@ -172,6 +177,202 @@ Do not reopen these unless a check above fails.
 - Deploy health already looks for duplicate pages, orphan meta, redirect conflicts, and the deploy lookup index.
 - Public landings serve stored HTML. `dynamic_content_per_request` defaults to off, so a page cache can store those URLs. Turn that setting on only when a template must spin on every view.
 - Agent docs, `INTENT.md`, and this file are `export-ignore` and are not part of the plugin ZIP.
+
+## Approved at the 2026-10-14 department meeting
+
+These do not need another decision from the maintainer. They are not blockers. P0-01 does not hold them. Notes: `.claude/memory/meetings/2026-10-14-1544.md` and `.claude/memory/meetings/2026-10-14-1556.md`. Implemented in 1.6.113. P2-10 was proved on the local Docker site on 2026-10-14.
+
+### P2-01 — A Contributor can read every published template over REST
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. A route that passes `parent` checks `edit_post` on that template. A user who cannot `edit_others_posts` only receives their own templates from the collection. A live Contributor request was not run in this pass.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** security
+- **Evidence:** `Radius_Plugin::block_public_template_rest()` allows the collection when the caller has `edit_posts`. A route that passes the template as `parent` (revisions) never checks `edit_post` on that template (`includes/class-plugin.php`). Logged-out access stays blocked. This is narrower than P0-02, which stays done.
+- **Do:** Require `edit_post` on the template, including `parent` on revision routes. Limit the collection to posts that user can edit, or to `manage_options`.
+- **Done when:** A Contributor or Author who cannot `edit_post` on a template gets no title, body, tokens, or phone numbers from `/wp/v2/radius_template` or its revisions route. An editor who can edit that template still can.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-02 — The updater installs a release's only zip when the name does not match
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. `select_package()` returns a URL only when the asset name matches. PHPUnit `GitHubUpdaterTest` (27 tests) passed, including a differently named single zip, which is now rejected.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** security
+- **Evidence:** `Radius_GitHub_Updater::select_package()` returns the configured asset, and otherwise the only `.zip` on that release (`includes/class-radius-github-updater.php`). The comment records that fallback on purpose. A release whose only zip is not `wp-radius-seo.zip` can still be installed. P1-05 remains the check that the real release asset exists.
+- **Do:** Return a package only when the asset name matches the configured asset.
+- **Done when:** A release with one differently named zip is not offered as the package. A release whose asset is `wp-radius-seo.zip` still is.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-03 — License summary names the readme line incorrectly
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. `LICENSE.md` and `README.md` name `readme.txt` as `GPLv2 or later`.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** legal
+- **Evidence:** `radius.php` says `GPL-2.0-or-later`. `readme.txt` says `GPLv2 or later` (the WordPress readme wording for the same license). `LICENSE.md` says both files state `GPL-2.0-or-later`. `README.md` says the header and `readme.txt` match.
+- **Do:** In `LICENSE.md`, name both wordings. In `README.md`, stop saying the two strings are identical.
+- **Done when:** Neither file claims `readme.txt` contains the SPDX string `GPL-2.0-or-later`.
+- **Workflow:** Docs only. No version bump.
+
+### P2-04 — The license card calls the key-save time a purchase date
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. The current-license card no longer renders Purchase date. Expiration remains.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** finance
+- **Evidence:** `Radius_API_License::get_license_details_for_display()` labels `api_key_saved_at` as "Purchase date". If that value is missing, the card shows today's date (`includes/class-api-license.php`). Unlimited sites and no expiration stay as they are. The code does not cap sites or pages.
+- **Do:** Remove the Purchase date label and the date from the current-license card.
+- **Done when:** The license screen does not call a local save time, or today's date, a purchase.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-05 — The owner is not told what landing analytics reads
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. `SUPPORT.md` and the Landing analytics subtitle state that counts stay on this site, the visitor IP is a short-lived hash, and the user agent is read to ignore bots.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** privacy
+- **Evidence:** `Radius_Analytics` stores visit-day totals, a visit count, and a click count on the landing. It reads `REMOTE_ADDR` and the user agent on the public visit and click beacons. The IP is kept only as an MD5 in a short `radius_al_*` transient. The user agent is not saved. The beacon posts to this site. No privacy policy is required for this item.
+- **Do:** Add one sentence to `SUPPORT.md`, and the same fact under the Landing analytics subtitle in `includes/class-analytics.php`: counts stay on this site, the visitor IP is a short-lived rate-limit hash, and the user agent is read to ignore bots.
+- **Done when:** Both places say that, and they match the code.
+- **Workflow:** `workflows/bug-fix.md` for the admin string. No version bump if the only runtime edit is that subtitle; bump if the string ships in the plugin.
+
+### P2-06 — The logs screen says every log folder is unreachable from the web
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. The logs screen says the files stay on this server, the preferred folder is outside the document root, and an uploads fallback must be blocked by the host.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** privacy
+- **Evidence:** `includes/class-admin.php` (`render_operation_logs`) says the log path is "not web-accessible." `Radius_Operation_Log` prefers a folder outside the document root and otherwise uses `uploads/radius-seo-logs`, blocked by `.htaccess` and `web.config`. P0-04 stays done.
+- **Do:** Change that sentence so the files stay on this server, the preferred folder is outside the document root, and an uploads fallback must be blocked by the host.
+- **Done when:** The screen no longer says every log path is unreachable from the web.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-07 — Quick start still describes an older deploy
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. `README.md` and `readme.txt` quick starts start at License, then service areas, then Deploy & update all places. The location library tells a non-administrator to ask an administrator to upload the CSV.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** support
+- **Evidence:** `README.md` and `readme.txt` tell the owner to paste place term IDs. Deploy uses service areas and "Deploy & update all places". Neither quick start says an administrator must save a license key before the library, templates, or deploy unlock. CSV upload is `manage_options`. The library screen does not tell a non-administrator to ask an administrator.
+- **Do:** In both quick starts, add the license-lock step, replace the paste-IDs step with service areas plus Deploy & update all places, and say only an administrator can upload the CSV (coordinates required; skipped rows need Update existing). On the library screen for a non-administrator, say to ask a site administrator to upload the CSV.
+- **Done when:** An owner following the quick start is sent to License, then Service areas, then Deploy, and a non-administrator is not told they can upload the CSV.
+- **Workflow:** Docs plus the one admin string. Version bump only if the admin string ships.
+
+### P2-08 — Public copy names Elementor and omits Beaver Builder
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. The plugin header, both readmes, the settings card, the deploy help, and the classic-landings sentence name Beaver Builder next to Elementor.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** communications
+- **Evidence:** Beaver Builder already runs when `enable_beaver_builder` is on, the same gate as Elementor. The header in `radius.php`, the `readme.txt` short description and quick start, and `README.md` name only Elementor. Admin copy in `includes/class-admin.php` does the same in the Deploy help, the Settings card ("rotation, Elementor, and extra meta"), and "classic (non-Elementor) landings." The 1.6.75 changelog already records Beaver Builder. Do not add a version for the changelog.
+- **Do:** Name optional Beaver Builder next to Elementor in those sentences. The classic-landings sentence must exclude Beaver Builder pages too. Quick start step for builders: turn the matching Settings → Integrations checkbox on, save, then deploy.
+- **Done when:** A reader of the header, both readmes, and those three admin strings can see both builders are optional and off until enabled.
+- **Workflow:** `workflows/bug-fix.md` for the admin strings, then the department review.
+
+### P2-09 — The health-check error names developer filters
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. The HTML-not-JSON health message tells the owner to check the host error log or Radius → Logs, then try again.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** support
+- **Evidence:** `includes/class-admin.php` (`htmlNotJson`) tells the owner to lower `radius_health_redirect_scan_max_urls` or disable `radius_deploy_health_include_redirect_scan`.
+- **Do:** Remove that sentence. Keep the instruction to check the host error log or Radius → Logs, then try again.
+- **Done when:** That error does not mention those filter names.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-10 — Prove the 1.6.108 access checks on the local site
+
+- **Status:** done
+- **Evidence of close:** 2026-10-14 on http://127.0.0.1:8088, Apache/2.4.65 (Debian) in Docker. Logged-out template URL 404, no blueprint text. Logged-out `/wp-json/wp/v2/radius_template` 401, no blueprint text. Editor preview 200 and showed the blueprint marker. Author and Contributor: Deploy 403, places CSV import POST Forbidden, places CSV and template JSON downloads Forbidden, and those forms are absent on Location library. Administrator: Deploy 200 with the form, places CSV `text/csv`, template JSON `application/json`, and CSV import returned “0 new, 1 updated, 0 skipped.” Logged-out `process.log` and `error.log` under uploads returned 403 and not the log text. Temporary users were deleted.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** quality
+- **Evidence:** P0-02, P0-03, and P0-04 are done, and no live request was recorded for them. Quality did not run this list. Nothing is passed.
+- **Do:** On http://127.0.0.1:8088, with `docker compose up -d` and `docker compose down` after: logged-out template URL returns 404 without blueprint text; logged-out `/wp-json/wp/v2/radius_template` returns 401 without blueprint text; an editor preview still loads; a temporary Author and a temporary Contributor cannot deploy, import a places CSV, or download the place CSV or template JSON; an administrator still can; a logged-out fetch of `process.log` and `error.log` does not return log text. Delete the temporary users. Record the host as Apache in Docker.
+- **Done when:** Each step above is recorded here as pass or fail. Do not mark a step passed without running it. This does not reopen P0-02, P0-03, or P0-04 unless a step fails.
+- **Workflow:** `testing-patterns` skill.
+
+### P2-13 — Three dialogs never take focus or close on Escape
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. The migration wizard, spintax dialog, site-replacements dialog, and deploy help move focus in, keep Tab inside, close on Escape, and return focus. Variation and value labels are tied to their fields. A keyboard pass in the browser was not completed in this session.
+- **Decision:** Approved. No maintainer decision. From the interface meeting.
+- **Kind:** interface
+- **Evidence:** The migration overlay in `assets/js/radius-admin-migration-wizard.js` is `role="dialog"` and `aria-modal="true"`, and focus never moves in. Escape does not close it. The site-replacements dialog (`#radius-site-repl-modal` in `includes/class-admin.php`) and the spintax dialog (`#radius-spintax-modal` in `includes/class-template-metabox.php`, script `assets/js/radius-template-metabox.js`) are labeled, and they also skip focus and Escape. A backdrop click can close them and leave focus behind the overlay. Generated Value and Variation labels are not tied to their fields. Deploy help (`assets/js/radius-deploy-cards.js`) moves focus in, closes on Escape, and returns focus. It does not keep Tab inside the dialog.
+- **Do:** For all four dialogs: move focus to the first control on open, keep Tab inside the dialog, close on Escape, and return focus to the trigger. Tie each generated label to its field with `for` and `id`.
+- **Done when:** Keyboard only, a person can open each dialog, reach every control, close it with Escape, and land back on the button that opened it. Nothing behind the dialog is in the tab order while it is open.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-14 — The license lock stops the pointer and not the keyboard
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. While locked, dimmed settings panels are `inert` and dimmed tabs are removed from the tab order. Other locked Radius screens mark their content `inert`. The license gate is left active. A locked-screen keyboard pass was not run in this session.
+- **Decision:** Approved. No maintainer decision. From the interface meeting.
+- **Kind:** interface
+- **Evidence:** `Radius_API_License::admin_enqueue_lock()` dims locked screens with opacity and `pointer-events: none` (`includes/class-api-license.php`). A keyboard user can still reach Templates, Landings, Service areas, and the dimmed Settings tabs.
+- **Do:** Set `inert` on the locked content, leave the license notice and the license gate active, and mark dimmed tabs `aria-disabled="true"` with `tabindex="-1"`.
+- **Done when:** While the plugin is locked, Tab and a screen reader cannot operate a locked screen or a dimmed settings tab. The license gate still can.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-15 — Library, import, and service-area fields have no accessible name
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. Place checkboxes are named "Select {place name}". Both CSV file fields are labeled Places CSV. Service-area search, radius, and suggestion lists have names and `aria-expanded` / `aria-controls`.
+- **Decision:** Approved. No maintainer decision. From the interface meeting.
+- **Kind:** interface
+- **Evidence:** Location library row checkboxes (`.radius-place-cb` in `includes/class-admin.php`) have no name. Select-all does. Both `input[name="radius_csv"]` file fields (Location library and Import / export) have no `<label for>`. Service-area rows built in `assets/js/admin-place-search.js` use a placeholder as the only name on the search field, no name on the radius field, and a `role="listbox"` that is not named or tied to the search field.
+- **Do:** Name each row checkbox "Select {place name}". Label each file field "Places CSV". Label the search and radius inputs, and expose the suggestion list as a named listbox with `aria-expanded` and `aria-controls` on the search field.
+- **Done when:** A screen reader can tell which place a checkbox selects, what each CSV field uploads, and which suggestion belongs to which service-area search.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-16 — Deploy status text is not announced
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. Template and service-area deploy status lines use `role="status"` and `aria-live="polite"`.
+- **Decision:** Approved. No maintainer decision. From the interface meeting.
+- **Kind:** interface
+- **Evidence:** `assets/js/radius-deploy-cards.js` writes "Deploying…" and errors into `.radius-deploy-card__ajax-progress` (including `#radius-sa-deploy-ajax`). Those lines are not live regions (`includes/class-admin.php`).
+- **Do:** Add `role="status"` and `aria-live="polite"` on those progress lines.
+- **Done when:** A screen reader hears the deploy status and the error without the person moving focus to that line.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-17 — Analytics charts and tables are visual only
+
+- **Status:** done
+- **Evidence of close:** Implemented in 1.6.113. Each analytics chart has a screen-reader summary of the same numbers. The places and top-landings tables use `scope="col"`.
+- **Decision:** Approved. No maintainer decision. From the interface meeting.
+- **Kind:** interface
+- **Evidence:** `#lfa-chart-visits-over-time` in `includes/class-analytics.php` is a canvas with no accessible name and no text alternative. The same is true of the other analytics canvases on that screen. `#lfa-table-locations` and `#lfa-table-top-pages` use `<th>` without `scope`.
+- **Do:** Give each chart a text alternative (a table or a short summary of the same numbers). Set `scope="col"` on those header cells.
+- **Done when:** The visits series and the other charts can be read without seeing the drawing, and the table headers announce as column headers.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+## Waiting on the maintainer
+
+Do not start these until the maintainer chooses. They came from the same 2026-10-14 meeting.
+
+### P2-11 — The license screen offers a plan and a Purchase button that go nowhere
+
+- **Status:** open
+- **Decision:** Waiting on the maintainer. Finance said this is a commercial offer. Communications said to remove it because there is no checkout.
+- **Kind:** finance
+- **Evidence:** `includes/class-admin.php` shows "Need a new license or an additional plan? Choose an option below." The Purchase link is `href="#"` with `tabindex="-1"`. The default card repeats Unlimited sites, which the current-license card already shows. There is no price list.
+- **Choose one:** Remove that sentence and the Purchase cards. Or name a real offer and where the button should send the owner. Do not invent a price in the repo.
+- **Done when:** The screen matches the choice recorded here.
+
+### P2-12 — The license card lists priority email support the plugin does not grant
+
+- **Status:** open
+- **Decision:** Waiting on the maintainer. Finance and Communications both left this choice open.
+- **Kind:** finance
+- **Evidence:** Both license feature lists in `includes/class-admin.php` include "Priority email support." The plugin does not record a support entitlement. `SUPPORT.md` links commercial support to https://duppinstech.com/ and states no fee.
+- **Choose one:** Remove "Priority email support" from both lists. Or add a sentence to `SUPPORT.md` that the unlimited plan includes priority email at that URL, and keep the bullets.
+- **Done when:** The card and `SUPPORT.md` agree with the choice recorded here.
+
+### Already waiting, not new items
+
+- **P0-01.** Communications recommended removing "Validated" and the "could not be validated" notices, because any non-empty key unlocks the plugin. That is one of the two outcomes already in P0-01. It was not approved on its own.
+- **P1-08.** Deactivate and delete policy. Evidence corrected above. The choice is still open.
 
 ## Deferred on purpose
 

@@ -4,6 +4,10 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: Named-site proofs. Beeline Transport Inc. (`https://beelinetransportinc.com`, Radius 1.6.111) was read only. P1-05, P1-06, and P1-07 closed from that look. P1-02 and P1-04 closed with a local Docker deploy plus the Beeline phone and Elementor observations. P2-10 closed on http://127.0.0.1:8088 (Apache in Docker). Nothing on the live site was edited. Docker was stopped afterward.
+- 2026-10-14: Approved non-major plan items implemented in 1.6.113 on `feature/github-updater-standard`: P2-01 through P2-09 and P2-13 through P2-17. P2-11, P2-12, P0-01, and P1-08 are still open.
+- 2026-10-14: Interface department added and seated at every department review, separate from Support. First interface note: `.claude/memory/meetings/2026-10-14-1556.md`. Approved work is PLAN.md P2-13 through P2-17. No product code was changed.
+- 2026-10-14: First department meeting. Security, legal, finance, privacy, support, communications, and quality reported. Approved work is PLAN.md P2-01 through P2-10. P2-11 and P2-12 wait on the maintainer. Note: `.claude/memory/meetings/2026-10-14-1544.md`. No product code was changed.
 - 2026-10-14: GitHub updater standard v1.0.0 is on branch `feature/github-updater-standard` (1.6.112). The class is the reference copy renamed to `Radius_GitHub_Updater`. PHPUnit covers it (`composer test`). A GitHub Release was not published. Docker was not used to open Dashboard → Updates.
 - 2026-10-14: 1.6.111 deploy pair lock checked on the local Docker site. A retry updated the same landing, a planted duplicate was trashed, and two overlapping deploys left one published page. `duplicate_pages` passed.
 - 2026-10-14: Local proof is `docker compose up -d`, then `docker compose down` when the check ends. The stack is not left running.
@@ -17,6 +21,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ### Needs a decision from the maintainer
 
+- PLAN.md P2-11: remove the dead Purchase cards, or name a real offer. P2-12: remove "Priority email support," or state that the unlimited plan includes it. P0-01 and P1-08 are still open choices.
 - Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
 - Local WordPress is filled in `CLAUDE.local.md` (Docker at http://127.0.0.1:8088).
 - Whether places, deploy, and admin screens get a WordPress integration suite. The updater already has `composer test`.

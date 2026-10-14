@@ -691,7 +691,7 @@ class Radius_Analytics {
 		<div class="wrap radius-lfa-dashboard">
 			<header class="lfa-dash-header">
 				<h1 class="lfa-dash-title"><?php esc_html_e( 'Landing analytics', 'radius' ); ?></h1>
-				<p class="lfa-dash-subtitle"><?php esc_html_e( 'Traffic and outbound link engagement for published Radius landings.', 'radius' ); ?></p>
+				<p class="lfa-dash-subtitle"><?php esc_html_e( 'Traffic and outbound link engagement for published Radius landings. Counts stay on this site. The visitor IP is a short-lived rate-limit hash, and the user agent is read to ignore bots.', 'radius' ); ?></p>
 			</header>
 
 			<div id="lfa-summary-cards" class="lfa-summary-cards">
@@ -726,14 +726,16 @@ class Radius_Analytics {
 					<div class="lfa-card lfa-card-chart">
 						<h3 class="lfa-card-heading"><?php esc_html_e( 'Top places by visits', 'radius' ); ?></h3>
 						<div class="lfa-chart-wrap">
-							<canvas id="lfa-chart-locations-visits"></canvas>
+							<canvas id="lfa-chart-locations-visits" aria-hidden="true"></canvas>
 						</div>
+						<p class="screen-reader-text" id="lfa-chart-locations-visits-summary"></p>
 					</div>
 					<div class="lfa-card lfa-card-chart">
 						<h3 class="lfa-card-heading"><?php esc_html_e( 'Top places by clicks', 'radius' ); ?></h3>
 						<div class="lfa-chart-wrap">
-							<canvas id="lfa-chart-locations-clicks"></canvas>
+							<canvas id="lfa-chart-locations-clicks" aria-hidden="true"></canvas>
 						</div>
+						<p class="screen-reader-text" id="lfa-chart-locations-clicks-summary"></p>
 					</div>
 				</div>
 				<div class="lfa-card lfa-card-table">
@@ -742,12 +744,12 @@ class Radius_Analytics {
 						<table class="lfa-table" id="lfa-table-locations">
 							<thead>
 								<tr>
-									<th><?php esc_html_e( 'Place', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Region', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Landings', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Visits', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Clicks', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Rate %', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Place', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Region', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Landings', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Visits', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Clicks', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Rate %', 'radius' ); ?></th>
 								</tr>
 							</thead>
 							<tbody id="lfa-locations-tbody">
@@ -763,8 +765,9 @@ class Radius_Analytics {
 				<h2 class="lfa-section-title"><?php esc_html_e( 'Visits over time', 'radius' ); ?></h2>
 				<div class="lfa-card lfa-card-chart lfa-chart-wide">
 					<div class="lfa-chart-wrap">
-						<canvas id="lfa-chart-visits-over-time"></canvas>
+						<canvas id="lfa-chart-visits-over-time" aria-hidden="true"></canvas>
 					</div>
+					<p class="screen-reader-text" id="lfa-chart-visits-over-time-summary"></p>
 				</div>
 			</section>
 
@@ -775,10 +778,10 @@ class Radius_Analytics {
 						<table class="lfa-table" id="lfa-table-top-pages">
 							<thead>
 								<tr>
-									<th><?php esc_html_e( 'Landing', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Visits', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Clicks', 'radius' ); ?></th>
-									<th><?php esc_html_e( 'Rate %', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Landing', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Visits', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Clicks', 'radius' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Rate %', 'radius' ); ?></th>
 								</tr>
 							</thead>
 							<tbody id="lfa-top-pages-tbody">

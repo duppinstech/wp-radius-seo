@@ -43,12 +43,46 @@
 			} );
 		} );
 
+		function focusable(root) {
+			return Array.prototype.filter.call(
+				root.querySelectorAll(
+					'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled])'
+				),
+				function (node) {
+					return node.getClientRects().length > 0;
+				}
+			);
+		}
+
 		document.addEventListener( 'keydown', function ( e ) {
-			if ( e.key !== 'Escape' || ! isOpen() ) {
+			if ( e.key !== 'Escape' && e.key !== 'Tab' || ! isOpen() ) {
 				return;
 			}
-			e.preventDefault();
-			closeModal();
+			if ( e.key === 'Escape' ) {
+				e.preventDefault();
+				closeModal();
+				return;
+			}
+			var nodes = focusable( overlay );
+			if ( ! nodes.length ) {
+				e.preventDefault();
+				return;
+			}
+			var first = nodes[ 0 ];
+			var last = nodes[ nodes.length - 1 ];
+			var active = document.activeElement;
+			if ( ! overlay.contains( active ) ) {
+				e.preventDefault();
+				( e.shiftKey ? last : first ).focus();
+				return;
+			}
+			if ( e.shiftKey && active === first ) {
+				e.preventDefault();
+				last.focus();
+			} else if ( ! e.shiftKey && active === last ) {
+				e.preventDefault();
+				first.focus();
+			}
 		} );
 	}
 
