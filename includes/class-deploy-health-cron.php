@@ -89,15 +89,28 @@ final class Radius_Deploy_Health_Cron {
 	}
 
 	/**
+	 * Saved override address, or empty when the health email should use the site admin.
+	 *
 	 * @return string
 	 */
-	public static function get_email_recipient() {
-		$s = Radius_Settings::get();
-		$to  = isset( $s['deploy_health_cron_email_to'] ) ? sanitize_email( (string) $s['deploy_health_cron_email_to'] ) : '';
+	public static function get_override_recipient() {
+		$s  = Radius_Settings::get();
+		$to = isset( $s['deploy_health_cron_email_to'] ) ? sanitize_email( (string) $s['deploy_health_cron_email_to'] ) : '';
 		if ( $to !== '' && is_email( $to ) ) {
 			return $to;
 		}
-		return (string) get_option( 'admin_email' );
+		return '';
+	}
+
+	/**
+	 * @return string
+	 */
+	public static function get_email_recipient() {
+		$override = self::get_override_recipient();
+		if ( $override !== '' ) {
+			return $override;
+		}
+		return sanitize_email( (string) get_option( 'admin_email' ) );
 	}
 
 	/**
@@ -158,7 +171,34 @@ final class Radius_Deploy_Health_Cron {
 			$counts['fail'],
 			$counts['warn']
 		);
-		wp_mail( $to, $subject, $body );
+		$replace_admin = self::get_override_recipient() !== '';
+		if ( $replace_admin ) {
+			add_action( 'phpmailer_init', array( __CLASS__, 'keep_only_override_recipient' ), PHP_INT_MAX );
+		}
+		try {
+			wp_mail( $to, $subject, $body );
+		} finally {
+			if ( $replace_admin ) {
+				remove_action( 'phpmailer_init', array( __CLASS__, 'keep_only_override_recipient' ), PHP_INT_MAX );
+			}
+		}
+	}
+
+	/**
+	 * When an override address is saved, drop every other recipient added to this message.
+	 *
+	 * Runs last so a host or mail plugin cannot keep the site admin on To, Cc, or Bcc.
+	 *
+	 * @param object $phpmailer PHPMailer instance.
+	 * @return void
+	 */
+	public static function keep_only_override_recipient( $phpmailer ) {
+		$only = self::get_override_recipient();
+		if ( $only === '' || ! is_object( $phpmailer ) || ! method_exists( $phpmailer, 'clearAllRecipients' ) ) {
+			return;
+		}
+		$phpmailer->clearAllRecipients();
+		$phpmailer->addAddress( $only );
 	}
 
 	/**
@@ -236,7 +276,10 @@ final class Radius_Deploy_Health_Cron {
 					),
 					array_merge(
 						Radius_Operation_Log::request_context(),
-						array( 'source' => 'cron' )
+						array(
+							'source'   => 'cron',
+							'email_to' => self::is_email_enabled() ? self::get_email_recipient() : '',
+						)
 					)
 				);
 			}
