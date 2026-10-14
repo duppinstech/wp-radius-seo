@@ -54,7 +54,7 @@ User-facing plugin changes get a patch bump for a small fix (`1.6.x`), a minor b
 git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD
 ```
 
-Sites using `Radius_GitHub_Updater` only see an update when the latest release has a newer tag and a `.zip` asset. There is no PHPUnit suite yet. Verify in wp-admin and on the front end, and say what you could not run.
+Sites using `Radius_GitHub_Updater` only see an update when the latest release has a newer tag and a `.zip` asset. There is no PHPUnit suite yet. Before committing a runtime change, start the local stack with `docker compose up -d`, prove the change at http://127.0.0.1:8088, then `docker compose down`. Do not leave those containers running. Say what you could not run.
 
 ## Safety
 

@@ -13,8 +13,9 @@ Write one sentence: the wrong behavior, where it shows up, and what correct look
 3. Change the smallest span that makes the correct behavior true. No drive-by refactor.
 4. If the fix touches auth, SQL, import, or rendered output, delegate `@security-reviewer`.
 5. Load the `testing-patterns` skill. The checklist must include the case that failed and one adjacent case (re-deploy, second place, flag off).
-6. Note the fix and any unrun check in `.claude/memory/progress.md`.
-7. Ship user-facing plugin code with a patch bump (`1.6.x`) unless the fix changes behavior enough to justify a minor version. Use `/deploy release`.
+6. Before a commit that can change runtime behavior, prove it on the local Docker site, then stop the containers. From the repo root: `docker compose up -d`, run the checklist against http://127.0.0.1:8088, then `docker compose down`. `down` keeps the database volume, so the next start is not a reinstall. Use `docker compose down -v` only when the local site should be thrown away. Do not leave the stack running after the check. If the volume is empty, install WordPress and activate `wp-radius-seo/radius.php` as in `CLAUDE.local.md.example`.
+7. Note the fix and any unrun check in `.claude/memory/progress.md`.
+8. Ship user-facing plugin code with a patch bump (`1.6.x`) unless the fix changes behavior enough to justify a minor version. Use `/deploy release`. Agent docs and `docker-compose.yml` do not get a version bump.
 
 ## Done when
 

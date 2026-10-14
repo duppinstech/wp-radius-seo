@@ -4,7 +4,8 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
-- 2026-10-14: 1.6.110 analytics writes, rotation batch continuation, and system checks for object cache and WP-Cron. Click-through not run (`CLAUDE.local.md` has no site path).
+- 2026-10-14: Local proof is `docker compose up -d`, then `docker compose down` when the check ends. The stack is not left running.
+- 2026-10-14: 1.6.110 analytics, rotation batching, and system rows checked on the local Docker site at http://127.0.0.1:8088.
 - 2026-10-14: Ownership recorded in `OWNERSHIP.md` and `CLAUDE.md`. Radius SEO is a Duppins Technology product. WhiteRail is the beta client and does not own the source.
 - 2026-10-14: `PLAN.md` P0-02, P0-03, and P0-04 implemented in 1.6.108. Staging proof is still open. P0-01 is still open.
 - 2026-10-14: Claude SDLC scaffold added from the project-structure map. Session contract (`CLAUDE.md`), roster (`AGENTS.md`), path-scoped rules, slash commands, skills, subagents, hooks, team memory, and workflows. Personal overrides are gitignored. These files are `export-ignore` and are not in the plugin ZIP.
@@ -15,14 +16,12 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 ### Needs a decision from the maintainer
 
 - Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
-- Local WordPress path, site URL, and PHP binary in `CLAUDE.local.md`. Until those are filled in, agents cannot run wp-admin or front-end checks.
+- Local WordPress is filled in `CLAUDE.local.md` (Docker at http://127.0.0.1:8088).
 - Whether the next engineering investment is a PHPUnit + WordPress test suite under `tests/`. None exists today.
 
 ### Outstanding checks
 
-- Open a published landing while logged out. The page should not load jQuery for Radius. Repeat the view within 30 minutes and confirm the visit counter does not climb on each refresh. The analytics screen should still show a daily total.
-- With content rotation on and more landings than the batch size, confirm a second batch is scheduled about two minutes after the first, and that one request does not rewrite the whole library.
-- Deploy → System shows object cache and WP-Cron rows.
+- 2026-10-14 local Docker site `http://127.0.0.1:8088`: landing `radius-local-a` loaded `radius-frontend-analytics.js` and did not load jQuery. One visit was stored (`radius_landing_visit_count` = 1, day `2026-10-14` = 1). A second beacon and a browser reload in the same half hour left the count at 1. A `curl` user agent did not add a visit. Analytics showed 1 visit. Rotation with batch size 1 and three landings advanced the offset by 1 and scheduled the next run 120 seconds out, then the test hook was cleared and the batch size restored to 25. Deploy → System shows Persistent object cache Off and WP-Cron Visitor-triggered. The readiness score on this container is 54% because `max_execution_time` is short and there is no Redis.
 
 ### Engineering gaps
 

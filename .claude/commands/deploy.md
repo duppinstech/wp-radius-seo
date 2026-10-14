@@ -11,7 +11,7 @@ Decide which deploy the argument means.
 
 This is a maintainer release of the plugin, not a landing-page batch.
 
-1. Confirm the diff is the intended user-facing change and the working tree is clean except the version bump.
+1. Confirm the diff is the intended user-facing change and the working tree is clean except the version bump. A runtime change must already have been proven with `docker compose up -d` and the stack stopped with `docker compose down`.
 2. Choose the bump: patch `1.6.x` for a small fix, minor `1.7.0` for a larger behavior change, major `2.0.0` only for a breaking change.
 3. Set the `Version` header and `RADIUS_VERSION` in `radius.php` to the same value. Set `readme.txt` Stable tag and add a changelog entry.
 4. Commit on `main`, push `origin main`, and create an annotated tag `vX.Y.Z` that matches the plugin version.

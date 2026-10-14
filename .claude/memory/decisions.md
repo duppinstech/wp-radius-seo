@@ -38,6 +38,10 @@ Elementor JSON is copied only when `enable_elementor` is on. Beaver Builder `_fl
 
 There is no PHPUnit suite. Behavior changes are verified in wp-admin and on the front end. A future `tests/` directory needs an explicit decision recorded here and a command added to `.claude/rules/testing-standard.md`.
 
+## 2026-10-14 — Local WordPress is a Docker stack that is not left running
+
+Proof runs against `docker compose up -d` in this repo (http://127.0.0.1:8088). WordPress core and the database stay in Docker volumes, not in git. `docker-compose.yml` is `export-ignore`. After the check, `docker compose down` stops the containers and keeps the volume. Do not leave the stack running between tasks.
+
 ## 2026-10-14 — Deploy and library export are administrator actions
 
 Deploy, deploy cancel, place CSV import, place CSV export, and template JSON export require `manage_options`. Editors can still edit individual templates and landings. Recorded while closing `PLAN.md` P0-03.

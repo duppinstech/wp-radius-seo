@@ -11,3 +11,4 @@ AGENTS.md export-ignore
 .mcp.json export-ignore
 INTENT.md export-ignore
 PLAN.md export-ignore
+docker-compose.yml export-ignore

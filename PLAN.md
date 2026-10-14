@@ -9,7 +9,7 @@ Take the items in order. Finish or explicitly defer a blocker before starting th
 1. Read `INTENT.md` and this item.
 2. Follow `workflows/bug-fix.md` for a fix, or `workflows/feature-build.md` if the item adds behavior.
 3. Security items go through `@security-reviewer` before they are called done.
-4. Prove the change with the `testing-patterns` skill. A local site path belongs in `CLAUDE.local.md`. If that path is empty, the item stays open.
+4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. A customer site is still unnamed until the maintainer names it.
 5. Record the result on the item. Update `.claude/memory/progress.md` only with the milestone, not a second copy of this list.
 
 Status values: `open`, `deferred` (maintainer accepted the current behavior), `done`.
@@ -17,8 +17,8 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 ## Before a live click-through
 
 - **Status:** open
-- **Do:** Fill `CLAUDE.local.md` with the staging WordPress path, site URL, and PHP binary when an item must be clicked on a site. Do not run deploy, purge, or remediation against an unnamed live site.
-- **Not a blocker for shipped code.** P0-02, P0-03, and P0-04 are done in 1.6.108. They do not wait on a maintainer decision. A staging path is only for a later click-through.
+- **Do:** Use the repo `docker-compose.yml` for local proof. Start it for the check and stop it with `docker compose down` when the check ends. Do not run deploy, purge, or remediation against an unnamed customer site.
+- **Not a blocker for shipped code.** Local Docker is the click-through site. P0-01 stays open until the license-server choices are settled. It does not block the next local proof.
 
 ## Blockers
 

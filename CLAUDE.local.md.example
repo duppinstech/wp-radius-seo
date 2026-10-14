@@ -4,6 +4,8 @@ Gitignored. Stacks on top of `CLAUDE.md` and never replaces it. Copy this file t
 
 ## Local WordPress
 
+`docker compose up -d` from the repo root. WordPress core and the database stay in Docker volumes. This repo is mounted at `wp-content/plugins/wp-radius-seo`. The site listens on http://127.0.0.1:8088 . Fill the lines below for this machine. Do not commit passwords.
+
 - Site path:
 - Site URL:
 - PHP binary:

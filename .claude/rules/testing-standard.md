@@ -11,7 +11,9 @@ This repository has no PHPUnit, Pest, or wp-env suite. `tools/verify-gutenberg-p
 
 ## When behavior changes
 
-Verify the path you changed, on a local site if `CLAUDE.local.md` has one:
+Prove a runtime change on the local Docker site before committing it. From the repo root run `docker compose up -d`, exercise the changed path at http://127.0.0.1:8088, then `docker compose down`. That stops Apache and MariaDB and keeps the database volume for the next run. Do not leave the stack running, and do not put WordPress core in this repo. Details and the admin login live in `CLAUDE.local.md`.
+
+Verify the path you changed:
 
 - **Places:** CSV import, search, dedupe, and term meta (`radius_lat`, `radius_lng`, `radius_country`, and the other `Radius_Data_Registry` term keys).
 - **Templates:** Tokens in title and body (`{{token}}`, `[token]`), spintax `{a|b|c}`, and site replacers. Confirm an explicit empty `site_replacements` array still falls back to `_radius_xfields`.
