@@ -127,7 +127,7 @@ Status values: `open`, `deferred` (maintainer accepted the current behavior), `d
 
 - **Status:** open
 - **Kind:** production
-- **Evidence:** `Radius_GitHub_Updater` installs only a `.zip` asset from `github.com`, `objects.githubusercontent.com`, or `codeload.github.com`. It does not verify a signature. Sites see an update only when the latest release tag is newer and the ZIP is attached. Current plugin version is `RADIUS_VERSION` in `radius.php`.
+- **Evidence:** `Radius_GitHub_Updater` (standard v1.0.0) installs only `https://github.com/duppinstech/wp-radius-seo/releases/download/<tag>/wp-radius-seo.zip`. It does not verify a signature. Sites see an update only when the latest release tag is newer and that asset is attached. Current plugin version is `RADIUS_VERSION` in `radius.php`.
 - **Do:** Confirm the GitHub release for the version being deployed has `wp-radius-seo.zip`, the archive root is `wp-radius-seo/radius.php`, and a staging site on the previous version is offered that update. Do not add a second download host.
 - **Done when:** Staging “Check again” shows the intended version, or this item records the exact tag and asset name that production should run.
 - **Workflow:** `/deploy release` only when the code changes in the items above are ready to ship. This item itself is a check, not a version bump.

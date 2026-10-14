@@ -1,0 +1,68 @@
+# Builds a WordPress-ready ZIP: extracting yields wp-content/plugins/wp-radius-seo/
+# (single top-level folder named wp-radius-seo — no version suffix).
+#
+# Keep the exclusion list in bin/build-zip.sh in sync when adding development-only files or directories.
+
+name: Release ZIP
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  attach-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify tag matches plugin version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          header=$(sed -n 's/^ \* Version:[[:space:]]*//p' radius.php | tr -d '\r')
+          constant=$(sed -n "s/^define( 'RADIUS_VERSION', '\(.*\)' );/\1/p" radius.php | tr -d '\r')
+          stable=$(sed -n 's/^Stable tag:[[:space:]]*//p' readme.txt | tr -d '\r')
+          echo "tag=$tag header=$header constant=$constant stable=$stable"
+          if [ "$tag" != "$header" ] || [ "$tag" != "$constant" ] || [ "$tag" != "$stable" ]; then
+            echo "::error::Tag v$tag does not match plugin header / RADIUS_VERSION / readme Stable tag."
+            exit 1
+          fi
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Lint and test before packaging
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          composer lint
+          composer test
+
+      - name: Create wp-radius-seo.zip
+        run: bash bin/build-zip.sh
+
+      # The updater reads these lines so WordPress checks this release's own requirements before updating.
+      - name: Write release requirements
+        run: |
+          set -euo pipefail
+          requires=$(sed -n 's/^ \* Requires at least:[[:space:]]*//p' radius.php | tr -d '\r')
+          requires_php=$(sed -n 's/^ \* Requires PHP:[[:space:]]*//p' radius.php | tr -d '\r')
+          tested=$(sed -n 's/^Tested up to:[[:space:]]*//p' readme.txt | tr -d '\r')
+          printf '## Requirements\n\n- Requires at least: %s\n- Requires PHP: %s\n- Tested up to: %s\n\n' \
+            "$requires" "$requires_php" "$tested" > release-requirements.md
+          cat release-requirements.md
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wp-radius-seo.zip
+          body_path: release-requirements.md
+          generate_release_notes: true

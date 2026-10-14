@@ -7,7 +7,7 @@ paths:
 
 # Testing standard
 
-This repository has no PHPUnit, Pest, or wp-env suite. `tools/verify-gutenberg-phone-links.php` and `tools/remediate-broken-phone-links.php` are maintenance scripts, not a test runner. Do not claim a test passed unless you ran it.
+The GitHub updater has PHPUnit 9 tests: `composer install`, then `composer test` (or `vendor/bin/phpunit`). `composer lint` runs `php -l` via `bin/lint.php`. Those tests use the doubles in `tests/bootstrap.php` and do not boot WordPress. `tools/verify-gutenberg-phone-links.php` and `tools/remediate-broken-phone-links.php` are maintenance scripts, not a test runner. Do not claim a test passed unless you ran it.
 
 ## When behavior changes
 
@@ -24,7 +24,7 @@ Verify the path you changed:
 
 ## When the user asks for automated tests
 
-Add them under `tests/` with PHPUnit and the WordPress test suite, document the command in this file, and keep fixtures free of customer data. Until that harness exists, the deliverable is a manual checklist and an honest gap.
+Updater coverage lives in `tests/GitHubUpdaterTest.php`. Other automated tests, if added, go under `tests/` and get a command in this file. Keep fixtures free of customer data. Until a WordPress integration suite exists, places, deploy, and admin screens stay a manual checklist plus an honest gap.
 
 ## Hooks
 

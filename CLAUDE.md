@@ -42,19 +42,15 @@ Read these before planning or editing, then update `progress.md` when a mileston
 ## SDLC
 
 - Follow `workflows/feature-build.md`, `workflows/bug-fix.md`, or `workflows/code-review.md` for that kind of task.
-- Read `AGENTS.md` before delegating. Do not give two agents write access to the same files.
+- Read `AGENTS.md` before delegating. After the developer pass, run `workflows/department-review.md` (security, legal, finance, privacy, support, communications, and quality). Do not give two agents write access to the same files.
 - Hooks in `.claude/settings.json` block secret writes and destructive git, then syntax-check PHP after edits. Exit 0 allows. Exit 2 blocks.
 - Slash commands: `/review`, `/deploy`, `/scaffold`. Skills `code-review`, `testing-patterns`, and `pr-description` load when the task matches their description.
 
 ## Ship
 
-User-facing plugin changes get a patch bump for a small fix (`1.6.x`), a minor bump for a larger behavior change (`1.7.0`), and a major bump only for a breaking change (`2.0.0`). Bump the header and `RADIUS_VERSION` together, plus `readme.txt` Stable tag and changelog. Push `main`, tag `vX.Y.Z`, and publish a GitHub Release whose asset is:
+User-facing plugin changes get a patch bump for a small fix (`1.6.x`), a minor bump for a larger behavior change (`1.7.0`), and a major bump only for a breaking change (`2.0.0`). Bump the header and `RADIUS_VERSION` together, plus `readme.txt` Stable tag and changelog. Push `main`, tag `vX.Y.Z`, and let `.github/workflows/release.yml` attach `wp-radius-seo.zip` from `bin/build-zip.sh`.
 
-```bash
-git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD
-```
-
-Sites using `Radius_GitHub_Updater` only see an update when the latest release has a newer tag and a `.zip` asset. There is no PHPUnit suite yet. Before committing a runtime change, start the local stack with `docker compose up -d`, prove the change at http://127.0.0.1:8088, then `docker compose down`. Do not leave those containers running. Say what you could not run.
+Sites using `Radius_GitHub_Updater` (standard v1.0.0) see an update when the latest release on `duppinstech/wp-radius-seo` is newer and includes `wp-radius-seo.zip`. Updater tests run with `composer test`. Before committing a runtime change, start the local stack with `docker compose up -d`, prove the change at http://127.0.0.1:8088, then `docker compose down`. Do not leave those containers running. Say what you could not run.
 
 ## Safety
 

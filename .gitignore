@@ -38,6 +38,7 @@ wp-config-local.php
 /magic-page/
 
 # Archives / temp
+/build/
 *.zip
 *.tar.gz
 

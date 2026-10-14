@@ -3,7 +3,7 @@ paths:
   - "includes/class-ajax.php"
   - "includes/class-form-handlers.php"
   - "includes/class-api-license.php"
-  - "includes/class-github-updater.php"
+  - "includes/class-radius-github-updater.php"
   - "includes/class-csv-place-importer.php"
   - "includes/class-legacy-import-service.php"
   - "includes/class-deploy-service.php"

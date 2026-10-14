@@ -57,6 +57,11 @@ final class Radius_Data_Registry {
 	public const OPTION_DEPLOY_PAIR_LOCK_PREFIX = 'radius_dlock_';
 
 	/**
+	 * Network option written by Radius_GitHub_Updater. The class builds this same name from prefix "radius".
+	 */
+	public const OPTION_GITHUB_RELEASE = 'radius_github_release';
+
+	/**
 	 * Post meta keys: OLD (lf_ era) => NEW (canonical). Used only by Radius_Prefix_Migration.
 	 *
 	 * @return array<string,string>

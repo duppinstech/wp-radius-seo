@@ -30,15 +30,11 @@ Participation is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). Be respe
 
 - **Patch** (e.g. `1.6.x`): small fixes, incremental UI tweaks.
 - **Minor** (e.g. `1.7.0`): larger features or meaningful behavior changes.
-- Bump **`Version`** and **`RADIUS_VERSION`** in `radius.php`, **`Stable tag`** + changelog in **`readme.txt`**, push `main`, then **[publish a GitHub Release](https://github.com/oduppinsjr/wp-radius-seo/releases/new)** with tag `vX.Y.Z` and attach **`wp-radius-seo.zip`** built with:
+- Bump **`Version`** and **`RADIUS_VERSION`** in `radius.php`, **`Stable tag`** + changelog in **`readme.txt`**, push `main`, then push tag `vX.Y.Z`. [The release workflow](https://github.com/duppinstech/wp-radius-seo/actions) fails unless that tag matches the header, `RADIUS_VERSION`, and `readme.txt` Stable tag. It runs lint and tests, then attaches **`wp-radius-seo.zip`** built by `bash bin/build-zip.sh` (one top-level folder `wp-radius-seo/`).
 
-  ```bash
-  git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD
-  ```
+  To inspect the ZIP locally: `bash bin/build-zip.sh`. It packs tracked files and omits development paths (`.github/`, `.claude/`, `.cursor/`, `tests/`, `bin/`, `docs/`, `tools/`, `workflows/`, agent docs, and Composer / PHPUnit config).
 
-  `.gitattributes` marks `.cursor/**` and `.github/**` with `export-ignore`, so they are **not** included in that archive. The same applies to GitHub’s **Code → Download ZIP** for refs that contain this file.
-
-  **Older releases:** Tags created **before** `.gitattributes` shipped still point at commits without `export-ignore`, so their auto-generated source archives may still list those folders. To **replace** an attached `wp-radius-seo.zip` on a past release: check out that tag, export to a temp dir, delete `.cursor` and `.github`, then zip the plugin folder (or rebuild from `main` only if the plugin code matches). GitHub does not allow rewriting auto-generated “Source code” zips for existing tags without changing history.
+  **Older releases:** ZIPs built before this pipeline can still contain `.github/`, `.claude/`, `workflows/`, and `tools/`. GitHub does not rewrite an existing release asset unless you upload a replacement.
 
   Without a release ZIP, sites using the GitHub updater will not see updates under **Dashboard → Updates**.
 
@@ -48,4 +44,4 @@ Optional `.mo` / `.po` files can live under `languages/`. String changes should 
 
 ## Questions
 
-Open a [discussion-style issue](https://github.com/oduppinsjr/wp-radius-seo/issues) or refer to [`README.md`](README.md) and [`readme.txt`](readme.txt).
+Open a [discussion-style issue](https://github.com/duppinstech/wp-radius-seo/issues) or refer to [`README.md`](README.md) and [`readme.txt`](readme.txt).

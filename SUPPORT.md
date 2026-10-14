@@ -8,9 +8,9 @@
 
 ## Getting help
 
-1. **Search [existing issues](https://github.com/oduppinsjr/wp-radius-seo/issues)** — your question may already be answered.  
+1. **Search [existing issues](https://github.com/duppinstech/wp-radius-seo/issues)** — your question may already be answered.  
 2. **Open an issue** — use the templates when possible (bug vs feature). Include WordPress version, PHP version, and Radius SEO version.  
-3. **Updates** — ensure you are on a current release from [GitHub Releases](https://github.com/oduppinsjr/wp-radius-seo/releases); many reports are resolved by upgrading.
+3. **Updates** — ensure you are on a current release from [GitHub Releases](https://github.com/duppinstech/wp-radius-seo/releases); many reports are resolved by upgrading.
 
 ## Security
 

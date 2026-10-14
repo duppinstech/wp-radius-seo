@@ -15,13 +15,7 @@ This is a maintainer release of the plugin, not a landing-page batch.
 2. Choose the bump: patch `1.6.x` for a small fix, minor `1.7.0` for a larger behavior change, major `2.0.0` only for a breaking change.
 3. Set the `Version` header and `RADIUS_VERSION` in `radius.php` to the same value. Set `readme.txt` Stable tag and add a changelog entry.
 4. Commit on `main`, push `origin main`, and create an annotated tag `vX.Y.Z` that matches the plugin version.
-5. Build the ZIP from the tag so the archive root is `wp-radius-seo/`:
-
-```bash
-git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD
-```
-
-6. `gh release create vX.Y.Z ./wp-radius-seo.zip --title "Radius SEO X.Y.Z" --notes "..."`.
+5. Push the tag. `.github/workflows/release.yml` builds `wp-radius-seo.zip` with `bin/build-zip.sh` (one top-level folder `wp-radius-seo/`) and attaches it to the GitHub Release. Do not attach a `git archive` ZIP; that archive has shipped development folders.
 
 Do this only when the user wants the change shipped. Never force-push. Never rewrite a published tag. Agent docs are `export-ignore` and must not be required by the plugin.
 

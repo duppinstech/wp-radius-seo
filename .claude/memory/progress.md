@@ -4,6 +4,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: GitHub updater standard v1.0.0 is on branch `feature/github-updater-standard` (1.6.112). The class is the reference copy renamed to `Radius_GitHub_Updater`. PHPUnit covers it (`composer test`). A GitHub Release was not published. Docker was not used to open Dashboard → Updates.
 - 2026-10-14: 1.6.111 deploy pair lock checked on the local Docker site. A retry updated the same landing, a planted duplicate was trashed, and two overlapping deploys left one published page. `duplicate_pages` passed.
 - 2026-10-14: Local proof is `docker compose up -d`, then `docker compose down` when the check ends. The stack is not left running.
 - 2026-10-14: 1.6.110 analytics, rotation batching, and system rows checked on the local Docker site at http://127.0.0.1:8088.
@@ -18,7 +19,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 - Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
 - Local WordPress is filled in `CLAUDE.local.md` (Docker at http://127.0.0.1:8088).
-- Whether the next engineering investment is a PHPUnit + WordPress test suite under `tests/`. None exists today.
+- Whether places, deploy, and admin screens get a WordPress integration suite. The updater already has `composer test`.
 
 ### Outstanding checks
 
@@ -26,7 +27,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ### Engineering gaps
 
-- No automated test harness. Verification is the manual checklist in `.claude/rules/testing-standard.md`.
+- Updater unit tests exist (`composer test`). Places, deploy, and admin screens still use the manual checklist in `.claude/rules/testing-standard.md`.
 - `phpcbf` and the WordPress PHPCS standard are not vendored. `post-edit-format.sh` no-ops until `phpcbf` is on `PATH` or at `vendor/bin/phpcbf`.
 - Hooks are bash scripts. They need Git Bash, WSL, or another `bash` on Windows. `validate-code.sh` and the strict path of `block-sensitive-writes.sh` need `php` on `PATH`.
 - Product backlog: the PHP tree has no `TODO` or `FIXME` markers. Outstanding product work is whatever the maintainer adds below this line.
