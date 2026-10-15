@@ -131,10 +131,6 @@ final class Radius_Admin_Maintenance {
 		flush_rewrite_rules( true );
 		delete_option( Radius_Data_Registry::OPTION_NEEDS_REWRITE_FLUSH );
 
-		if ( class_exists( 'Radius_GitHub_Updater' ) ) {
-			Radius_GitHub_Updater::bust_release_cache();
-		}
-
 		/**
 		 * Whether to call wp_cache_flush() during maintenance apply (affects the whole object cache).
 		 *
@@ -149,7 +145,7 @@ final class Radius_Admin_Maintenance {
 		delete_transient( 'radius_prefix_migration_notice' );
 
 		/**
-		 * After maintenance actions (rewrites, updater cache, optional object cache).
+		 * After maintenance actions (rewrites and optional object cache).
 		 */
 		do_action( 'radius_maintenance_applied' );
 

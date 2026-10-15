@@ -3,7 +3,7 @@
 Blueprint-first local SEO for WordPress: templates, CSV-backed place library, batch deploy, tokens, spintax, Markdown slots, and optional Elementor support.
 
 **Product of:** [Duppins Technology](https://duppinstech.com/)  
-**Plugin URI:** [github.com/oduppinsjr/wp-radius-seo](https://github.com/oduppinsjr/wp-radius-seo)  
+**Plugin URI:** [github.com/duppinstech/wp-radius-seo](https://github.com/duppinstech/wp-radius-seo)  
 **Requires:** WordPress 6.0+, PHP 7.4+  
 **Current version:** see `radius.php` header or `readme.txt` stable tag.
 
@@ -11,7 +11,7 @@ Blueprint-first local SEO for WordPress: templates, CSV-backed place library, ba
 
 ## Install
 
-1. Download a release ZIP from [Releases](https://github.com/oduppinsjr/wp-radius-seo/releases) (ZIP root must be a single folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`).
+1. Download a release ZIP from [Releases](https://github.com/duppinstech/wp-radius-seo/releases) (ZIP root must be a single folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`).
 2. In wp-admin: **Plugins → Add New → Upload Plugin**, choose the ZIP, install, and activate.
 
 Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder name; the main file remains `radius.php` in that folder).
@@ -31,9 +31,9 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 Installed sites poll **GitHub Releases** (latest release must include a `.zip` asset). When your installed version is older than the release tag, **Dashboard → Updates** offers a one-click upgrade.
 
-You can still upload a newer ZIP manually or use [Git Updater](https://git-updater.com/) if you prefer. Filters: `radius_github_updater_enabled`, `radius_github_updater_repo`.
+You can still upload a newer ZIP manually. Turn checks off with `define( 'RADIUS_DISABLE_GITHUB_UPDATER', true );`. Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 
-**Maintainers — shipping a version:** merge your changes, bump `Version` / `RADIUS_VERSION` and `readme.txt` (stable tag + changelog), push `main`, then **[publish a GitHub Release](https://github.com/oduppinsjr/wp-radius-seo/releases/new)** with tag `vX.Y.Z` matching the plugin version and attach `wp-radius-seo.zip` built with `git archive --format=zip --prefix=wp-radius-seo/ -o wp-radius-seo.zip HEAD`. Without a release + ZIP asset, installed sites will not see the update in **Dashboard → Updates**.
+**Maintainers — shipping a version:** merge your changes, bump `Version` / `RADIUS_VERSION` and `readme.txt` (stable tag + changelog), push `main`, then push a tag `vX.Y.Z` that matches that version. `.github/workflows/release.yml` checks the tag, runs lint and tests, and attaches `wp-radius-seo.zip` from `bash bin/build-zip.sh`. Without that release asset, installed sites will not see the update in **Dashboard → Updates**.
 
 WordPress.org–style metadata and hooks are documented in **`readme.txt`** (used for directory submissions and translators).
 
@@ -67,4 +67,4 @@ WordPress.org–style metadata and hooks are documented in **`readme.txt`** (use
 | [`SUPPORT.md`](SUPPORT.md) | Where to get help, documentation pointers |
 | [`CHANGELOG.md`](CHANGELOG.md) | Points to `readme.txt` + GitHub Releases (single changelog source) |
 
-**Issues & PRs:** [github.com/oduppinsjr/wp-radius-seo](https://github.com/oduppinsjr/wp-radius-seo). Use the issue templates under **.github/ISSUE_TEMPLATE/** when reporting bugs or requesting features.
+**Issues & PRs:** [github.com/duppinstech/wp-radius-seo](https://github.com/duppinstech/wp-radius-seo). Use the issue templates under **.github/ISSUE_TEMPLATE/** when reporting bugs or requesting features.

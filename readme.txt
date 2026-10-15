@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.111
+Stable tag: 1.6.112
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -20,11 +20,11 @@ Copyright: Duppins Technology (https://duppinstech.com).
 
 == Updates ==
 
-The plugin checks [GitHub Releases](https://github.com/oduppinsjr/wp-radius-seo/releases/latest) for a newer version and shows an update under **Dashboard → Updates** when the latest release includes a `.zip` asset (built with a single top-level folder containing `radius.php`, e.g. `wp-radius-seo/radius.php`). Use **Dashboard → Updates → Check again** (or your host’s cron) so WordPress refetches; 1.6.2+ clears the plugin’s GitHub cache when WordPress refreshes plugin updates. You can still upload a ZIP manually via **Plugins → Add New → Upload Plugin**.
+The plugin checks [GitHub Releases](https://github.com/duppinstech/wp-radius-seo/releases/latest) for a newer version and shows an update under **Dashboard → Updates** when the latest release includes `wp-radius-seo.zip` (one top-level folder `wp-radius-seo/` containing `radius.php`). Use **Dashboard → Updates → Check again** so WordPress asks again. You can still upload a ZIP manually via **Plugins → Add New → Upload Plugin**.
 
-Disable GitHub checks: `add_filter( 'radius_github_updater_enabled', '__return_false' );`
+Turn checks off in `wp-config.php`: `define( 'RADIUS_DISABLE_GITHUB_UPDATER', true );`
 
-Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'owner/wp-radius-seo' );`
+Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 
 == Hooks ==
 
@@ -34,9 +34,10 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
 * `radius_legacy_import_places_use_term_id_cursor` — return false to use SQL `OFFSET` for legacy place batches instead of `term_id` cursor pagination (default true; cursor avoids slow deep offsets).
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
-* `radius_github_updater_cache_ttl` — seconds to cache GitHub Releases API JSON (default 3600).
+* `radius_github_updater_config` — adjust updater owner, repo, token, and check intervals. Do not ship a token in the plugin.
+* `radius_github_release_http_args` — adjust the GitHub latest-release request arguments.
 * `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
-* `radius_maintenance_applied` — action after maintenance apply finishes (rewrites, updater cache bust, optional object cache).
+* `radius_maintenance_applied` — action after maintenance apply finishes (rewrites and optional object cache).
 * `radius_admin_maintenance_show_notice` — return false to hide the admin maintenance banner when it would otherwise show.
 * `radius_token_engine_after_strip_unresolved` — filter HTML/text after removing unresolved `{{token}}` placeholders.
 * `radius_token_engine_collapse_empty_paragraphs` — return false to skip removing empty `<p></p>` wrappers after stripping placeholders (default true).
@@ -87,6 +88,9 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.112 =
+* **Updates:** Installed sites use the Duppins Technology GitHub updater standard v1.0.0 and read releases from `duppinstech/wp-radius-seo`. The filters `radius_github_updater_repo` and `radius_github_updater_cache_ttl` are removed. Use `radius_github_updater_config` and `radius_github_release_http_args`. Define `RADIUS_DISABLE_GITHUB_UPDATER` to turn checks off.
 
 = 1.6.111 =
 * **Fix:** A retried or overlapping deploy for the same template and place keeps one published landing or service-area page. The second run updates that page instead of inserting another.
@@ -482,7 +486,7 @@ Change repository (forks): `add_filter( 'radius_github_updater_repo', fn() => 'o
 * Admin: WooCommerce-style **Apply recommended updates** banner (flush permalinks hard, bust GitHub release cache, optional object cache via filter) after LocaleForge migration, schema bumps, or service-area slug changes; dismiss without applying still supported.
 
 = 1.6.2 =
-* GitHub updater: clear stale release cache whenever WordPress refreshes plugin updates (so new releases appear immediately after “Check again”); default API cache shortened to 1 hour (filter `radius_github_updater_cache_ttl`).
+* GitHub updater: clear stale release cache whenever WordPress refreshes plugin updates (so new releases appear immediately after “Check again”); default API cache shortened to 1 hour.
 
 = 1.6.1 =
 * Settings → **Database** tab: Magic Page storage summary (options + post meta row counts and approximate data size); Magic Page options cleanup moved here from Integrations.

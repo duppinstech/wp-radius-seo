@@ -12,3 +12,12 @@ AGENTS.md
 INTENT.md
 PLAN.md
 docker-compose.yml
+tests/
+bin/
+docs/
+tools/
+CONTRIBUTING.md
+composer.json
+composer.lock
+phpunit.xml.dist
+phpcs.xml.dist

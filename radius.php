@@ -1,12 +1,12 @@
 <?php
 /**
  * Plugin Name:       Radius SEO
- * Plugin URI:        https://github.com/oduppinsjr/wp-radius-seo
+ * Plugin URI:        https://github.com/duppinstech/wp-radius-seo
  * Description:       Blueprint-first local landing page generator — multi-template deploy, efficient place library, tokens & spintax, CSV import, optional Elementor.
- * Version:           1.6.111
+ * Version:           1.6.112
  * Requires at least: 6.0
  * Requires PHP:      7.4
- * Update URI:        https://github.com/oduppinsjr/wp-radius-seo
+ * Update URI:        https://github.com/duppinstech/wp-radius-seo
  * Author:            Duppins Technology
  * Author URI:        https://duppinstech.com
  * Copyright:         Duppins Technology
@@ -22,9 +22,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'RADIUS_FILE', __FILE__ );
-define( 'RADIUS_VERSION', '1.6.111' );
+define( 'RADIUS_VERSION', '1.6.112' );
 define( 'RADIUS_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RADIUS_URL', plugin_dir_url( __FILE__ ) );
+
+require_once RADIUS_PATH . 'includes/class-radius-github-updater.php';
+Radius_GitHub_Updater::boot(
+	array(
+		'file'    => __FILE__,
+		'version' => RADIUS_VERSION,
+		'owner'   => 'duppinstech',
+		'repo'    => 'wp-radius-seo',
+		'prefix'  => 'radius',
+	)
+);
 
 require_once RADIUS_PATH . 'includes/class-data-registry.php';
 require_once RADIUS_PATH . 'includes/class-admin-maintenance.php';
@@ -35,7 +46,6 @@ require_once RADIUS_PATH . 'includes/class-place-taxonomy.php';
 require_once RADIUS_PATH . 'includes/class-place-term-admin.php';
 require_once RADIUS_PATH . 'includes/class-settings.php';
 require_once RADIUS_PATH . 'includes/class-api-license.php';
-require_once RADIUS_PATH . 'includes/class-github-updater.php';
 require_once RADIUS_PATH . 'includes/class-token-engine.php';
 require_once RADIUS_PATH . 'includes/class-template-tokens.php';
 require_once RADIUS_PATH . 'includes/class-geo-service.php';
@@ -79,7 +89,6 @@ function radius_boot() {
 	Radius_SEO_Integrations::init();
 	Radius_Redirect_Service::init();
 	Radius_API_License::init();
-	Radius_GitHub_Updater::init();
 	Radius_Form_Handlers::init();
 	Radius_Plugin::instance();
 }

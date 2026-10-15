@@ -28,15 +28,15 @@ Elementor JSON is copied only when `enable_elementor` is on. Beaver Builder `_fl
 
 ## Updates ship as a GitHub Release ZIP
 
-`Radius_GitHub_Updater` reads the latest release. It shows an update only when the tag is newer and a `.zip` asset is attached. The archive root must be `wp-radius-seo/`. Default API cache TTL is one hour (`radius_github_updater_cache_ttl`). Checking again in wp-admin clears the updater cache when WordPress deletes the `update_plugins` transient.
+`Radius_GitHub_Updater` is the Duppins Technology updater standard v1.0.0, booted from `radius.php` for `duppinstech/wp-radius-seo`. Do not edit that class per plugin. Behavior changes go in the reference, then the class is copied again. The release asset is `wp-radius-seo.zip` with one top-level `wp-radius-seo/` folder, built by `bin/build-zip.sh` when a `v*` tag is pushed. The cache is the site option `radius_github_release`. Filters are `radius_github_updater_config` and `radius_github_release_http_args`. `RADIUS_DISABLE_GITHUB_UPDATER` turns checks off.
 
 ## Agent docs are not plugin runtime
 
 `.claude/`, `workflows/`, `CLAUDE.md`, `AGENTS.md`, and `.mcp.json` are committed for the team and excluded from `git archive` via `.gitattributes`. `CLAUDE.local.md` and `.claude/settings.local.json` are personal and gitignored.
 
-## Verification is manual until a harness exists
+## Updater tests are PHPUnit; other behavior is still manual
 
-There is no PHPUnit suite. Behavior changes are verified in wp-admin and on the front end. A future `tests/` directory needs an explicit decision recorded here and a command added to `.claude/rules/testing-standard.md`.
+`composer test` runs `tests/GitHubUpdaterTest.php` against `Radius_GitHub_Updater` with the doubles in `tests/bootstrap.php`. Those tests do not boot WordPress. Places, deploy, tokens, and admin screens are still verified on the local Docker site. Do not claim those passed unless that site was exercised.
 
 ## 2026-10-14 — Local WordPress is a Docker stack that is not left running
 
@@ -45,6 +45,10 @@ Proof runs against `docker compose up -d` in this repo (http://127.0.0.1:8088). 
 ## 2026-10-14 — Deploy and library export are administrator actions
 
 Deploy, deploy cancel, place CSV import, place CSV export, and template JSON export require `manage_options`. Editors can still edit individual templates and landings. Recorded while closing `PLAN.md` P0-03.
+
+## 2026-10-14 — Department review after every developer pass
+
+After the main session edits, `workflows/department-review.md` runs before the change is called done. Security, legal, finance, privacy, support, and communications each reply, including **No update** when their surface is untouched. Quality stays `@test-writer`. Reviewers do not edit. The main session applies consistency fixes and asks the maintainer before changing rights, warranty, price, or adding a privacy policy. There is no price list in the repo. License display defaults remain unlimited sites and no expiration until `radius_license_details` replaces them.
 
 ## 2026-10-14 — Claude SDLC scaffold
 
