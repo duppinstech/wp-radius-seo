@@ -1,6 +1,6 @@
 <?php
 /**
- * API key gate: placeholder remote validation; unlocks Radius when valid.
+ * API key gate: offline signed licenses, plus the key already saved on this site.
  *
  * @package Radius
  */
@@ -21,6 +21,20 @@ class Radius_API_License {
 
 	/** Stored api_key ciphertext prefix (AES-256-CBC); legacy installs may hold plaintext until migrated. */
 	const ENC_PREFIX = 'r2e1:';
+
+	/** Prefix for an offline signed license. The live license server is not connected yet. */
+	const SIGNED_PREFIX = 'RSL1.';
+
+	/** Stripe Checkout for the single-site plan ($9.99 per month). */
+	const CHECKOUT_SINGLE_URL = 'https://buy.stripe.com/6oU7sK8Yt9hag4f0iJ00007';
+
+	/** Stripe Checkout for the unlimited plan ($99 per month). */
+	const CHECKOUT_UNLIMITED_URL = 'https://buy.stripe.com/4gM5kCeiN9ha8BN6H700008';
+
+	/**
+	 * Public key for offline signed licenses. The private key is not in this repository.
+	 */
+	const LICENSE_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1tTRvcAUODDaKQNfaFk7\nPHjG6Ft8f+FaAmjplXq6tJNiIPpjGVlZNkcuQecbiVJBcjklkZ7wuNvkAjoqkRDj\nLVFEFRXd+oEiKJiP/c3CgoYDElMWIIX0hyAzpd7mPay3QZgMAe57+MUlFN775Nav\nZsWaTRJRpXf7bfKOm/y80gItxWxWZPyIGDAu23PVzTduIOu5fRxbHpYGGl9QkZJb\nZ7gkIraGE6GIr+VwSKfFKR3sXWNh5VjMQa4s6w6W4z9hq+l/A9J5BDN1bP577sWu\nPFDh6k5kYH++gSUGlqYSHSzH3IfEWQ5bs7elGf0TkTOWP28JwTK81en7Vw7jF1wY\nFQIDAQAB\n-----END PUBLIC KEY-----";
 
 	/**
 	 * Remote validation URL for future use (empty by default; set via filter in code when the service exists).
@@ -142,9 +156,10 @@ class Radius_API_License {
 			$purchased_formatted = date_i18n( get_option( 'date_format' ), current_time( 'timestamp' ) );
 		}
 
+		$tier     = self::display_tier_for_saved_key();
 		$defaults = array(
-			'tier'            => 'unlimited',
-			'plan_name'       => __( 'Unlimited sites', 'radius' ),
+			'tier'            => $tier,
+			'plan_name'       => 'single' === $tier ? __( 'Single site', 'radius' ) : __( 'Unlimited sites', 'radius' ),
 			'purchased_label' => __( 'Purchase date', 'radius' ),
 			'purchased_at'    => $purchased_formatted,
 			'expires_label'   => __( 'Expiration', 'radius' ),
@@ -247,6 +262,7 @@ class Radius_API_License {
 					'api_key_saved_at'  => '',
 				)
 			);
+			self::clear_legacy_key_hash();
 			delete_transient( self::TRANSIENT_CHECK );
 			return;
 		}
@@ -277,7 +293,7 @@ class Radius_API_License {
 				'radius_license_notice',
 				array(
 					'type'    => 'error',
-					'message' => __( 'That API key could not be validated. Please check and try again.', 'radius' ),
+					'message' => __( 'That key is not a signed Radius license. The key already saved on this site still works until you replace it.', 'radius' ),
 				),
 				60
 			);
@@ -290,6 +306,9 @@ class Radius_API_License {
 				'api_key_saved_at' => current_time( 'mysql' ),
 			)
 		);
+		if ( self::signature_is_valid( $sanitized ) ) {
+			self::clear_legacy_key_hash();
+		}
 		delete_transient( self::TRANSIENT_CHECK );
 	}
 
@@ -307,7 +326,8 @@ class Radius_API_License {
 	}
 
 	/**
-	 * Placeholder: accept any non-empty key. Replace with wp_remote_* to {@see get_validate_endpoint()} when live.
+	 * Accept a signed Radius license, or the key already saved on this site before signing shipped.
+	 * A license server is not called. {@see get_validate_endpoint()} stays empty until that service exists.
 	 *
 	 * @param string $key Sanitized key.
 	 * @return bool
@@ -335,8 +355,7 @@ class Radius_API_License {
 			return $pre;
 		}
 
-		// Placeholder: any non-empty key is valid until the endpoint is live.
-		$ok = true;
+		$ok = self::signature_is_valid( $key ) || self::legacy_saved_key_matches( $key );
 
 		/**
 		 * Result of validating the API key (after placeholder / remote check).
@@ -349,6 +368,118 @@ class Radius_API_License {
 		self::set_license_check_transient( $key, $ok );
 
 		return $ok;
+	}
+
+	/**
+	 * True when the key is RSL1.payload.signature and the payload was signed by Duppins Technology.
+	 *
+	 * @param string $key Sanitized key.
+	 * @return bool
+	 */
+	public static function signature_is_valid( $key ) {
+		return is_array( self::signed_claims( $key ) );
+	}
+
+	/**
+	 * Plan name for the license card. A signed key can say single or unlimited.
+	 * A key saved before signing stays unlimited.
+	 *
+	 * @return string single|unlimited
+	 */
+	public static function display_tier_for_saved_key() {
+		$claims = self::signed_claims( self::get_api_key() );
+		if ( is_array( $claims ) && isset( $claims['tier'] ) && 'single' === $claims['tier'] ) {
+			return 'single';
+		}
+		return 'unlimited';
+	}
+
+	/**
+	 * Verified payload of an RSL1 key, or null.
+	 *
+	 * @param string $key License key.
+	 * @return array<string,mixed>|null
+	 */
+	private static function signed_claims( $key ) {
+		$key = trim( (string) $key );
+		if ( strpos( $key, self::SIGNED_PREFIX ) !== 0 ) {
+			return null;
+		}
+		$parts = explode( '.', substr( $key, strlen( self::SIGNED_PREFIX ) ), 2 );
+		if ( count( $parts ) !== 2 || $parts[0] === '' || $parts[1] === '' ) {
+			return null;
+		}
+		$payload = self::base64url_decode( $parts[0] );
+		$sig     = self::base64url_decode( $parts[1] );
+		if ( $payload === '' || $sig === '' ) {
+			return null;
+		}
+		$decoded = json_decode( $payload, true );
+		if ( ! is_array( $decoded ) || ( $decoded['product'] ?? '' ) !== 'radius' ) {
+			return null;
+		}
+		$exp = isset( $decoded['exp'] ) ? (int) $decoded['exp'] : 0;
+		if ( $exp > 0 && $exp < time() ) {
+			return null;
+		}
+		if ( ! function_exists( 'openssl_verify' ) ) {
+			return null;
+		}
+		$public = openssl_pkey_get_public( self::LICENSE_PUBLIC_KEY );
+		if ( ! $public ) {
+			return null;
+		}
+		$ok = openssl_verify( $payload, $sig, $public, OPENSSL_ALGO_SHA256 );
+		if ( 1 !== $ok ) {
+			return null;
+		}
+		return $decoded;
+	}
+
+	/**
+	 * Remember the key that was already saved, once, so existing sites stay unlocked.
+	 *
+	 * @param string $key Sanitized key being checked.
+	 * @return bool
+	 */
+	private static function legacy_saved_key_matches( $key ) {
+		if ( ! function_exists( 'get_option' ) || ! function_exists( 'wp_hash' ) ) {
+			return false;
+		}
+		$option = Radius_Data_Registry::OPTION_LICENSE_LEGACY_HASH;
+		$stored = get_option( $option, null );
+		if ( null === $stored ) {
+			$saved = trim( self::get_api_key() );
+			update_option( $option, $saved === '' ? '' : wp_hash( $saved ), false );
+			$stored = get_option( $option, '' );
+		}
+		if ( ! is_string( $stored ) || $stored === '' ) {
+			return false;
+		}
+		return hash_equals( $stored, wp_hash( $key ) );
+	}
+
+	/**
+	 * Forget the pre-signing key after it is removed or replaced by a signed license.
+	 *
+	 * @return void
+	 */
+	private static function clear_legacy_key_hash() {
+		update_option( Radius_Data_Registry::OPTION_LICENSE_LEGACY_HASH, '', false );
+	}
+
+	/**
+	 * @param string $data Base64url text.
+	 * @return string
+	 */
+	private static function base64url_decode( $data ) {
+		$data = strtr( (string) $data, '-_', '+/' );
+		$pad  = strlen( $data ) % 4;
+		if ( $pad > 0 ) {
+			$data .= str_repeat( '=', 4 - $pad );
+		}
+		$raw = base64_decode( $data, true );
+		return is_string( $raw ) ? $raw : '';
 	}
 
 	/**
@@ -545,7 +676,7 @@ class Radius_API_License {
 	}
 
 	/**
-	 * AJAX: check API key (placeholder accepts any non-empty key; does not require plugin to be unlocked).
+	 * AJAX: check a signed license, or the key already saved on this site.
 	 *
 	 * @return void
 	 */
@@ -583,7 +714,7 @@ class Radius_API_License {
 			wp_send_json_error(
 				array(
 					'valid'   => false,
-					'message' => __( 'This API key could not be validated. Try again or contact support.', 'radius' ),
+					'message' => __( 'That key is not a signed Radius license. The key already saved on this site still works until you replace it.', 'radius' ),
 				)
 			);
 		}
@@ -597,10 +728,14 @@ class Radius_API_License {
 			DAY_IN_SECONDS
 		);
 
+		$saved   = self::get_api_key();
+		$message = ( $saved !== '' && hash_equals( $saved, $key ) )
+			? __( 'The key already saved on this site is still valid.', 'radius' )
+			: __( 'This is a signed Radius license. Click Save to store it on this site.', 'radius' );
 		wp_send_json_success(
 			array(
 				'valid'   => true,
-				'message' => __( 'Validated', 'radius' ),
+				'message' => $message,
 			)
 		);
 	}

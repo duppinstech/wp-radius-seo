@@ -58,6 +58,10 @@ Each department review writes `.claude/memory/meetings/YYYY-MM-DD-HHMM.md`. The 
 
 After the main session edits, `workflows/department-review.md` runs before the change is called done. Security, legal, finance, privacy, support, and communications each reply, including **No update** when their surface is untouched. Quality stays `@test-writer`. Reviewers do not edit. The main session applies consistency fixes and asks the maintainer before changing rights, warranty, price, or adding a privacy policy. There is no price list in the repo. License display defaults remain unlimited sites and no expiration until `radius_license_details` replaces them.
 
+## 2026-10-14 — Deactivate keeps data unless purge is confirmed
+
+Deactivation keeps Radius data unless an administrator confirms the purge in the Plugins screen dialog. Cancel, Close, Escape, and a click outside do not deactivate and do not delete. Bulk deactivate and network deactivate keep data. Deleting the plugin files does not remove data that was kept.
+
 ## 2026-10-14 — Claude SDLC scaffold
 
 The roster, rules, commands, skills, agents, hooks, and workflows in this tree are the Claude Code SDLC scaffold. The repo objective is `INTENT.md` only. Cursor rules under `.cursor/rules/` stay the Cursor mirror of architecture and release. When a canonical id or release step changes, update both.

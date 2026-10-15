@@ -115,8 +115,10 @@ class Radius_Admin {
 		if ( $msg === '' ) {
 			return;
 		}
+		$is_error = isset( $_GET['radius_notice_error'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_GET['radius_notice_error'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 		printf(
-			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			$is_error ? 'error' : 'success',
 			esc_html( $msg )
 		);
 	}
@@ -548,8 +550,8 @@ class Radius_Admin {
 					'hasSavedKey' => $api_key_saved_js,
 					'i18n'        => array(
 						'checking' => __( 'Checking…', 'radius' ),
-						'ok'       => __( 'Validated', 'radius' ),
-						'fail'     => __( 'Could not validate. Try again.', 'radius' ),
+						'ok'       => __( 'The key already saved on this site is still valid.', 'radius' ),
+						'fail'     => __( 'That key is not a signed Radius license.', 'radius' ),
 					),
 				)
 			);
@@ -3472,7 +3474,7 @@ Fast roadside help in {{region}}
 						<tr>
 							<th scope="row"><?php esc_html_e( 'API key', 'radius' ); ?></th>
 							<td>
-								<p class="description"><?php esc_html_e( 'Radius needs an API key. Save a key here to enable templates, landings, deploy, and imports. The key is encrypted in the database.', 'radius' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Radius needs a license key. A new key must be a signed Radius license from Duppins Technology. A key already saved on this site keeps working until you replace it. The key is encrypted in the database. There is no license server yet.', 'radius' ); ?></p>
 								<?php if ( $api_key_saved ) : ?>
 									<input type="hidden" name="radius_api_key_remove" id="radius_api_key_remove_field" value="" />
 								<?php endif; ?>
@@ -3504,7 +3506,7 @@ Fast roadside help in {{region}}
 										/>
 									<?php endif; ?>
 									<span class="radius-api-key-row__actions">
-										<button type="button" class="button" id="radius-validate-api-key"><?php esc_html_e( 'Validate', 'radius' ); ?></button>
+										<button type="button" class="button" id="radius-validate-api-key"><?php esc_html_e( 'Check', 'radius' ); ?></button>
 										<?php if ( $api_key_saved ) : ?>
 											<button type="button" class="button" id="radius-remove-api-key"><?php esc_html_e( 'Remove', 'radius' ); ?></button>
 										<?php endif; ?>
@@ -3512,7 +3514,9 @@ Fast roadside help in {{region}}
 											class="radius-api-validate-status<?php echo $license_ui_ok ? ' radius-api-validate-status--ok' : ''; ?>"
 											id="radius-api-validate-status"
 											<?php echo $license_ui_ok ? '' : 'hidden'; ?>
-										><?php echo $license_ui_ok ? esc_html__( 'Validated', 'radius' ) : ''; ?></span>
+											role="status"
+											aria-live="polite"
+										><?php echo $license_ui_ok ? esc_html__( 'The key already saved on this site is still valid.', 'radius' ) : ''; ?></span>
 									</span>
 								</div>
 								<p id="radius-api-key-hint" class="description">
@@ -3528,7 +3532,7 @@ Fast roadside help in {{region}}
 							<tr>
 								<th scope="row"><?php esc_html_e( 'License details', 'radius' ); ?></th>
 								<td>
-									<?php if ( isset( $license_details['tier'] ) && 'unlimited' === $license_details['tier'] ) : ?>
+									<?php if ( isset( $license_details['tier'] ) && in_array( $license_details['tier'], array( 'single', 'unlimited' ), true ) ) : ?>
 										<div class="radius-license-current-card">
 											<p class="radius-license-current-card__badge"><?php esc_html_e( 'Current license', 'radius' ); ?></p>
 											<h3 class="radius-license-current-card__title"><?php echo esc_html( $license_details['plan_name'] ); ?></h3>
@@ -3540,25 +3544,30 @@ Fast roadside help in {{region}}
 											</dl>
 											<h4 class="radius-license-current-card__features-title"><?php esc_html_e( 'License features', 'radius' ); ?></h4>
 											<ul class="radius-license-current-card__features">
-												<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
+												<?php if ( 'single' === $license_details['tier'] ) : ?>
+													<li><?php esc_html_e( 'One WordPress site', 'radius' ); ?></li>
+													<li><?php esc_html_e( 'Email support', 'radius' ); ?></li>
+												<?php else : ?>
+													<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
+													<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
+												<?php endif; ?>
 												<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
 												<li><?php esc_html_e( 'All features included', 'radius' ); ?></li>
 												<li><?php esc_html_e( 'Regular updates', 'radius' ); ?></li>
-												<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
 											</ul>
 										</div>
 									<?php endif; ?>
-
-									<p class="radius-license-pricing-intro description"><?php esc_html_e( 'Need a new license or an additional plan? Choose an option below.', 'radius' ); ?></p>
-									<?php
-									$lic_tier = isset( $license_details['tier'] ) ? $license_details['tier'] : 'unlimited';
-									$show_single_pricing = ( 'single' === $lic_tier );
-									$show_unlimited_pricing = ( 'unlimited' === $lic_tier );
-									?>
-									<div class="radius-license-pricing-cards radius-license-pricing-cards--<?php echo esc_attr( $lic_tier ); ?>">
-										<?php if ( $show_single_pricing ) : ?>
+								</td>
+							</tr>
+						<?php endif; ?>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Plans', 'radius' ); ?></th>
+							<td>
+									<p class="radius-license-pricing-intro description"><?php esc_html_e( 'Payment is on Stripe. After checkout, paste the license key from Duppins Technology into the field above.', 'radius' ); ?></p>
+									<div class="radius-license-pricing-cards">
 											<div class="radius-license-price-card">
 												<h4 class="radius-license-price-card__title"><?php esc_html_e( 'Single site', 'radius' ); ?></h4>
+												<p class="radius-license-price-card__price"><?php esc_html_e( '$9.99', 'radius' ); ?> <span><?php esc_html_e( 'per month', 'radius' ); ?></span></p>
 												<ul class="radius-license-price-card__list">
 													<li><?php esc_html_e( 'One WordPress site', 'radius' ); ?></li>
 													<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
@@ -3567,13 +3576,12 @@ Fast roadside help in {{region}}
 													<li><?php esc_html_e( 'Email support', 'radius' ); ?></li>
 												</ul>
 												<p class="radius-license-price-card__action">
-													<a href="#" class="button button-secondary" tabindex="-1"><?php esc_html_e( 'Purchase', 'radius' ); ?></a>
+													<a class="button button-secondary" href="<?php echo esc_url( Radius_API_License::CHECKOUT_SINGLE_URL ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Purchase single site', 'radius' ); ?><span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'radius' ); ?></span></a>
 												</p>
 											</div>
-										<?php endif; ?>
-										<?php if ( $show_unlimited_pricing ) : ?>
 											<div class="radius-license-price-card radius-license-price-card--highlight">
 												<h4 class="radius-license-price-card__title"><?php esc_html_e( 'Unlimited sites', 'radius' ); ?></h4>
+												<p class="radius-license-price-card__price"><?php esc_html_e( '$99', 'radius' ); ?> <span><?php esc_html_e( 'per month', 'radius' ); ?></span></p>
 												<ul class="radius-license-price-card__list">
 													<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
 													<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
@@ -3582,14 +3590,12 @@ Fast roadside help in {{region}}
 													<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
 												</ul>
 												<p class="radius-license-price-card__action">
-													<a href="#" class="button button-primary" tabindex="-1"><?php esc_html_e( 'Purchase', 'radius' ); ?></a>
+													<a class="button button-primary" href="<?php echo esc_url( Radius_API_License::CHECKOUT_UNLIMITED_URL ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Purchase unlimited sites', 'radius' ); ?><span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'radius' ); ?></span></a>
 												</p>
 											</div>
-										<?php endif; ?>
 									</div>
 								</td>
 							</tr>
-						<?php endif; ?>
 					</table>
 				</div>
 

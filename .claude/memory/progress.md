@@ -4,6 +4,10 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: Local check at http://127.0.0.1:8088. License settings showed Single site at $9.99 per month and Unlimited sites at $99 per month, with the Stripe links the maintainer sent. Plugins → Deactivate opened the dialog, listed 7 landing pages, 1 template, 3 places, and saved settings, then the confirm step. Escape left the plugin active. Confirm delete was not run. Docker was stopped.
+- 2026-10-14: Deactivate dialog. Keep leaves pages and settings. Delete shows counts and runs only after Confirm delete. Dismiss does nothing. P1-08 closed. P2-11 is the only open plan item.
+- 2026-10-14: License interim reviewed. Signed keys stay. The private key is outside the plugin tree. A removed or replaced key clears the remembered hash. Check and Save copy no longer says the key was validated. Note: `.claude/memory/meetings/2026-10-14-2130.md`. P2-11 and P1-08 are the only open plan items.
+- 2026-10-14: License interim. No license server. New keys must be signed (`php bin/sign-license.php`). A key already saved on a site stays valid. Local proof: existing key unlocked, a random key did not, a signed key did. Priority email stays a CRM flag (`SUPPORT.md`).
 - 2026-10-14: Department review of commit `73b66c9`. Approved P2-18, P2-19, and P2-20. Note: `.claude/memory/meetings/2026-10-14-2004.md`. P2-11, P2-12, and P0-01 stay waiting.
 - 2026-10-14: Named-site proofs. Beeline Transport Inc. (`https://beelinetransportinc.com`, Radius 1.6.111) was read only. P1-05, P1-06, and P1-07 closed from that look. P1-02 and P1-04 closed with a local Docker deploy plus the Beeline phone and Elementor observations. P2-10 closed on http://127.0.0.1:8088 (Apache in Docker). Nothing on the live site was edited. Docker was stopped afterward.
 - 2026-10-14: Approved non-major plan items implemented in 1.6.113 on `feature/github-updater-standard`: P2-01 through P2-09 and P2-13 through P2-17. P2-11, P2-12, P0-01, and P1-08 are still open.
@@ -22,7 +26,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ### Needs a decision from the maintainer
 
-- PLAN.md P2-11: remove the dead Purchase cards, or name a real offer. P2-12: remove "Priority email support," or state that the unlimited plan includes it. P0-01 and P1-08 are still open choices.
+- No plan item is waiting on a decision. Stripe checkout links are the two prices the maintainer named. A cancelled subscription does not yet disable a saved key.
 - Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
 - Local WordPress is filled in `CLAUDE.local.md` (Docker at http://127.0.0.1:8088).
 - Whether places, deploy, and admin screens get a WordPress integration suite. The updater already has `composer test`.

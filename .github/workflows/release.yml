@@ -63,6 +63,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ github.ref_name }}
           files: wp-radius-seo.zip
           body_path: release-requirements.md
           generate_release_notes: true

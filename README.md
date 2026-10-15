@@ -20,13 +20,17 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 ## Quick start
 
-1. **Radius → Settings → License** — an administrator saves an API key. Until that key is saved, the library, templates, and deploy stay locked.
+1. **Radius → Settings → License** — an administrator pastes a signed Radius license from Duppins Technology and clicks Save. A key already saved on this site keeps working until it is replaced. Until a key is saved, the library, templates, and deploy stay locked.
 2. **Radius → Settings → Service areas** — add at least one place and a radius in miles, then save. Only an administrator can upload the place CSV. Include latitude and longitude, or deploy skips those rows. Rows already in the library are skipped unless **Update existing places** is checked.
 3. **Templates** — create a blueprint using tokens in title and body.
 4. **Deploy** — run **Deploy & update all places** for the template. If a batch stops, use **Continue deployment**. If the screen reports a server error, open **Radius → Logs**.
 5. **Settings → Integrations** — if the template is built in Elementor or Beaver Builder, turn that checkbox on, save, then deploy.
 
 ---
+
+## Deactivate
+
+**Plugins → Deactivate** asks whether to keep Radius data or delete it. Cancel, Close, and a click outside leave the plugin active. **Keep all data and deactivate** does not remove pages or settings. **Delete all Radius data** shows the counts and runs only after **Confirm delete**. Deleting the plugin files later does not remove data that was kept. See `SUPPORT.md`.
 
 ## Updates
 

@@ -9,28 +9,33 @@ Take the items in order. Finish or explicitly defer a blocker before starting th
 1. Read `INTENT.md` and this item.
 2. Follow `workflows/bug-fix.md` for a fix, or `workflows/feature-build.md` if the item adds behavior.
 3. After the edit, run `workflows/department-review.md`. That meeting writes a note under `.claude/memory/meetings/` and adds new suggestions here.
-4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. A customer site is still unnamed until the maintainer names it.
+4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. Beeline Transport Inc. is the named production site for read-only checks.
 5. Record the result on the item. Update `.claude/memory/progress.md` only with the milestone, not a second copy of this list.
 
 Status values: `open`, `deferred` (maintainer accepted the current behavior), `done`.
 
-## Before a live click-through
+## Waiting on you
 
-- **Status:** open
-- **Do:** Use the repo `docker-compose.yml` for local proof. Start it for the check and stop it with `docker compose down` when the check ends. Beeline Transport Inc. is the named production site for read-only checks. Do not deploy, purge, or remediate there unless the maintainer asks for that change.
-- **Not a blocker for shipped code.** Local Docker is the click-through site. P0-01 stays open until the license-server choices are settled. It does not block the next local proof.
+Nothing in this file is waiting on a decision. The table stays here so the next blocked item has a place to go.
+
+| Id | What is blocked | What you decide |
+| --- | --- | --- |
+
+## Standing rules
+
+- Local proof uses `docker compose up -d`, then `docker compose down`. Do not leave the stack running.
+- Beeline Transport Inc. is read-only unless you ask for a change on that site. Do not deploy, purge, or remediate there otherwise.
 
 ## Blockers
 
 ### P0-01 — License gate accepts any non-empty key
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14. There is still no license server. A new or replaced key must be a signed `RSL1.` license (`Radius_API_License::signature_is_valid()`). The key already saved on a site is remembered once in `radius_license_legacy_key_hash` and keeps working until it is replaced or removed. Check tells the owner to Save a new signed key, and a refused replacement is an error notice. The private key stays outside the plugin tree (`~/.radius/license-private.pem`). Meeting: `.claude/memory/meetings/2026-10-14-2130.md`.
 - **Kind:** security and completeness
-- **Evidence:** `Radius_API_License::validate_key_with_remote()` returns true for every non-empty key (`includes/class-api-license.php`). `is_unlocked()` is that check. Public landings and service areas are blocked only while the stored key is empty. The settings UI still says the key is validated. If OpenSSL is missing, storage falls back to a reversible `b64:` prefix.
-- **Do:** Pick one outcome and implement only that outcome.
-  - Production license server: call `get_validate_endpoint()` with `wp_remote_*` over HTTPS, fail closed when the endpoint is empty or the response is not a clear allow, and stop describing the placeholder as validation.
-  - Operational switch: document on the license screen that any saved key unlocks this Duppins Technology plugin, and drop the “validated” wording until a server exists. WhiteRail is the beta client, not the owner of that switch.
-- **Done when:** A wrong or empty key cannot unlock deploy or public pages, or the maintainer marks this `deferred` because the switch behavior is the intended production control. Staging shows the chosen behavior.
+- **Evidence:** `Radius_API_License::validate_key_with_remote()` used to return true for every non-empty key (`includes/class-api-license.php`). `is_unlocked()` is that check. Public landings and service areas are blocked only while the stored key is empty. If OpenSSL is missing, storage falls back to a reversible `b64:` prefix and a signed key cannot be checked.
+- **Do:** Until a license server exists, verify an offline signature. Do not lock sites that already saved a key. Drop the “validated” wording.
+- **Done when:** A new random key cannot unlock the plugin, and a key already saved on the site still can.
 - **Workflow:** `workflows/bug-fix.md`, then `@security-reviewer`.
 
 ### P0-02 — Published templates are readable without an editor session
@@ -158,7 +163,8 @@ These do not need new plugin features unless a check fails.
 
 ### P1-08 — Deactivate leaves content; delete is undocumented
 
-- **Status:** open
+- **Status:** done
+- **Evidence of close:** 2026-10-14. The maintainer chose a dialog on Plugins → Deactivate. Keep leaves data. Delete lists counts and runs only after Confirm delete. Dismiss does not deactivate or delete. `SUPPORT.md` states that. `uninstall.php` still clears updater transients only, so deleting the plugin files does not remove data that was kept.
 - **Kind:** completeness
 - **Evidence:** `uninstall.php` exists and deletes GitHub updater transients only. Deactivation and delete do not remove `radius_settings`, place terms, or deployed posts. Support confirmed this at the 2026-10-14 meeting. The policy choice below is unchanged.
 - **Do:** Decide the production policy. Recommended: deactivation keeps pages so the site does not lose local URLs. Document that in `SUPPORT.md`. Add `uninstall.php` only if a full delete must also remove plugin data, and make that path explicit and irreversible.
@@ -382,12 +388,13 @@ These do not need another decision from the maintainer. They are not blockers. P
 
 ## Waiting on the maintainer
 
-Do not start these until the maintainer chooses. They came from the same 2026-10-14 meeting.
+No open choice. The next item that needs a decision goes in the table at the top and in this section.
 
 ### P2-11 — The license screen offers a plan and a Purchase button that go nowhere
 
-- **Status:** open
-- **Decision:** Waiting on the maintainer. Finance said this is a commercial offer. Communications said to remove it because there is no checkout.
+- **Status:** done
+- **Evidence of close:** 2026-10-14. The maintainer named the offers. Single site is $9.99 per month at the Stripe link in `Radius_API_License::CHECKOUT_SINGLE_URL`. Unlimited sites is $99 per month at `CHECKOUT_UNLIMITED_URL`. Both cards show on Settings → License, including while the plugin is locked. A signed key labeled `single` displays as Single site. Cancelling Stripe does not yet disable a saved key.
+- **Decision:** Maintainer named the two Stripe checkouts and the monthly prices.
 - **Kind:** finance
 - **Evidence:** `includes/class-admin.php` shows "Need a new license or an additional plan? Choose an option below." The Purchase link is `href="#"` with `tabindex="-1"`. The default card repeats Unlimited sites, which the current-license card already shows. There is no price list.
 - **Choose one:** Remove that sentence and the Purchase cards. Or name a real offer and where the button should send the owner. Do not invent a price in the repo.
@@ -395,17 +402,13 @@ Do not start these until the maintainer chooses. They came from the same 2026-10
 
 ### P2-12 — The license card lists priority email support the plugin does not grant
 
-- **Status:** open
-- **Decision:** Waiting on the maintainer. Finance and Communications both left this choice open.
+- **Status:** done
+- **Evidence of close:** 2026-10-14. The maintainer said priority email is flagged in the Duppins Technology CRM from the license, not in the plugin. The license-card bullets stay. `SUPPORT.md` says the plugin does not store or check that flag.
+- **Decision:** Handled outside the plugin. No plugin entitlement.
 - **Kind:** finance
-- **Evidence:** Both license feature lists in `includes/class-admin.php` include "Priority email support." The plugin does not record a support entitlement. `SUPPORT.md` links commercial support to https://duppinstech.com/ and states no fee.
+- **Evidence:** Both license feature lists in `includes/class-admin.php` include "Priority email support." The plugin does not record a support entitlement. `SUPPORT.md` links commercial support to https://duppinstech.com/.
 - **Choose one:** Remove "Priority email support" from both lists. Or add a sentence to `SUPPORT.md` that the unlimited plan includes priority email at that URL, and keep the bullets.
 - **Done when:** The card and `SUPPORT.md` agree with the choice recorded here.
-
-### Already waiting, not new items
-
-- **P0-01.** Communications recommended removing "Validated" and the "could not be validated" notices, because any non-empty key unlocks the plugin. That is one of the two outcomes already in P0-01. It was not approved on its own.
-- **P1-08.** Deactivate and delete policy. Evidence corrected above. The choice is still open.
 
 ## Deferred on purpose
 
