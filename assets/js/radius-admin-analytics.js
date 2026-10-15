@@ -21,6 +21,23 @@ jQuery(document).ready(function($) {
 		return div.innerHTML;
 	}
 
+	function setChartSummary(id, text) {
+		var el = document.getElementById(id);
+		if (el) {
+			el.textContent = text;
+		}
+	}
+
+	function seriesText(title, labels, values, unit) {
+		if (!labels || !labels.length) {
+			return title + '. No data yet.';
+		}
+		var parts = labels.map(function (label, i) {
+			return String(label) + ': ' + String(values[i]) + ' ' + unit;
+		});
+		return title + '. ' + parts.join('. ') + '.';
+	}
+
 	function pageCount(total, size) {
 		return Math.max(1, Math.ceil(total / size));
 	}
@@ -115,6 +132,9 @@ jQuery(document).ready(function($) {
 			if (tp) tp.innerHTML = '<tr><td colspan="4">Failed to load data.</td></tr>';
 			var lb = document.getElementById('lfa-locations-tbody');
 			if (lb) lb.innerHTML = '<tr><td colspan="6">Failed to load data.</td></tr>';
+			setChartSummary('lfa-chart-visits-over-time-summary', 'Failed to load.');
+			setChartSummary('lfa-chart-locations-visits-summary', 'Failed to load.');
+			setChartSummary('lfa-chart-locations-clicks-summary', 'Failed to load.');
 			return;
 		}
 
@@ -141,6 +161,7 @@ jQuery(document).ready(function($) {
 		var votLabels = Object.keys(visitsOverTime);
 		var votData = Object.values(visitsOverTime);
 		var votEl = document.getElementById('lfa-chart-visits-over-time');
+		setChartSummary('lfa-chart-visits-over-time-summary', seriesText('Visits over time', votLabels, votData, 'visits'));
 		if (votEl && votLabels.length) {
 			new Chart(votEl, {
 				type: 'line',
@@ -167,13 +188,15 @@ jQuery(document).ready(function($) {
 			});
 		} else if (votEl) {
 			votEl.parentNode.innerHTML = '<p class="lfa-no-data">No visit data for the last 30 days yet.</p>';
+			setChartSummary('lfa-chart-visits-over-time-summary', 'Visits over time. No visit data for the last 30 days yet.');
 		}
 
 		var locations = state.locationsAll.slice();
 		var locVisitsEl = document.getElementById('lfa-chart-locations-visits');
+		var locLabels = locations.slice(0, 10).map(function(l) { return l.label; });
+		var locVisits = locations.slice(0, 10).map(function(l) { return l.visits; });
+		setChartSummary('lfa-chart-locations-visits-summary', seriesText('Top places by visits', locLabels, locVisits, 'visits'));
 		if (locVisitsEl && locations.length) {
-			var locLabels = locations.slice(0, 10).map(function(l) { return l.label; });
-			var locVisits = locations.slice(0, 10).map(function(l) { return l.visits; });
 			new Chart(locVisitsEl, {
 				type: 'bar',
 				data: {
@@ -199,12 +222,14 @@ jQuery(document).ready(function($) {
 			});
 		} else if (locVisitsEl) {
 			locVisitsEl.parentNode.innerHTML = '<p class="lfa-no-data">No data yet.</p>';
+			setChartSummary('lfa-chart-locations-visits-summary', 'Top places by visits. No data yet.');
 		}
 
 		var locClicksEl = document.getElementById('lfa-chart-locations-clicks');
+		var locLabels2 = locations.slice(0, 10).map(function(l) { return l.label; });
+		var locClicks = locations.slice(0, 10).map(function(l) { return l.clicks; });
+		setChartSummary('lfa-chart-locations-clicks-summary', seriesText('Top places by clicks', locLabels2, locClicks, 'clicks'));
 		if (locClicksEl && locations.length) {
-			var locLabels2 = locations.slice(0, 10).map(function(l) { return l.label; });
-			var locClicks = locations.slice(0, 10).map(function(l) { return l.clicks; });
 			new Chart(locClicksEl, {
 				type: 'bar',
 				data: {
@@ -230,12 +255,16 @@ jQuery(document).ready(function($) {
 			});
 		} else if (locClicksEl) {
 			locClicksEl.parentNode.innerHTML = '<p class="lfa-no-data">No data yet.</p>';
+			setChartSummary('lfa-chart-locations-clicks-summary', 'Top places by clicks. No data yet.');
 		}
 	}).fail(function() {
 		var t = document.getElementById('lfa-top-pages-tbody');
 		if (t) t.innerHTML = '<tr><td colspan="4">Failed to load.</td></tr>';
 		var lb = document.getElementById('lfa-locations-tbody');
 		if (lb) lb.innerHTML = '<tr><td colspan="6">Failed to load.</td></tr>';
+		setChartSummary('lfa-chart-visits-over-time-summary', 'Failed to load.');
+		setChartSummary('lfa-chart-locations-visits-summary', 'Failed to load.');
+		setChartSummary('lfa-chart-locations-clicks-summary', 'Failed to load.');
 	});
 
 	$('#lfa-clear-unassigned-stats').on('click', function() {

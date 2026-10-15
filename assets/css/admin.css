@@ -1490,8 +1490,18 @@
 	box-shadow: 0 0 0 1px #2271b1, 0 2px 8px rgba(34, 113, 177, 0.12);
 }
 .radius-license-price-card__title {
-	margin: 0 0 10px;
+	margin: 0 0 4px;
 	font-size: 15px;
+}
+.radius-license-price-card__price {
+	margin: 0 0 10px;
+	font-size: 1.35em;
+	font-weight: 600;
+	line-height: 1.2;
+}
+.radius-license-price-card__price span {
+	font-size: 13px;
+	font-weight: 400;
 }
 .radius-license-price-card__list {
 	margin: 0 0 auto;

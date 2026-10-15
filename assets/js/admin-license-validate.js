@@ -1,5 +1,5 @@
 /**
- * License tab: validate API key (placeholder always succeeds when key is non-empty).
+ * License tab: check a signed key, or the key already saved on this site.
  */
 (function () {
 	var btn = document.getElementById('radius-validate-api-key');

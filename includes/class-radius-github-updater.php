@@ -412,14 +412,12 @@ class Radius_GitHub_Updater {
 	}
 
 	/**
-	 * Release asset to install: the configured asset name, else the only .zip asset. Source zipballs are never
-	 * used because their folder name (owner-repo-sha) does not match the plugin folder.
+	 * Release asset to install: the configured asset name only. A differently named zip is not installed.
 	 *
 	 * @param array $assets Release assets.
 	 * @return string Download URL or ''.
 	 */
 	protected function select_package( array $assets ) {
-		$zips = array();
 		foreach ( $assets as $asset ) {
 			if ( ! is_array( $asset ) || empty( $asset['name'] ) || empty( $asset['browser_download_url'] ) ) {
 				continue;
@@ -432,9 +430,8 @@ class Radius_GitHub_Updater {
 			if ( strtolower( (string) $this->config['asset'] ) === $name ) {
 				return $url;
 			}
-			$zips[] = $url;
 		}
-		return 1 === count( $zips ) ? $zips[0] : '';
+		return '';
 	}
 
 	/**

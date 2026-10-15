@@ -42,6 +42,10 @@ wp-config-local.php
 *.zip
 *.tar.gz
 
+# Offline license signer. The private key lives outside this repo, at
+# ~/.radius/license-private.pem. Never put it in the plugin directory.
+keys/license-private.pem
+
 # PHPUnit / coverage
 phpunit.xml
 .phpunit.result.cache

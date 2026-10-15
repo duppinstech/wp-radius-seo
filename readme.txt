@@ -3,20 +3,21 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.112
+Stable tag: 1.6.114
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Blueprint-first local SEO: templates, CSV place library, batch deploy, tokens, spintax, Markdown slots; optional Elementor.
+Blueprint-first local SEO: templates, CSV place library, batch deploy, tokens, spintax, Markdown slots; optional Elementor and Beaver Builder.
 
 Copyright: Duppins Technology (https://duppinstech.com).
 
 == Quick start ==
 
-1. Radius → Location library → upload CSV (columns: name, slug, country, region, state, zip, lat, lng).
-2. Templates → add a blueprint using tokens in the title/body.
-3. Deploy → pick the template, paste place term IDs from the library table, run.
-4. Settings → enable Elementor if you want to design landings in Elementor.
+1. Radius → Settings → License. An administrator pastes a signed Radius license from Duppins Technology and clicks Save. A key already saved on this site keeps working until it is replaced. Until a key is saved, the library, templates, and deploy stay locked.
+2. Radius → Settings → Service areas. Add at least one place and a radius in miles, then save. Only an administrator can upload the CSV. Include latitude and longitude or deploy skips those rows. Rows already in the library are skipped unless Update existing places is checked.
+3. Templates → add a blueprint using tokens in the title and body.
+4. Deploy → run Deploy & update all places for the template. If a batch stops, use Continue deployment. If the screen reports a server error, open Radius → Logs.
+5. Settings → Integrations. If the template is built in Elementor or Beaver Builder, turn that checkbox on, save, then deploy.
 
 == Updates ==
 
@@ -88,6 +89,15 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.114 =
+* **Deactivate:** Plugins → Deactivate opens a dialog. Keep all data and deactivate leaves pages, places, templates, and settings in place. Delete all Radius data shows the counts and deletes them only after Confirm delete. Cancel, Close, or clicking outside leaves the plugin active and deletes nothing. Removing the plugin files afterward does not delete data that was kept.
+* **Plans:** License settings links to Stripe Checkout. Single site is $9.99 per month. Unlimited sites is $99 per month. Paste the license key from Duppins Technology after checkout. Cancelling Stripe does not yet turn a saved key off.
+
+= 1.6.113 =
+* **Security:** Template REST reads require edit access on that template, including revision routes. A release zip is installed only when its file name matches the configured asset. A new license key must be a signed Radius license. A key already saved on the site keeps working until it is replaced. The license screen no longer says the key was validated by a server.
+* **Accessibility:** Migration, spintax, site-replacer, and deploy-help dialogs keep keyboard focus. The license lock is not mouse-only. Place checkboxes, CSV uploads, service-area fields, deploy status, and analytics charts have accessible names or text alternatives.
+* **Copy:** Quick start matches service-area deploy. Beaver Builder is named next to Elementor. The license card no longer calls a local save time a purchase date. Logs no longer claim every folder is unreachable from the web. Landing analytics says counts stay on this site, the visitor IP is a short-lived rate-limit hash, and the user agent is read to ignore bots. A health-check HTML error tells the owner to check the host error log or Radius → Logs, then try again. On the location library, someone who is not an administrator is told to ask a site administrator to upload the CSV.
 
 = 1.6.112 =
 * **Updates:** Installed sites use the Duppins Technology GitHub updater standard v1.0.0 and read releases from `duppinstech/wp-radius-seo`. The filters `radius_github_updater_repo` and `radius_github_updater_cache_ttl` are removed. Use `radius_github_updater_config` and `radius_github_release_http_args`. Define `RADIUS_DISABLE_GITHUB_UPDATER` to turn checks off.

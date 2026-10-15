@@ -46,9 +46,21 @@ Proof runs against `docker compose up -d` in this repo (http://127.0.0.1:8088). 
 
 Deploy, deploy cancel, place CSV import, place CSV export, and template JSON export require `manage_options`. Editors can still edit individual templates and landings. Recorded while closing `PLAN.md` P0-03.
 
+## 2026-10-14 — Department meetings are noted and valid items are approved
+
+After a department meeting, approved items that are security fixes, bug fixes, copy corrections, or small interface fixes are implemented in that session. A new capability, a new screen, a rearranged admin menu, or a behavior change the maintainer has not approved stays on `PLAN.md`. Items marked waiting stay waiting.
+
+Interface (`@ui-reviewer`) sits at every department review, separate from Support. Support owns the sentence an owner follows. Interface owns WordPress admin patterns, which Radius screen a control sits on, and use without a mouse or without seeing color. Moving a whole screen in the Radius menu waits on the maintainer. A missing label, a fake link, a focus style, or color-only status does not.
+
+Each department review writes `.claude/memory/meetings/YYYY-MM-DD-HHMM.md`. The note records what was suggested and what was decided (approved, waiting on the maintainer, or ignored), plus the `PLAN.md` id. It does not record implementation. A valid suggestion that does not change rights, warranty, the GPL text, price, a plan, or a privacy policy, and that is not already an open maintainer choice, is approved and added to `PLAN.md`. The maintainer still decides those other items. The first note is `2026-10-14-1544.md`.
+
 ## 2026-10-14 — Department review after every developer pass
 
 After the main session edits, `workflows/department-review.md` runs before the change is called done. Security, legal, finance, privacy, support, and communications each reply, including **No update** when their surface is untouched. Quality stays `@test-writer`. Reviewers do not edit. The main session applies consistency fixes and asks the maintainer before changing rights, warranty, price, or adding a privacy policy. There is no price list in the repo. License display defaults remain unlimited sites and no expiration until `radius_license_details` replaces them.
+
+## 2026-10-14 — Deactivate keeps data unless purge is confirmed
+
+Deactivation keeps Radius data unless an administrator confirms the purge in the Plugins screen dialog. Cancel, Close, Escape, and a click outside do not deactivate and do not delete. Bulk deactivate and network deactivate keep data. Deleting the plugin files does not remove data that was kept.
 
 ## 2026-10-14 — Claude SDLC scaffold
 

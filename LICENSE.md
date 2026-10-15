@@ -11,4 +11,4 @@ Radius SEO is free software: you can redistribute it and/or modify it under the 
 
 This program is distributed in the hope that it will be useful, but **without any warranty**; without even the implied warranty of **merchantability** or **fitness for a particular purpose**. See the GNU General Public License for more details.
 
-Plugin header and `readme.txt` state **GPL-2.0-or-later**, consistent with WordPress ecosystem norms.
+Plugin header states **GPL-2.0-or-later**. `readme.txt` states **GPLv2 or later**, the WordPress readme wording for the same license.

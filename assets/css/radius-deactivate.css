@@ -1,0 +1,77 @@
+.radius-deactivate[hidden] {
+	display: none;
+}
+
+.radius-deactivate__backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	z-index: 100000;
+}
+
+.radius-deactivate__panel {
+	position: fixed;
+	z-index: 100001;
+	top: 10vh;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(32rem, calc(100% - 2rem));
+	max-height: 80vh;
+	overflow: auto;
+	background: #fff;
+	color: #1d2327;
+	padding: 1.25rem 1.5rem 1.5rem;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+
+.radius-deactivate__title {
+	margin: 0 2rem 0.75rem 0;
+	font-size: 1.3em;
+	line-height: 1.3;
+}
+
+.radius-deactivate__close {
+	position: absolute;
+	top: 0.5rem;
+	right: 0.5rem;
+	border: 0;
+	background: transparent;
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0.25rem 0.5rem;
+}
+
+.radius-deactivate__close:focus,
+.radius-deactivate__panel .button:focus {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
+.radius-deactivate__counts {
+	margin: 0.5rem 0 1rem 1.25rem;
+}
+
+.radius-deactivate__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.radius-deactivate__danger {
+	background: #b32d2e;
+	border-color: #b32d2e;
+	color: #fff;
+}
+
+.radius-deactivate__danger:hover,
+.radius-deactivate__danger:focus {
+	background: #8a2424;
+	border-color: #8a2424;
+	color: #fff;
+}
+
+.radius-deactivate__note {
+	margin-top: 0.75rem;
+}

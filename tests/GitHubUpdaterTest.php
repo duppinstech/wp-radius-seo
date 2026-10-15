@@ -165,7 +165,7 @@ class GitHubUpdaterTest extends TestCase {
 		$this->assertTrue( $updater->is_allowed_package_url( self::PACKAGE ) );
 	}
 
-	public function test_single_unnamed_zip_is_accepted_but_ambiguous_zips_are_not() {
+	public function test_zip_must_use_the_configured_asset_name() {
 		$updater = $this->updater();
 		$one     = $this->release_json(
 			array(
@@ -177,10 +177,10 @@ class GitHubUpdaterTest extends TestCase {
 				),
 			)
 		);
-		$this->assertNotNull( $updater->parse_release( $one ) );
+		$this->assertNull( $updater->parse_release( $one ) );
 
-		$two                     = $one;
-		$two['assets'][]         = $one['assets'][0];
+		$two                      = $one;
+		$two['assets'][]          = $one['assets'][0];
 		$two['assets'][1]['name'] = 'second.zip';
 		$this->assertNull( $updater->parse_release( $two ) );
 	}

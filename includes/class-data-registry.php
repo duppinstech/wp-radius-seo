@@ -62,6 +62,12 @@ final class Radius_Data_Registry {
 	public const OPTION_GITHUB_RELEASE = 'radius_github_release';
 
 	/**
+	 * Hash of the license key already saved when signed keys shipped.
+	 * Empty string means this site had no key and must use a signed key.
+	 */
+	public const OPTION_LICENSE_LEGACY_HASH = 'radius_license_legacy_key_hash';
+
+	/**
 	 * Post meta keys: OLD (lf_ era) => NEW (canonical). Used only by Radius_Prefix_Migration.
 	 *
 	 * @return array<string,string>

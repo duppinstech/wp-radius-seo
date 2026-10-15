@@ -42,7 +42,7 @@ Read these before planning or editing, then update `progress.md` when a mileston
 ## SDLC
 
 - Follow `workflows/feature-build.md`, `workflows/bug-fix.md`, or `workflows/code-review.md` for that kind of task.
-- Read `AGENTS.md` before delegating. After the developer pass, run `workflows/department-review.md` (security, legal, finance, privacy, support, communications, and quality). Do not give two agents write access to the same files.
+- Read `AGENTS.md` before delegating. After the developer pass, run `workflows/department-review.md` (security, legal, finance, privacy, interface, support, communications, and quality). Do not give two agents write access to the same files.
 - Hooks in `.claude/settings.json` block secret writes and destructive git, then syntax-check PHP after edits. Exit 0 allows. Exit 2 blocks.
 - Slash commands: `/review`, `/deploy`, `/scaffold`. Skills `code-review`, `testing-patterns`, and `pr-description` load when the task matches their description.
 

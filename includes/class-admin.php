@@ -115,8 +115,10 @@ class Radius_Admin {
 		if ( $msg === '' ) {
 			return;
 		}
+		$is_error = isset( $_GET['radius_notice_error'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_GET['radius_notice_error'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 		printf(
-			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			$is_error ? 'error' : 'success',
 			esc_html( $msg )
 		);
 	}
@@ -460,8 +462,11 @@ class Radius_Admin {
 					'ajaxurl' => admin_url( 'admin-ajax.php' ),
 					'nonce'   => wp_create_nonce( 'radius_admin' ),
 					'i18n'    => array(
-						'placeholder'     => __( 'Type to search places…', 'radius' ),
-						'noResults'       => __( 'No matches.', 'radius' ),
+						'placeholder'      => __( 'Type to search places…', 'radius' ),
+						'searchLabel'      => __( 'Anchor place', 'radius' ),
+						'radiusLabel'      => __( 'Radius (miles)', 'radius' ),
+						'suggestionsLabel' => __( 'Place suggestions', 'radius' ),
+						'noResults'        => __( 'No matches.', 'radius' ),
 						'noCoords'        => __( 'missing coords', 'radius' ),
 						'remove'          => __( 'Remove', 'radius' ),
 						'areaCodePending' => __( '— Save settings to assign —', 'radius' ),
@@ -545,8 +550,8 @@ class Radius_Admin {
 					'hasSavedKey' => $api_key_saved_js,
 					'i18n'        => array(
 						'checking' => __( 'Checking…', 'radius' ),
-						'ok'       => __( 'Validated', 'radius' ),
-						'fail'     => __( 'Could not validate. Try again.', 'radius' ),
+						'ok'       => __( 'The key already saved on this site is still valid.', 'radius' ),
+						'fail'     => __( 'That key is not a signed Radius license.', 'radius' ),
 					),
 				)
 			);
@@ -700,7 +705,7 @@ class Radius_Admin {
 						'running'       => __( 'Running checks…', 'radius' ),
 						'progressFmt'   => __( 'Running check {done} of {total}…', 'radius' ),
 						'errorPrefix'   => __( 'Error:', 'radius' ),
-						'htmlNotJson'   => __( 'The server returned an HTML error page instead of JSON — usually a timeout, security block, or PHP fatal error. Check your host error log or Radius → Logs, then try again. Large sites may need radius_health_redirect_scan_max_urls lowered or radius_deploy_health_include_redirect_scan disabled.', 'radius' ),
+						'htmlNotJson'   => __( 'The server returned an HTML error page instead of JSON — usually a timeout, security block, or PHP fatal error. Check your host error log or Radius → Logs, then try again.', 'radius' ),
 						'runAgain'      => __( 'Run health check', 'radius' ),
 						'overallPass'   => __( 'All checks passed.', 'radius' ),
 						'overallWarn'   => __( 'Checks passed with warnings — review items below.', 'radius' ),
@@ -1138,7 +1143,7 @@ class Radius_Admin {
 					<div class="radius-card">
 						<?php self::dashboard_card_heading( 'dashicons-admin-generic', __( 'Settings', 'radius' ) ); ?>
 						<div class="radius-card__text">
-							<p><?php esc_html_e( 'URLs, deploy batches, service areas, rotation, Elementor, and extra meta to copy on deploy — grouped in tabs.', 'radius' ); ?></p>
+							<p><?php esc_html_e( 'URLs, deploy batches, service areas, rotation, Elementor, Beaver Builder, and extra meta to copy on deploy — grouped in tabs.', 'radius' ); ?></p>
 						</div>
 						<div class="radius-card__actions">
 							<a class="button button-primary" href="<?php echo esc_url( self::settings_screen_url( 'general' ) ); ?>"><?php esc_html_e( 'Open settings', 'radius' ); ?></a>
@@ -1434,7 +1439,7 @@ class Radius_Admin {
 						<form method="post" action="<?php echo esc_url( $csv_url ); ?>" enctype="multipart/form-data" class="radius-form">
 							<input type="hidden" name="action" value="radius_import_csv" />
 							<?php wp_nonce_field( 'radius_csv', 'radius_csv_nonce' ); ?>
-							<p><input type="file" name="radius_csv" accept=".csv,text/csv" required /></p>
+							<p><label class="screen-reader-text" for="radius-csv-library"><?php esc_html_e( 'Places CSV', 'radius' ); ?></label><input type="file" id="radius-csv-library" name="radius_csv" accept=".csv,text/csv" required /></p>
 							<p>
 								<label>
 									<input type="checkbox" name="radius_csv_update_existing" value="1" />
@@ -1443,6 +1448,13 @@ class Radius_Admin {
 							</p>
 							<?php submit_button( __( 'Upload CSV', 'radius' ), 'primary', 'submit', false ); ?>
 						</form>
+					</div>
+				</div>
+				<?php else : ?>
+				<div class="radius-card">
+					<h2><?php esc_html_e( 'Import CSV', 'radius' ); ?></h2>
+					<div class="radius-card__text">
+						<p><?php esc_html_e( 'Ask a site administrator to upload the CSV.', 'radius' ); ?></p>
 					</div>
 				</div>
 				<?php endif; ?>
@@ -1527,7 +1539,7 @@ class Radius_Admin {
 								?>
 								<tr>
 									<th scope="row" class="check-column">
-										<input type="checkbox" class="radius-place-cb" name="radius_place_ids[]" value="<?php echo esc_attr( (string) (int) $t->term_id ); ?>" />
+										<input type="checkbox" class="radius-place-cb" name="radius_place_ids[]" value="<?php echo esc_attr( (string) (int) $t->term_id ); ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: place name */ __( 'Select %s', 'radius' ), $t->name ) ); ?>" />
 									</th>
 									<td><?php echo esc_html( (string) (int) $t->term_id ); ?></td>
 									<td><?php echo esc_html( $t->name ); ?></td>
@@ -2436,7 +2448,7 @@ class Radius_Admin {
 								</tbody>
 							</table>
 							<div class="radius-deploy-card__actions">
-								<p class="radius-deploy-card__ajax-progress description" id="<?php echo esc_attr( 'radius-deploy-ajax-' . (string) $tid ); ?>" hidden></p>
+								<p class="radius-deploy-card__ajax-progress description" id="<?php echo esc_attr( 'radius-deploy-ajax-' . (string) $tid ); ?>" role="status" aria-live="polite" hidden></p>
 								<?php if ( $q_left > 0 ) : ?>
 									<p class="radius-deploy-card__pending description">
 										<?php
@@ -2636,7 +2648,7 @@ class Radius_Admin {
 						</tbody>
 					</table>
 					<div class="radius-deploy-card__actions">
-						<p class="radius-deploy-card__ajax-progress description" id="radius-sa-deploy-ajax" hidden></p>
+						<p class="radius-deploy-card__ajax-progress description" id="radius-sa-deploy-ajax" role="status" aria-live="polite" hidden></p>
 						<?php if ( ! $sa_tpl_ok && $sa_q_left <= 0 ) : ?>
 							<p class="description"><?php esc_html_e( 'Choose a template under Settings → General → Service area template (default), then save.', 'radius' ); ?></p>
 						<?php elseif ( $sa_q_left > 0 ) : ?>
@@ -2898,7 +2910,7 @@ class Radius_Admin {
 						<div class="radius-deploy-help-modal__body">
 							<p><?php esc_html_e( 'Each landing template card deploys landings to every library place inside your service areas. The Service areas section uses the template chosen in Settings → General and publishes hub pages under your service area URL prefix with place-only slugs. Large libraries run in chained batches (batch size under Settings → General). Without JavaScript, use “Continue deployment” after each batch.', 'radius' ); ?></p>
 							<p><?php esc_html_e( 'Before the first batch, the deploy queue drops places whose slug contains configured “low value” substrings (trailers, subdivisions, etc., same list as Location library → slug cleanup) and collapses duplicate display names so only the shortest slug per name is deployed.', 'radius' ); ?></p>
-							<p><?php esc_html_e( 'Templates support {{place_name}} {{place_slug}} {{country}} {{region}} {{state}} {{zip}} {{lat}} {{lng}}, X-field keys, and spintax {option one|option two}. Elementor layouts are copied on deploy when enabled in Settings.', 'radius' ); ?></p>
+							<p><?php esc_html_e( 'Templates support {{place_name}} {{place_slug}} {{country}} {{region}} {{state}} {{zip}} {{lat}} {{lng}}, X-field keys, and spintax {option one|option two}. Elementor and Beaver Builder layouts are copied on deploy when that builder is enabled in Settings.', 'radius' ); ?></p>
 						</div>
 						<footer class="radius-deploy-help-modal__footer">
 							<button type="button" class="button button-primary radius-deploy-help-modal__ok" data-radius-deploy-close="1"><?php esc_html_e( 'OK', 'radius' ); ?></button>
@@ -3337,7 +3349,7 @@ Fast roadside help in {{region}}
 					<form method="post" action="<?php echo esc_url( $csv_url ); ?>" enctype="multipart/form-data" class="radius-form-inline" style="display:inline-block;vertical-align:top;">
 						<input type="hidden" name="action" value="radius_import_csv" />
 						<?php wp_nonce_field( 'radius_csv', 'radius_csv_nonce' ); ?>
-						<input type="file" name="radius_csv" accept=".csv,text/csv" required />
+						<input type="file" id="radius-csv-import" name="radius_csv" accept=".csv,text/csv" required aria-label="<?php esc_attr_e( 'Places CSV', 'radius' ); ?>" />
 						<label style="margin-left:8px;">
 							<input type="checkbox" name="radius_csv_update_existing" value="1" />
 							<?php esc_html_e( 'Update existing', 'radius' ); ?>
@@ -3462,7 +3474,7 @@ Fast roadside help in {{region}}
 						<tr>
 							<th scope="row"><?php esc_html_e( 'API key', 'radius' ); ?></th>
 							<td>
-								<p class="description"><?php esc_html_e( 'Radius needs an API key. Save a key here to enable templates, landings, deploy, and imports. The key is encrypted in the database.', 'radius' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Radius needs a license key. A new key must be a signed Radius license from Duppins Technology. A key already saved on this site keeps working until you replace it. The key is encrypted in the database. There is no license server yet.', 'radius' ); ?></p>
 								<?php if ( $api_key_saved ) : ?>
 									<input type="hidden" name="radius_api_key_remove" id="radius_api_key_remove_field" value="" />
 								<?php endif; ?>
@@ -3494,7 +3506,7 @@ Fast roadside help in {{region}}
 										/>
 									<?php endif; ?>
 									<span class="radius-api-key-row__actions">
-										<button type="button" class="button" id="radius-validate-api-key"><?php esc_html_e( 'Validate', 'radius' ); ?></button>
+										<button type="button" class="button" id="radius-validate-api-key"><?php esc_html_e( 'Check', 'radius' ); ?></button>
 										<?php if ( $api_key_saved ) : ?>
 											<button type="button" class="button" id="radius-remove-api-key"><?php esc_html_e( 'Remove', 'radius' ); ?></button>
 										<?php endif; ?>
@@ -3502,7 +3514,9 @@ Fast roadside help in {{region}}
 											class="radius-api-validate-status<?php echo $license_ui_ok ? ' radius-api-validate-status--ok' : ''; ?>"
 											id="radius-api-validate-status"
 											<?php echo $license_ui_ok ? '' : 'hidden'; ?>
-										><?php echo $license_ui_ok ? esc_html__( 'Validated', 'radius' ) : ''; ?></span>
+											role="status"
+											aria-live="polite"
+										><?php echo $license_ui_ok ? esc_html__( 'The key already saved on this site is still valid.', 'radius' ) : ''; ?></span>
 									</span>
 								</div>
 								<p id="radius-api-key-hint" class="description">
@@ -3518,15 +3532,11 @@ Fast roadside help in {{region}}
 							<tr>
 								<th scope="row"><?php esc_html_e( 'License details', 'radius' ); ?></th>
 								<td>
-									<?php if ( isset( $license_details['tier'] ) && 'unlimited' === $license_details['tier'] ) : ?>
+									<?php if ( isset( $license_details['tier'] ) && in_array( $license_details['tier'], array( 'single', 'unlimited' ), true ) ) : ?>
 										<div class="radius-license-current-card">
 											<p class="radius-license-current-card__badge"><?php esc_html_e( 'Current license', 'radius' ); ?></p>
 											<h3 class="radius-license-current-card__title"><?php echo esc_html( $license_details['plan_name'] ); ?></h3>
 											<dl class="radius-license-current-card__meta">
-												<div>
-													<dt><?php echo esc_html( $license_details['purchased_label'] ); ?></dt>
-													<dd><?php echo esc_html( $license_details['purchased_at'] ); ?></dd>
-												</div>
 												<div>
 													<dt><?php echo esc_html( $license_details['expires_label'] ); ?></dt>
 													<dd><?php echo esc_html( $license_details['expires_at'] ); ?></dd>
@@ -3534,25 +3544,30 @@ Fast roadside help in {{region}}
 											</dl>
 											<h4 class="radius-license-current-card__features-title"><?php esc_html_e( 'License features', 'radius' ); ?></h4>
 											<ul class="radius-license-current-card__features">
-												<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
+												<?php if ( 'single' === $license_details['tier'] ) : ?>
+													<li><?php esc_html_e( 'One WordPress site', 'radius' ); ?></li>
+													<li><?php esc_html_e( 'Email support', 'radius' ); ?></li>
+												<?php else : ?>
+													<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
+													<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
+												<?php endif; ?>
 												<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
 												<li><?php esc_html_e( 'All features included', 'radius' ); ?></li>
 												<li><?php esc_html_e( 'Regular updates', 'radius' ); ?></li>
-												<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
 											</ul>
 										</div>
 									<?php endif; ?>
-
-									<p class="radius-license-pricing-intro description"><?php esc_html_e( 'Need a new license or an additional plan? Choose an option below.', 'radius' ); ?></p>
-									<?php
-									$lic_tier = isset( $license_details['tier'] ) ? $license_details['tier'] : 'unlimited';
-									$show_single_pricing = ( 'single' === $lic_tier );
-									$show_unlimited_pricing = ( 'unlimited' === $lic_tier );
-									?>
-									<div class="radius-license-pricing-cards radius-license-pricing-cards--<?php echo esc_attr( $lic_tier ); ?>">
-										<?php if ( $show_single_pricing ) : ?>
+								</td>
+							</tr>
+						<?php endif; ?>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Plans', 'radius' ); ?></th>
+							<td>
+									<p class="radius-license-pricing-intro description"><?php esc_html_e( 'Payment is on Stripe. After checkout, paste the license key from Duppins Technology into the field above.', 'radius' ); ?></p>
+									<div class="radius-license-pricing-cards">
 											<div class="radius-license-price-card">
 												<h4 class="radius-license-price-card__title"><?php esc_html_e( 'Single site', 'radius' ); ?></h4>
+												<p class="radius-license-price-card__price"><?php esc_html_e( '$9.99', 'radius' ); ?> <span><?php esc_html_e( 'per month', 'radius' ); ?></span></p>
 												<ul class="radius-license-price-card__list">
 													<li><?php esc_html_e( 'One WordPress site', 'radius' ); ?></li>
 													<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
@@ -3561,13 +3576,12 @@ Fast roadside help in {{region}}
 													<li><?php esc_html_e( 'Email support', 'radius' ); ?></li>
 												</ul>
 												<p class="radius-license-price-card__action">
-													<a href="#" class="button button-secondary" tabindex="-1"><?php esc_html_e( 'Purchase', 'radius' ); ?></a>
+													<a class="button button-secondary" href="<?php echo esc_url( Radius_API_License::CHECKOUT_SINGLE_URL ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Purchase single site', 'radius' ); ?><span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'radius' ); ?></span></a>
 												</p>
 											</div>
-										<?php endif; ?>
-										<?php if ( $show_unlimited_pricing ) : ?>
 											<div class="radius-license-price-card radius-license-price-card--highlight">
 												<h4 class="radius-license-price-card__title"><?php esc_html_e( 'Unlimited sites', 'radius' ); ?></h4>
+												<p class="radius-license-price-card__price"><?php esc_html_e( '$99', 'radius' ); ?> <span><?php esc_html_e( 'per month', 'radius' ); ?></span></p>
 												<ul class="radius-license-price-card__list">
 													<li><?php esc_html_e( 'Unlimited WordPress installations', 'radius' ); ?></li>
 													<li><?php esc_html_e( 'Unlimited location pages', 'radius' ); ?></li>
@@ -3576,14 +3590,12 @@ Fast roadside help in {{region}}
 													<li><?php esc_html_e( 'Priority email support', 'radius' ); ?></li>
 												</ul>
 												<p class="radius-license-price-card__action">
-													<a href="#" class="button button-primary" tabindex="-1"><?php esc_html_e( 'Purchase', 'radius' ); ?></a>
+													<a class="button button-primary" href="<?php echo esc_url( Radius_API_License::CHECKOUT_UNLIMITED_URL ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Purchase unlimited sites', 'radius' ); ?><span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'radius' ); ?></span></a>
 												</p>
 											</div>
-										<?php endif; ?>
 									</div>
 								</td>
 							</tr>
-						<?php endif; ?>
 					</table>
 				</div>
 
@@ -3666,14 +3678,14 @@ Fast roadside help in {{region}}
 								<table class="widefat striped radius-anchor-table">
 									<thead>
 										<tr>
-											<th><?php esc_html_e( 'Anchor place', 'radius' ); ?></th>
-											<th><?php esc_html_e( 'Radius (miles)', 'radius' ); ?></th>
-											<th><?php esc_html_e( 'Area code', 'radius' ); ?></th>
-											<th><?php esc_html_e( 'Actions', 'radius' ); ?></th>
+											<th scope="col"><?php esc_html_e( 'Anchor place', 'radius' ); ?></th>
+											<th scope="col"><?php esc_html_e( 'Radius (miles)', 'radius' ); ?></th>
+											<th scope="col"><?php esc_html_e( 'Area code', 'radius' ); ?></th>
+											<th scope="col"><?php esc_html_e( 'Actions', 'radius' ); ?></th>
 										</tr>
 									</thead>
 									<tbody id="radius-anchor-tbody">
-										<?php foreach ( $anchors as $row ) : ?>
+										<?php foreach ( $anchors as $anchor_i => $row ) : ?>
 											<?php
 											$pid       = ! empty( $row['place_id'] ) ? absint( $row['place_id'] ) : 0;
 											$is_legacy = ! $pid && isset( $row['lat'], $row['lng'] ) && is_numeric( $row['lat'] ) && is_numeric( $row['lng'] );
@@ -3697,7 +3709,10 @@ Fast roadside help in {{region}}
 											$rad       = isset( $row['radius_miles'] ) && $row['radius_miles'] !== '' ? (string) $row['radius_miles'] : '';
 											$leg_lat   = $is_legacy ? (string) $row['lat'] : '';
 											$leg_lng   = $is_legacy ? (string) $row['lng'] : '';
-											$loc_code  = isset( $row['location_code'] ) ? sanitize_key( (string) $row['location_code'] ) : '';
+											$loc_code   = isset( $row['location_code'] ) ? sanitize_key( (string) $row['location_code'] ) : '';
+											$search_id  = 'radius-anchor-search-' . (int) $anchor_i;
+											$suggest_id = 'radius-anchor-suggest-' . (int) $anchor_i;
+											$radius_id  = 'radius-anchor-radius-' . (int) $anchor_i;
 											?>
 											<tr class="radius-anchor-row">
 												<td>
@@ -3708,11 +3723,15 @@ Fast roadside help in {{region}}
 														<p class="description radius-anchor-legacy-note"><?php esc_html_e( 'Saved as coordinates. Search below to switch this row to a library place.', 'radius' ); ?></p>
 													<?php endif; ?>
 													<div class="radius-anchor-pick">
-														<input type="search" class="regular-text radius-anchor-search" value="<?php echo esc_attr( $display ); ?>" autocomplete="off" placeholder="<?php esc_attr_e( 'Type to search places…', 'radius' ); ?>" />
-														<div class="radius-anchor-suggest" style="display:none;" role="listbox"></div>
+														<label class="screen-reader-text" for="<?php echo esc_attr( $search_id ); ?>"><?php esc_html_e( 'Anchor place', 'radius' ); ?></label>
+														<input type="search" class="regular-text radius-anchor-search" id="<?php echo esc_attr( $search_id ); ?>" value="<?php echo esc_attr( $display ); ?>" autocomplete="off" placeholder="<?php esc_attr_e( 'Type to search places…', 'radius' ); ?>" aria-controls="<?php echo esc_attr( $suggest_id ); ?>" aria-expanded="false" />
+														<div class="radius-anchor-suggest" id="<?php echo esc_attr( $suggest_id ); ?>" style="display:none;" role="listbox" aria-label="<?php esc_attr_e( 'Place suggestions', 'radius' ); ?>"></div>
 													</div>
 												</td>
-												<td><input type="text" name="radius_anchor_radius[]" value="<?php echo esc_attr( $rad ); ?>" class="small-text" /></td>
+												<td>
+													<label class="screen-reader-text" for="<?php echo esc_attr( $radius_id ); ?>"><?php esc_html_e( 'Radius (miles)', 'radius' ); ?></label>
+													<input type="text" name="radius_anchor_radius[]" id="<?php echo esc_attr( $radius_id ); ?>" value="<?php echo esc_attr( $rad ); ?>" class="small-text" />
+												</td>
 												<td>
 													<?php if ( $loc_code !== '' ) : ?>
 														<code class="radius-anchor-area-code-display"><?php echo esc_html( $loc_code ); ?></code>
@@ -3773,7 +3792,7 @@ Fast roadside help in {{region}}
 							<td>
 								<label>
 									<input type="checkbox" name="dynamic_content_per_request" value="1" <?php checked( ! empty( $s['dynamic_content_per_request'] ) ); ?> />
-									<?php esc_html_e( 'Resolve tokens and spintax on every page view for classic (non-Elementor) landings. Uses one batched meta load for template + place data per request.', 'radius' ); ?>
+									<?php esc_html_e( 'Resolve tokens and spintax on every page view for classic landings that are not built in Elementor or Beaver Builder. Uses one batched meta load for template + place data per request.', 'radius' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'When off, visitors see the HTML stored on each landing (updated by deploy and optional scheduled rotation). Per-template: template editor → Landing output behavior.', 'radius' ); ?></p>
 							</td>
@@ -4180,7 +4199,7 @@ Fast roadside help in {{region}}
 				<?php
 				printf(
 					/* translators: %s: directory path on server */
-					esc_html__( 'Logs are stored under %s (not web-accessible). Service area and landing deploys run in chained AJAX batches; legacy place import uses delta queues when enabled.', 'radius' ),
+					esc_html__( 'Logs stay on this server under %s. The preferred folder is outside the document root. An uploads fallback must be blocked by the host. Service area and landing deploys run in chained AJAX batches; legacy place import uses delta queues when enabled.', 'radius' ),
 					'<code>' . esc_html( $log_dir ) . '</code>'
 				);
 				if ( is_multisite() ) {

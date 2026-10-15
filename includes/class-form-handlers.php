@@ -1098,6 +1098,20 @@ class Radius_Form_Handlers {
 		$was_unlocked = Radius_API_License::is_unlocked();
 		Radius_API_License::sync_api_key_from_request();
 
+		$license_notice = get_transient( 'radius_license_notice' );
+		if ( is_array( $license_notice ) && isset( $license_notice['type'] ) && 'error' === $license_notice['type'] && ! empty( $license_notice['message'] ) ) {
+			delete_transient( 'radius_license_notice' );
+			self::redirect(
+				'radius-settings',
+				(string) $license_notice['message'],
+				array(
+					'tab'                  => 'license',
+					'radius_notice_error'  => '1',
+				)
+			);
+			return;
+		}
+
 		if ( ! Radius_API_License::is_unlocked() ) {
 			self::redirect(
 				'radius-settings',

@@ -22,7 +22,45 @@
 		document.querySelectorAll('.radius-anchor-suggest').forEach(function (el) {
 			el.style.display = 'none';
 			el.innerHTML = '';
+			var search = el.parentNode ? el.parentNode.querySelector('.radius-anchor-search') : null;
+			if (search) {
+				search.setAttribute('aria-expanded', 'false');
+			}
 		});
+	}
+
+	function nameAnchorRow(row, search, box) {
+		if (!box.id) {
+			box.id = 'radius-anchor-suggest-' + Math.random().toString(36).slice(2, 8);
+		}
+		if (!search.id) {
+			search.id = 'radius-anchor-search-' + box.id.replace('radius-anchor-suggest-', '');
+		}
+		search.setAttribute('aria-controls', box.id);
+		if (!search.getAttribute('aria-expanded')) {
+			search.setAttribute('aria-expanded', 'false');
+		}
+		if (!search.getAttribute('aria-label') && !document.querySelector('label[for="' + search.id + '"]')) {
+			search.setAttribute('aria-label', (cfg.i18n && cfg.i18n.searchLabel) || 'Anchor place');
+		}
+		if (!box.getAttribute('aria-label')) {
+			box.setAttribute('aria-label', (cfg.i18n && cfg.i18n.suggestionsLabel) || 'Place suggestions');
+		}
+		if (!box.getAttribute('aria-live')) {
+			box.setAttribute('aria-live', 'polite');
+		}
+		var radius = row.querySelector('input[name="radius_anchor_radius[]"]');
+		if (radius && !radius.getAttribute('aria-label') && !radius.id) {
+			radius.setAttribute('aria-label', (cfg.i18n && cfg.i18n.radiusLabel) || 'Radius (miles)');
+		}
+	}
+
+	function setSuggestOpen(search, box, open) {
+		box.style.display = open ? 'block' : 'none';
+		search.setAttribute('aria-expanded', open ? 'true' : 'false');
+		if (!open) {
+			box.innerHTML = '';
+		}
 	}
 
 	function bindRow(row) {
@@ -32,12 +70,12 @@
 		if (!search || !hidden || !box) {
 			return;
 		}
+		nameAnchorRow(row, search, box);
 
 		var runSearch = debounce(function () {
 			var q = (search.value || '').trim();
 			if (q.length < 2) {
-				box.style.display = 'none';
-				box.innerHTML = '';
+				setSuggestOpen(search, box, false);
 				return;
 			}
 			var url = ajaxUrl + '?action=radius_search_places&nonce=' + encodeURIComponent(nonce) + '&q=' + encodeURIComponent(q);
@@ -47,12 +85,14 @@
 				})
 				.then(function (data) {
 					if (!data || !data.success || !data.data || !data.data.places) {
+						box.innerHTML = '<div class="lf-suggest-empty">' + (cfg.i18n && cfg.i18n.searchFailed ? cfg.i18n.searchFailed : 'Search failed.') + '</div>';
+						setSuggestOpen(search, box, true);
 						return;
 					}
 					var places = data.data.places;
 					if (!places.length) {
 						box.innerHTML = '<div class="lf-suggest-empty">' + (cfg.i18n && cfg.i18n.noResults ? cfg.i18n.noResults : 'No matches.') + '</div>';
-						box.style.display = 'block';
+						setSuggestOpen(search, box, true);
 						return;
 					}
 					box.innerHTML = places
@@ -62,7 +102,7 @@
 									? ' <span class="lf-no-coords">(' + (cfg.i18n && cfg.i18n.noCoords ? cfg.i18n.noCoords : 'no lat/lng') + ')</span>'
 									: '';
 							return (
-								'<button type="button" class="lf-suggest-item radius-suggest-item" data-id="' +
+								'<button type="button" role="option" class="lf-suggest-item radius-suggest-item" data-id="' +
 								p.id +
 								'" data-label="' +
 								escapeAttr(p.name + (p.slug ? ' — ' + p.slug : '')) +
@@ -73,9 +113,12 @@
 							);
 						})
 						.join('');
-					box.style.display = 'block';
+					setSuggestOpen(search, box, true);
 				})
-				.catch(function () {});
+				.catch(function () {
+					box.innerHTML = '<div class="lf-suggest-empty">' + (cfg.i18n && cfg.i18n.searchFailed ? cfg.i18n.searchFailed : 'Search failed.') + '</div>';
+					setSuggestOpen(search, box, true);
+				});
 		}, 250);
 
 		search.addEventListener('input', function () {
@@ -120,6 +163,7 @@
 			}
 			box.style.display = 'none';
 			box.innerHTML = '';
+			search.setAttribute('aria-expanded', 'false');
 		});
 	}
 
@@ -169,11 +213,17 @@
 					'<div class="radius-anchor-pick">' +
 					'<input type="search" class="regular-text radius-anchor-search" value="" placeholder="' +
 					ph +
-					'" autocomplete="off" />' +
-					'<div class="radius-anchor-suggest" style="display:none;" role="listbox"></div>' +
+					'" autocomplete="off" aria-label="' +
+					escapeAttr((cfg.i18n && cfg.i18n.searchLabel) || 'Anchor place') +
+					'" />' +
+					'<div class="radius-anchor-suggest" style="display:none;" role="listbox" aria-live="polite" aria-label="' +
+					escapeAttr((cfg.i18n && cfg.i18n.suggestionsLabel) || 'Place suggestions') +
+					'"></div>' +
 					'</div>' +
 					'</td>' +
-					'<td><input type="text" name="radius_anchor_radius[]" value="" class="small-text" /></td>' +
+					'<td><input type="text" name="radius_anchor_radius[]" value="" class="small-text" aria-label="' +
+					escapeAttr((cfg.i18n && cfg.i18n.radiusLabel) || 'Radius (miles)') +
+					'" /></td>' +
 					'<td><span class="description">' +
 					pending +
 					'</span></td>' +
