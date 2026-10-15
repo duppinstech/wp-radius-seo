@@ -855,11 +855,22 @@ class Radius_Plugin {
 		if ( ! preg_match( '#^/wp/v2/radius_template(?:/|$)#', $route ) ) {
 			return $result;
 		}
-		$parent  = (int) $request->get_param( 'parent' );
-		$post_id = (int) $request->get_param( 'id' );
-		$check   = $parent > 0 ? $parent : $post_id;
-		if ( $check > 0 ) {
-			$allowed = current_user_can( 'edit_post', $check );
+		// rest_pre_dispatch runs before the route match, so URL params are still empty.
+		// Read the ids from the path. A query argument named parent must not count.
+		$post_id = 0;
+		$parent  = 0;
+		if ( preg_match( '#^/wp/v2/radius_template/(\d+)/(?:revisions|autosaves)(?:/\d+)?$#', $route, $route_ids ) ) {
+			$parent = (int) $route_ids[1];
+		} elseif ( preg_match( '#^/wp/v2/radius_template/(\d+)$#', $route, $route_ids ) ) {
+			$post_id = (int) $route_ids[1];
+		}
+		if ( $post_id > 0 ) {
+			$allowed = current_user_can( 'edit_post', $post_id );
+		} elseif ( $parent > 0 ) {
+			$parent_post = get_post( $parent );
+			$allowed     = $parent_post instanceof WP_Post
+				&& 'radius_template' === $parent_post->post_type
+				&& current_user_can( 'edit_post', $parent );
 		} elseif ( current_user_can( 'manage_options' ) || current_user_can( 'edit_others_posts' ) ) {
 			$allowed = true;
 		} else {

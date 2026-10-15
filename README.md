@@ -30,7 +30,7 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 ## Updates
 
-Installed sites poll **GitHub Releases** (latest release must include a `.zip` asset). When your installed version is older than the release tag, **Dashboard → Updates** offers a one-click upgrade.
+Installed sites show an update under **Dashboard → Updates** only when the latest release includes a file named `wp-radius-seo.zip`. If that update is missing, use **Dashboard → Updates → Check again**. If the release file has another name, upload `wp-radius-seo.zip` with **Plugins → Add New → Upload Plugin**.
 
 You can still upload a newer ZIP manually. Turn checks off with `define( 'RADIUS_DISABLE_GITHUB_UPDATER', true );`. Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 

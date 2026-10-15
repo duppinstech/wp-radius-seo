@@ -93,7 +93,7 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 = 1.6.113 =
 * **Security:** Template REST reads require edit access on that template, including revision routes. A release zip is installed only when its file name matches the configured asset.
 * **Accessibility:** Migration, spintax, site-replacer, and deploy-help dialogs keep keyboard focus. The license lock is not mouse-only. Place checkboxes, CSV uploads, service-area fields, deploy status, and analytics charts have accessible names or text alternatives.
-* **Copy:** Quick start matches service-area deploy. Beaver Builder is named next to Elementor. The license card no longer calls a local save time a purchase date. Logs no longer claim every folder is unreachable from the web.
+* **Copy:** Quick start matches service-area deploy. Beaver Builder is named next to Elementor. The license card no longer calls a local save time a purchase date. Logs no longer claim every folder is unreachable from the web. Landing analytics says counts stay on this site, the visitor IP is a short-lived rate-limit hash, and the user agent is read to ignore bots. A health-check HTML error tells the owner to check the host error log or Radius → Logs, then try again. On the location library, someone who is not an administrator is told to ask a site administrator to upload the CSV.
 
 = 1.6.112 =
 * **Updates:** Installed sites use the Duppins Technology GitHub updater standard v1.0.0 and read releases from `duppinstech/wp-radius-seo`. The filters `radius_github_updater_repo` and `radius_github_updater_cache_ttl` are removed. Use `radius_github_updater_config` and `radius_github_release_http_args`. Define `RADIUS_DISABLE_GITHUB_UPDATER` to turn checks off.

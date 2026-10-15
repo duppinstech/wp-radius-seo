@@ -4,6 +4,7 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 
 ## Done
 
+- 2026-10-14: Department review of commit `73b66c9`. Approved P2-18, P2-19, and P2-20. Note: `.claude/memory/meetings/2026-10-14-2004.md`. P2-11, P2-12, and P0-01 stay waiting.
 - 2026-10-14: Named-site proofs. Beeline Transport Inc. (`https://beelinetransportinc.com`, Radius 1.6.111) was read only. P1-05, P1-06, and P1-07 closed from that look. P1-02 and P1-04 closed with a local Docker deploy plus the Beeline phone and Elementor observations. P2-10 closed on http://127.0.0.1:8088 (Apache in Docker). Nothing on the live site was edited. Docker was stopped afterward.
 - 2026-10-14: Approved non-major plan items implemented in 1.6.113 on `feature/github-updater-standard`: P2-01 through P2-09 and P2-13 through P2-17. P2-11, P2-12, P0-01, and P1-08 are still open.
 - 2026-10-14: Interface department added and seated at every department review, separate from Support. First interface note: `.claude/memory/meetings/2026-10-14-1556.md`. Approved work is PLAN.md P2-13 through P2-17. No product code was changed.
@@ -27,6 +28,8 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 - Whether places, deploy, and admin screens get a WordPress integration suite. The updater already has `composer test`.
 
 ### Outstanding checks
+
+- 2026-10-14: P2-20 keyboard pass was not run (deploy help trap, locked Settings tabs, place-search announcement, chart live text). P2-18 REST path check passed on the local Docker site: author collection omitted the marker, author single and `?parent=` were 403, administrator single was 200. `composer test` was 27 tests, OK. Docker was stopped after the check.
 
 - 2026-10-14 local Docker site `http://127.0.0.1:8088`: landing `radius-local-a` loaded `radius-frontend-analytics.js` and did not load jQuery. One visit was stored (`radius_landing_visit_count` = 1, day `2026-10-14` = 1). A second beacon and a browser reload in the same half hour left the count at 1. A `curl` user agent did not add a visit. Analytics showed 1 visit. Rotation with batch size 1 and three landings advanced the offset by 1 and scheduled the next run 120 seconds out, then the test hook was cleared and the batch size restored to 25. Deploy → System shows Persistent object cache Off and WP-Cron Visitor-triggered. The readiness score on this container is 54% because `max_execution_time` is short and there is no Redis.
 

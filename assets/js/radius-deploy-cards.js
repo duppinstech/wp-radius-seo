@@ -49,6 +49,9 @@
 					'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled])'
 				),
 				function (node) {
+					if ( node.getAttribute( 'tabindex' ) === '-1' ) {
+						return false;
+					}
 					return node.getClientRects().length > 0;
 				}
 			);

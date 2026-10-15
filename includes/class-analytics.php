@@ -728,14 +728,14 @@ class Radius_Analytics {
 						<div class="lfa-chart-wrap">
 							<canvas id="lfa-chart-locations-visits" aria-hidden="true"></canvas>
 						</div>
-						<p class="screen-reader-text" id="lfa-chart-locations-visits-summary"></p>
+						<p class="screen-reader-text" id="lfa-chart-locations-visits-summary" role="status" aria-live="polite"></p>
 					</div>
 					<div class="lfa-card lfa-card-chart">
 						<h3 class="lfa-card-heading"><?php esc_html_e( 'Top places by clicks', 'radius' ); ?></h3>
 						<div class="lfa-chart-wrap">
 							<canvas id="lfa-chart-locations-clicks" aria-hidden="true"></canvas>
 						</div>
-						<p class="screen-reader-text" id="lfa-chart-locations-clicks-summary"></p>
+						<p class="screen-reader-text" id="lfa-chart-locations-clicks-summary" role="status" aria-live="polite"></p>
 					</div>
 				</div>
 				<div class="lfa-card lfa-card-table">
@@ -767,7 +767,7 @@ class Radius_Analytics {
 					<div class="lfa-chart-wrap">
 						<canvas id="lfa-chart-visits-over-time" aria-hidden="true"></canvas>
 					</div>
-					<p class="screen-reader-text" id="lfa-chart-visits-over-time-summary"></p>
+					<p class="screen-reader-text" id="lfa-chart-visits-over-time-summary" role="status" aria-live="polite"></p>
 				</div>
 			</section>
 

@@ -46,6 +46,9 @@
 		if (!box.getAttribute('aria-label')) {
 			box.setAttribute('aria-label', (cfg.i18n && cfg.i18n.suggestionsLabel) || 'Place suggestions');
 		}
+		if (!box.getAttribute('aria-live')) {
+			box.setAttribute('aria-live', 'polite');
+		}
 		var radius = row.querySelector('input[name="radius_anchor_radius[]"]');
 		if (radius && !radius.getAttribute('aria-label') && !radius.id) {
 			radius.setAttribute('aria-label', (cfg.i18n && cfg.i18n.radiusLabel) || 'Radius (miles)');
@@ -82,6 +85,8 @@
 				})
 				.then(function (data) {
 					if (!data || !data.success || !data.data || !data.data.places) {
+						box.innerHTML = '<div class="lf-suggest-empty">' + (cfg.i18n && cfg.i18n.searchFailed ? cfg.i18n.searchFailed : 'Search failed.') + '</div>';
+						setSuggestOpen(search, box, true);
 						return;
 					}
 					var places = data.data.places;
@@ -110,7 +115,10 @@
 						.join('');
 					setSuggestOpen(search, box, true);
 				})
-				.catch(function () {});
+				.catch(function () {
+					box.innerHTML = '<div class="lf-suggest-empty">' + (cfg.i18n && cfg.i18n.searchFailed ? cfg.i18n.searchFailed : 'Search failed.') + '</div>';
+					setSuggestOpen(search, box, true);
+				});
 		}, 250);
 
 		search.addEventListener('input', function () {
@@ -208,7 +216,7 @@
 					'" autocomplete="off" aria-label="' +
 					escapeAttr((cfg.i18n && cfg.i18n.searchLabel) || 'Anchor place') +
 					'" />' +
-					'<div class="radius-anchor-suggest" style="display:none;" role="listbox" aria-label="' +
+					'<div class="radius-anchor-suggest" style="display:none;" role="listbox" aria-live="polite" aria-label="' +
 					escapeAttr((cfg.i18n && cfg.i18n.suggestionsLabel) || 'Place suggestions') +
 					'"></div>' +
 					'</div>' +

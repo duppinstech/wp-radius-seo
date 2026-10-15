@@ -132,6 +132,9 @@ jQuery(document).ready(function($) {
 			if (tp) tp.innerHTML = '<tr><td colspan="4">Failed to load data.</td></tr>';
 			var lb = document.getElementById('lfa-locations-tbody');
 			if (lb) lb.innerHTML = '<tr><td colspan="6">Failed to load data.</td></tr>';
+			setChartSummary('lfa-chart-visits-over-time-summary', 'Failed to load.');
+			setChartSummary('lfa-chart-locations-visits-summary', 'Failed to load.');
+			setChartSummary('lfa-chart-locations-clicks-summary', 'Failed to load.');
 			return;
 		}
 
@@ -259,6 +262,9 @@ jQuery(document).ready(function($) {
 		if (t) t.innerHTML = '<tr><td colspan="4">Failed to load.</td></tr>';
 		var lb = document.getElementById('lfa-locations-tbody');
 		if (lb) lb.innerHTML = '<tr><td colspan="6">Failed to load.</td></tr>';
+		setChartSummary('lfa-chart-visits-over-time-summary', 'Failed to load.');
+		setChartSummary('lfa-chart-locations-visits-summary', 'Failed to load.');
+		setChartSummary('lfa-chart-locations-clicks-summary', 'Failed to load.');
 	});
 
 	$('#lfa-clear-unassigned-stats').on('click', function() {

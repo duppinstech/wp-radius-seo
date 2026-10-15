@@ -347,6 +347,39 @@ These do not need another decision from the maintainer. They are not blockers. P
 - **Done when:** The visits series and the other charts can be read without seeing the drawing, and the table headers announce as column headers.
 - **Workflow:** `workflows/bug-fix.md`, then the department review.
 
+### P2-18 — A parent query argument can open a template the user cannot edit
+
+- **Status:** done
+- **Evidence of close:** Approved at the 2026-10-14 20:04 meeting. The gate reads the template id from the request path, because `rest_pre_dispatch` runs before WordPress fills URL parameters. On the local site, an author collection omitted the administrator template. The author single read and the same read with `?parent=` of the author's own post were both forbidden. The administrator single read included the marker.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** security
+- **Evidence:** `get_param( 'parent' )` includes a query argument. On `GET /wp/v2/radius_template/{id}` that value replaced the template id (`includes/class-plugin.php`).
+- **Do:** Use URL parameters only. Require `edit_post` on the route id. On a revision route, require `edit_post` on the parent after confirming it is a `radius_template`.
+- **Done when:** An author who can edit some other post still cannot read an administrator template by adding `?parent=` of that other post.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-19 — The README still says any release zip is enough
+
+- **Status:** done
+- **Evidence of close:** Approved at the 2026-10-14 20:04 meeting. `README.md` now requires `wp-radius-seo.zip` and names Check again or a manual upload. The 1.6.113 changelog names the analytics sentence, the health-check error, and the non-administrator CSV sentence.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** support
+- **Evidence:** `README.md` said the latest release must include a `.zip` asset. `select_package()` installs only the configured file name. `readme.txt` already named `wp-radius-seo.zip`.
+- **Do:** Match the README Updates sentence to `readme.txt`. Add the three shipped copy sentences to the 1.6.113 changelog.
+- **Done when:** A reader of `README.md` and the 1.6.113 changelog sees the zip file name and those three owner sentences.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
+### P2-20 — Four admin controls still miss a keyboard or live-text pattern
+
+- **Status:** done
+- **Evidence of close:** Approved at the 2026-10-14 20:04 meeting. Deploy help skips `tabindex="-1"`. Chart summaries are live regions and say “Failed to load.” when the request fails. Place suggestions are `aria-live="polite"` and a failed search says “Search failed.” Locked Settings tabs are `inert`.
+- **Decision:** Approved. No maintainer decision.
+- **Kind:** interface
+- **Evidence:** The deploy-help trap included the backdrop Close button. Chart summary paragraphs were filled after the request with no live region. The suggestion list was silent on failure. Locked tabs were links with `aria-disabled` only.
+- **Do:** Skip `tabindex="-1"` in that trap. Mark the three chart summaries `role="status"` and `aria-live="polite"`, including the failure text. Announce suggestion results. Set `inert` on locked Settings tabs.
+- **Done when:** Tab stays inside the help dialog, a failed chart load and a failed place search are announced, and a locked Settings tab cannot be activated.
+- **Workflow:** `workflows/bug-fix.md`, then the department review.
+
 ## Waiting on the maintainer
 
 Do not start these until the maintainer chooses. They came from the same 2026-10-14 meeting.
