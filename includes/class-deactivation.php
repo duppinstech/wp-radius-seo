@@ -275,14 +275,7 @@ final class Radius_Deactivation {
 			);
 		}
 
-		$log_files = 0;
-		if ( class_exists( 'Radius_Operation_Log' ) ) {
-			foreach ( array( Radius_Operation_Log::PROCESS_FILE, Radius_Operation_Log::ERROR_FILE ) as $filename ) {
-				if ( is_file( Radius_Operation_Log::log_path( $filename ) ) ) {
-					++$log_files;
-				}
-			}
-		}
+		$log_files = class_exists( 'Radius_Operation_Log' ) ? Radius_Operation_Log::stored_log_count() : 0;
 		if ( $log_files > 0 ) {
 			$rows[] = array(
 				'id'    => 'logs',
@@ -417,13 +410,32 @@ final class Radius_Deactivation {
 			$wpdb->esc_like( '_site_transient_timeout_radius_' ) . '%',
 			$wpdb->esc_like( 'localeforge_' ) . '%',
 		);
+		$names = array();
 		foreach ( $likes as $like ) {
+			$found = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+					$like
+				)
+			);
+			if ( is_array( $found ) ) {
+				$names = array_merge( $names, $found );
+			}
 			$wpdb->query(
 				$wpdb->prepare(
 					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
 					$like
 				)
 			);
+		}
+
+		foreach ( $names as $name ) {
+			wp_cache_delete( (string) $name, 'options' );
+		}
+		wp_cache_delete( 'alloptions', 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+		if ( function_exists( 'wp_cache_flush_group' ) ) {
+			wp_cache_flush_group( 'options' );
 		}
 
 		if ( ! is_multisite() ) {
@@ -445,19 +457,8 @@ final class Radius_Deactivation {
 	 * @return void
 	 */
 	private static function delete_log_files() {
-		if ( ! class_exists( 'Radius_Operation_Log' ) ) {
-			return;
-		}
-		$dir  = wp_normalize_path( Radius_Operation_Log::log_dir() );
-		$base = basename( $dir );
-		if ( 'radius-seo-logs' !== $base && strpos( $base, 'site-' ) !== 0 ) {
-			return;
-		}
-		foreach ( array( 'process.log', 'error.log', 'index.php', '.htaccess', 'web.config' ) as $filename ) {
-			$path = $dir . '/' . $filename;
-			if ( is_file( $path ) ) {
-				wp_delete_file( $path );
-			}
+		if ( class_exists( 'Radius_Operation_Log' ) ) {
+			Radius_Operation_Log::delete_stored_logs();
 		}
 	}
 }

@@ -94,6 +94,63 @@ final class Radius_Operation_Log {
 	}
 
 	/**
+	 * Directories that may hold Radius logs: the preferred folder and the uploads fallback.
+	 *
+	 * @return string[]
+	 */
+	public static function log_directories() {
+		$dirs = array();
+		$outside = self::outside_web_root_dir();
+		if ( $outside !== '' ) {
+			$dirs[] = self::with_site_suffix( $outside );
+		}
+		$dirs[] = self::uploads_log_dir();
+		$unique = array();
+		foreach ( $dirs as $dir ) {
+			$dir = wp_normalize_path( untrailingslashit( (string) $dir ) );
+			if ( $dir !== '' ) {
+				$unique[ $dir ] = $dir;
+			}
+		}
+		return array_values( $unique );
+	}
+
+	/**
+	 * Delete process.log and error.log from every Radius log directory.
+	 *
+	 * @return void
+	 */
+	public static function delete_stored_logs() {
+		foreach ( self::log_directories() as $dir ) {
+			$base = basename( $dir );
+			if ( 'radius-seo-logs' !== $base && strpos( $base, 'site-' ) !== 0 ) {
+				continue;
+			}
+			foreach ( array( self::PROCESS_FILE, self::ERROR_FILE, 'index.php', '.htaccess', 'web.config' ) as $filename ) {
+				$path = $dir . '/' . $filename;
+				if ( is_file( $path ) ) {
+					wp_delete_file( $path );
+				}
+			}
+		}
+	}
+
+	/**
+	 * @return int
+	 */
+	public static function stored_log_count() {
+		$count = 0;
+		foreach ( self::log_directories() as $dir ) {
+			foreach ( array( self::PROCESS_FILE, self::ERROR_FILE ) as $filename ) {
+				if ( is_file( $dir . '/' . $filename ) ) {
+					++$count;
+				}
+			}
+		}
+		return $count;
+	}
+
+	/**
 	 * @param string $filename process.log or error.log.
 	 * @return string
 	 */

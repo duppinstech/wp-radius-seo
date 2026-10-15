@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.114
+Stable tag: 1.6.115
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,9 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.6.115 =
+* **Security:** Confirm delete drops the cached copy of Radius settings, including the license key, and removes operation logs from both the preferred log folder and the uploads fallback.
 
 = 1.6.114 =
 * **Deactivate:** Plugins → Deactivate opens a dialog. Keep all data and deactivate leaves pages, places, templates, and settings in place. Delete all Radius data shows the counts and deletes them only after Confirm delete. Cancel, Close, or clicking outside leaves the plugin active and deletes nothing. Removing the plugin files afterward does not delete data that was kept.
