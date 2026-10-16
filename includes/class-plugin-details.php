@@ -102,13 +102,6 @@ final class Radius_Plugin_Details {
 		$html .= '<li>' . esc_html__( 'A Help button on every Radius screen, and email support from inside wp-admin.', 'radius' ) . '</li>';
 		$html .= '</ul>';
 
-		$html .= '<h3>' . esc_html__( 'Example', 'radius' ) . '</h3>';
-		$html .= '<p>' . esc_html__( 'Bee Line Transport Inc. uses Radius SEO on beelinetransportinc.com. The same design serves a hub for Coltons Mill and a tire-service page for Abert. Bee Line is an example of a site using the plugin. Duppins Technology owns Radius SEO.', 'radius' ) . '</p>';
-		$html .= '<ul>';
-		$html .= '<li>' . self::link( 'https://beelinetransportinc.com/service-area/coltons-mill/', __( 'Service area: Coltons Mill', 'radius' ) ) . '</li>';
-		$html .= '<li>' . self::link( 'https://beelinetransportinc.com/semi-tire-abert/', __( 'Landing page: Abert', 'radius' ) ) . '</li>';
-		$html .= '</ul>';
-
 		$html .= '<h3>' . esc_html__( 'Plans', 'radius' ) . '</h3>';
 		$html .= '<ul>';
 		$html .= '<li><strong>' . esc_html__( 'Single site', 'radius' ) . '</strong> — ' . esc_html__( '$9.99 per month. One site, email support.', 'radius' ) . ' ' . self::link( 'https://buy.stripe.com/6oU7sK8Yt9hag4f0iJ00007', __( 'Purchase single site', 'radius' ) ) . '</li>';

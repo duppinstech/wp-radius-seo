@@ -15,7 +15,7 @@ https://duppinstech.com
 
 A service-area hub and a city landing can share one design.
 
-This hub names Coltons Mill in the heading. The same site has a separate tire-service page for Abert. Both were published from templates, not written by hand for each place.
+One hub names the place in the heading. The same site can have a separate service page for another place. Both are published from templates, not written by hand for each place.
 
 Radius SEO for WordPress. https://duppinstech.com
 

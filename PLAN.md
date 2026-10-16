@@ -9,7 +9,7 @@ Take the items in order. Finish or explicitly defer a blocker before starting th
 1. Read `INTENT.md` and this item.
 2. Follow `workflows/bug-fix.md` for a fix, or `workflows/feature-build.md` if the item adds behavior.
 3. After the edit, run `workflows/department-review.md`. That meeting writes a note under `.claude/memory/meetings/` and adds new suggestions here.
-4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. Beeline Transport Inc. is the named production site for read-only checks.
+4. Prove a runtime change on the local Docker site: `docker compose up -d`, run the `testing-patterns` checklist at http://127.0.0.1:8088, then `docker compose down`. Do not leave the stack running. `CLAUDE.local.md` holds the admin login. A customer production site is read-only. Do not name that customer in public copy.
 5. Record the result on the item. Update `.claude/memory/progress.md` only with the milestone, not a second copy of this list.
 
 Status values: `open`, `deferred` (maintainer accepted the current behavior), `done`.
@@ -24,7 +24,7 @@ Nothing in this file is waiting on a decision. The table stays here so the next 
 ## Standing rules
 
 - Local proof uses `docker compose up -d`, then `docker compose down`. Do not leave the stack running.
-- Beeline Transport Inc. is read-only unless you ask for a change on that site. Do not deploy, purge, or remediate there otherwise.
+- A customer production site is read-only unless you ask for a change on that site. Do not deploy, purge, or remediate there otherwise. Do not name the customer in public copy. There is no sign-off to use a customer as an example.
 
 ## Blockers
 
@@ -83,7 +83,7 @@ Nothing in this file is waiting on a decision. The table stays here so the next 
 ### P1-02 — Confirm phone links on new deploys and repair pages already stored
 
 - **Status:** done
-- **Evidence of close:** 2026-10-14. Local Docker deploy of template 17 for place 5 (Proofville P104) wrote landing 18 with one `tel:+15550100199` href, no nested anchor, and no broken href payload. Beeline Transport Inc. (`https://beelinetransportinc.com`, Radius 1.6.111) was read only: 1,610 landing and service-area posts scanned, 0 Gutenberg pages, 0 broken href payloads, 0 nested anchors in stored HTML. No production pages were rewritten.
+- **Evidence of close:** 2026-10-14. Local Docker deploy of template 17 for place 5 (Proofville P104) wrote landing 18 with one `tel:+15550100199` href, no nested anchor, and no broken href payload. A production site (Radius 1.6.111) was read only: 1,610 landing and service-area posts scanned, 0 Gutenberg pages, 0 broken href payloads, 0 nested anchors in stored HTML. No production pages were rewritten.
 - **Kind:** completeness
 - **Evidence:** New Gutenberg deploys rewrite `phone-number` inside `href` and `src` toward `phone-tel` (`Radius_Deploy_Service::prepare_template_tokens_for_phone_link_safety()`). `tools/verify-gutenberg-phone-links.php` and `tools/remediate-broken-phone-links.php` exist because older saved HTML can still contain nested anchors.
 - **Do:** Deploy one staging page from the current template and confirm the phone link is a single `tel:` href. Run the verify tool against existing landings. Remediate only on the named staging site, then production only after that result is accepted.
@@ -123,7 +123,7 @@ Nothing in this file is waiting on a decision. The table stays here so the next 
 ### P1-04 — Golden-path proof, then automated coverage for that path
 
 - **Status:** done
-- **Evidence of close:** 2026-10-14 on local Docker (Apache/2.4.65). CSV import created place 5 `proofville-p104`. Template 17 rendered `{{place_name}}`, spintax `{Alpha|Beta}`, and a phone href. Landing deploy created post 18; the second deploy updated 18 and did not create another. Service-area deploy created post 20. Elementor is not installed locally, and post 18 had no Elementor meta. Beeline Transport Inc. has Elementor on and landing 17674 is an Elementor page; that live site was not redeployed. Automated coverage of this path is deferred (2026-10-14). The proof posts and place were removed after the check. PHPUnit stays limited to the updater.
+- **Evidence of close:** 2026-10-14 on local Docker (Apache/2.4.65). CSV import created place 5 `proofville-p104`. Template 17 rendered `{{place_name}}`, spintax `{Alpha|Beta}`, and a phone href. Landing deploy created post 18; the second deploy updated 18 and did not create another. Service-area deploy created post 20. Elementor is not installed locally, and post 18 had no Elementor meta. A production site has Elementor on and one landing is an Elementor page; that live site was not redeployed. Automated coverage of this path is deferred (2026-10-14). The proof posts and place were removed after the check. PHPUnit stays limited to the updater.
 - **Kind:** completeness
 - **Evidence:** There is no PHPUnit or wp-env suite. `tools/` holds phone-link maintenance scripts only.
 - **Do:** On staging, walk one place through CSV import, template tokens and spintax, landing deploy, redeploy (update, not a second post), service-area deploy, Elementor off, and Elementor on if that site uses it. Write the results under this item. Add PHPUnit only after that path is stable enough to freeze; put tests in `tests/` and document the command in `.claude/rules/testing-standard.md`.
@@ -133,7 +133,7 @@ Nothing in this file is waiting on a decision. The table stays here so the next 
 ### P1-05 — Updater package is a real GitHub ZIP for this version
 
 - **Status:** done
-- **Evidence of close:** 2026-10-14. GitHub release `v1.6.111` on `duppinstech/wp-radius-seo` is the latest release. Its only asset is `wp-radius-seo.zip`. The archive root contains `wp-radius-seo/radius.php` with Version 1.6.111. Beeline Transport Inc. is running Radius 1.6.111, so Dashboard → Updates has no newer release to offer. The copy on that site still defaults the updater repo to `oduppinsjr/wp-radius-seo`; that repo now resolves to the same release asset.
+- **Evidence of close:** 2026-10-14. GitHub release `v1.6.111` on `duppinstech/wp-radius-seo` is the latest release. Its only asset is `wp-radius-seo.zip`. The archive root contains `wp-radius-seo/radius.php` with Version 1.6.111. A production site is running Radius 1.6.111, so Dashboard → Updates has no newer release to offer. The copy on that site still defaults the updater repo to `oduppinsjr/wp-radius-seo`; that repo now resolves to the same release asset.
 - **Kind:** production
 - **Evidence:** `Radius_GitHub_Updater` (standard v1.0.0) installs only `https://github.com/duppinstech/wp-radius-seo/releases/download/<tag>/wp-radius-seo.zip`. It does not verify a signature. Sites see an update only when the latest release tag is newer and that asset is attached. Current plugin version is `RADIUS_VERSION` in `radius.php`.
 - **Do:** Confirm the GitHub release for the version being deployed has `wp-radius-seo.zip`, the archive root is `wp-radius-seo/radius.php`, and a staging site on the previous version is offered that update. Do not add a second download host.
@@ -147,7 +147,7 @@ These do not need new plugin features unless a check fails.
 ### P1-06 — Run deploy health and system checks
 
 - **Status:** done
-- **Evidence of close:** 2026-10-14, Beeline Transport Inc., read only. Deploy health (light, plus `duplicate_pages` and `deploy_meta`) returned 0 failures. Duplicate and deploy-meta checks passed. System readiness is 92% (excellent), bypass off. Accepted warning: `max_execution_time` is unlimited. Persistent object cache is on. `DISABLE_WP_CRON` is set (system cron). No rows were cleared or rewritten on the server.
+- **Evidence of close:** 2026-10-14, production site, read only. Deploy health (light, plus `duplicate_pages` and `deploy_meta`) returned 0 failures. Duplicate and deploy-meta checks passed. System readiness is 92% (excellent), bypass off. Accepted warning: `max_execution_time` is unlimited. Persistent object cache is on. `DISABLE_WP_CRON` is set (system cron). No rows were cleared or rewritten on the server.
 - **Kind:** production
 - **Do:** On the named site, open Radius → Deploy → Health check and System. Clear or accept every failing row (duplicates, missing coords, URL conflicts, Magic Page leftovers, deploy index). A system-requirements bypass is an administrator override (`Radius_System_Requirements`); do not use it to hide a failed migration on production.
 - **Done when:** The health summary is clean, or each remaining failure is copied here with the reason it is accepted.
@@ -155,7 +155,7 @@ These do not need new plugin features unless a check fails.
 ### P1-07 — Confirm the SEO plugin the site actually runs
 
 - **Status:** done
-- **Evidence of close:** 2026-10-14, Beeline Transport Inc. Yoast SEO 28.7 is active. Rank Math and All in One SEO are not. `sitemap_index.xml` lists `landing-sitemap.xml`, `landing-sitemap2.xml`, and `service-area-sitemap.xml`. `https://beelinetransportinc.com/semi-tire-abert/` is in `landing-sitemap2.xml`. `https://beelinetransportinc.com/service-area/coltons-mill/` is in `service-area-sitemap.xml`. The index does not list a template sitemap.
+- **Evidence of close:** 2026-10-14, production site, read only. Yoast SEO 28.7 is active. Rank Math and All in One SEO are not. `sitemap_index.xml` lists `landing-sitemap.xml`, `landing-sitemap2.xml`, and `service-area-sitemap.xml`. One landing URL is in `landing-sitemap2.xml`. One service-area URL is in `service-area-sitemap.xml`. The index does not list a template sitemap.
 - **Kind:** completeness
 - **Evidence:** `Radius_SEO_Integrations` adjusts Yoast sitemap slugs for landings and service areas. There is no Rank Math or All in One SEO integration in this repo.
 - **Do:** If the site uses Yoast, confirm landing and service-area URLs appear in the sitemap under the friendly slugs. If it uses another SEO plugin, either add that integration or record that sitemaps are handled outside Radius.
@@ -458,11 +458,20 @@ No open choice. The next item that needs a decision goes in the table at the top
 ### P2-26 — Installation tab on View details
 
 - **Status:** done
-- **Evidence of close:** 2026-10-16. View details for Radius SEO has an Installation tab after Description. SUPPORT.md names that tab. The Bee Line front-end captures are not in the Screenshots list. Meeting: `.claude/memory/meetings/2026-10-16-1715.md`.
+- **Evidence of close:** 2026-10-16. View details for Radius SEO has an Installation tab after Description. SUPPORT.md names that tab. Customer front-end captures are not in the Screenshots list. Meeting: `.claude/memory/meetings/2026-10-16-1715.md`.
 - **Kind:** support
-- **Evidence:** The plugin information window had no install steps. Two published Bee Line pages were in the Screenshots list.
+- **Evidence:** The plugin information window had no install steps. Two published customer pages were in the Screenshots list.
 - **Do:** Add the Installation section. Remove those two captures and do not replace them.
-- **Done when:** An administrator can read the zip, upload, activate, and license steps on that tab, and the Screenshots list has no Bee Line page capture.
+- **Done when:** An administrator can read the zip, upload, activate, and license steps on that tab, and the Screenshots list has no customer page capture.
+
+### P2-27 — Remove the customer example
+
+- **Status:** done
+- **Evidence of close:** 2026-10-16. View details Description no longer has an Example section or a customer link. Marketing copy no longer names a customer site. Meeting: `.claude/memory/meetings/2026-10-16-1725.md`.
+- **Kind:** legal
+- **Evidence:** The Description tab linked to a customer site. There is no sign-off for that.
+- **Do:** Remove the example and every public reference to a customer. Keep the ownership sentence that a beta client does not own the source.
+- **Done when:** The plugin information window and the marketing pages do not name a customer or a customer URL.
 
 ## Deferred on purpose
 

@@ -20,7 +20,7 @@ Check:
 - A shipped behavior missing from the header, readme, or changelog (Elementor only when `enable_elementor` is on; Beaver Builder only when `enable_beaver_builder` is on).
 - A claim for a feature the code does not do, including a builder, a limit, or a license plan.
 - Changelog and Stable tag left behind on a user-facing plugin change. Agent docs and `docker-compose.yml` do not need a changelog line.
-- WhiteRail, or any client, named as owner or author. Ownership stays Duppins Technology. See `OWNERSHIP.md`.
+- WhiteRail, or any client, named as owner, author, or a public example. Ownership stays Duppins Technology. See `OWNERSHIP.md`. A customer site, page, or screenshot in the header, readme, changelog, admin copy, or marketing is a finding: remove it. There is no customer sign-off.
 - A release note that describes an internal refactor as a customer benefit.
 
 Reply with findings first. For each: file, the sentence to add or remove, and the behavior it must match. If no public claim is affected, say **No update** and name the surface you checked.

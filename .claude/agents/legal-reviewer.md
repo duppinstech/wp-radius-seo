@@ -16,6 +16,7 @@ Check:
 - User-facing warranty or disclaimer text still matches `LICENSE.md` (no warranty of merchantability or fitness). Do not add a warranty.
 - License-lock and public "add your license key" copy still matches the gate the code enforces.
 - A removed feature still described as licensed, warranted, or restricted.
+- User-facing copy, screenshots, captions, and links do not name a customer, a customer site, or a customer page. There is no sign-off for that. WhiteRail may be named only in `OWNERSHIP.md`, `CLAUDE.md`, `INTENT.md`, and this file, and only as the beta client who does not own the source. A customer used as an example is a finding: remove that sentence and those links. Do not copy a customer name out of `PLAN.md` or meeting notes into public copy.
 
 Reply with findings first. For each: file, whether to add, remove, or replace a specific sentence, and why. If the diff does not change rights, attribution, license, or a disclaimer, say **No update** and name the surface you checked.
 

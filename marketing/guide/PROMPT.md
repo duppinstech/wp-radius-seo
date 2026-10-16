@@ -4,7 +4,7 @@ Paste this prompt into the AI that builds pages on duppinstech.com. Attach this 
 
 ---
 
-You are publishing the Radius SEO user guide on https://duppinstech.com/radius-seo/guide/ for Duppins Technology. Radius SEO is a WordPress plugin. Odell Duppins of Duppins Technology is the author. WhiteRail and Bee Line Transport Inc. are not the owners.
+You are publishing the Radius SEO user guide on https://duppinstech.com/radius-seo/guide/ for Duppins Technology. Radius SEO is a WordPress plugin. Odell Duppins of Duppins Technology is the author. No customer owns Radius SEO. Do not name a customer, a customer site, or a customer page.
 
 Build a wiki-style guide a site owner can use after they click Help inside wp-admin. The plugin opens one address plus a section id:
 

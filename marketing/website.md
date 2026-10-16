@@ -33,13 +33,6 @@ The setup screenshots are in `screenshots/admin/`. Numbered arrows match `admin-
 - Visit and click counts stored on your own site
 - A Help button on every Radius screen, linking to the user guide, and email support from inside wp-admin
 
-## Example
-
-Bee Line Transport Inc. uses Radius SEO on [beelinetransportinc.com](https://beelinetransportinc.com). The same design serves a hub for Coltons Mill and a tire-service page for Abert. Each page carries that place in the heading.
-
-- Hub: https://beelinetransportinc.com/service-area/coltons-mill/
-- Landing: https://beelinetransportinc.com/semi-tire-abert/
-
 ## Plans
 
 | Plan | Price | Includes |
