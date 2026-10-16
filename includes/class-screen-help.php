@@ -10,16 +10,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Prints a help disclosure, a manual download, and a support link.
+ * A corner Help button on Radius screens. The panel links to the public guide.
  */
 final class Radius_Screen_Help {
+
+	/**
+	 * Public guide. Publish the user manual at this address. Filter with radius_user_guide_url.
+	 */
+	const GUIDE_URL = 'https://duppinstech.com/radius-seo/guide/';
 
 	/**
 	 * @return void
 	 */
 	public static function init() {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
-		add_action( 'all_admin_notices', array( __CLASS__, 'render' ) );
+		add_action( 'admin_footer', array( __CLASS__, 'render' ) );
+	}
+
+	/**
+	 * @return string
+	 */
+	public static function guide_url() {
+		$url = apply_filters( 'radius_user_guide_url', self::GUIDE_URL );
+		return is_string( $url ) && $url !== '' ? $url : self::GUIDE_URL;
 	}
 
 	/**
@@ -43,6 +56,13 @@ final class Radius_Screen_Help {
 			array(),
 			RADIUS_VERSION
 		);
+		wp_enqueue_script(
+			'radius-screen-help',
+			RADIUS_URL . 'assets/js/radius-screen-help.js',
+			array(),
+			RADIUS_VERSION,
+			true
+		);
 	}
 
 	/**
@@ -60,21 +80,27 @@ final class Radius_Screen_Help {
 		}
 		$support = admin_url( 'admin.php?page=radius-support' );
 		?>
-		<div class="radius-screen-help">
-			<details>
-				<summary><?php echo esc_html( $guide['summary'] ); ?></summary>
+		<div class="radius-help-launcher" id="radius-help-launcher">
+			<div id="radius-help-panel" class="radius-help-panel" hidden role="dialog" aria-modal="false" aria-labelledby="radius-help-title">
+				<div class="radius-help-panel__bar">
+					<h2 id="radius-help-title"><?php echo esc_html( $guide['summary'] ); ?></h2>
+					<button type="button" class="button radius-help-panel__close" id="radius-help-close"><?php esc_html_e( 'Close', 'radius' ); ?></button>
+				</div>
 				<ul>
 					<?php foreach ( $guide['points'] as $point ) : ?>
 						<li><?php echo esc_html( $point ); ?></li>
 					<?php endforeach; ?>
 				</ul>
-			</details>
-			<p class="radius-screen-help__links">
-				<a class="button" href="<?php echo esc_url( self::manual_url() ); ?>" download><?php esc_html_e( 'Download the user manual', 'radius' ); ?></a>
-				<?php if ( current_user_can( 'manage_options' ) && 'radius-support' !== $key ) : ?>
-					<a class="button" href="<?php echo esc_url( $support ); ?>"><?php esc_html_e( 'Contact support', 'radius' ); ?></a>
-				<?php endif; ?>
-			</p>
+				<p class="radius-help-panel__links">
+					<a class="button button-primary" href="<?php echo esc_url( self::guide_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open the user guide (opens in a new tab)', 'radius' ); ?></a>
+					<?php if ( current_user_can( 'manage_options' ) && 'radius-support' !== $key ) : ?>
+						<a class="button" href="<?php echo esc_url( $support ); ?>"><?php esc_html_e( 'Contact support', 'radius' ); ?></a>
+					<?php endif; ?>
+				</p>
+			</div>
+			<button type="button" class="radius-help-launcher__button" id="radius-help-button" aria-expanded="false" aria-controls="radius-help-panel">
+				<?php esc_html_e( 'Help', 'radius' ); ?>
+			</button>
 		</div>
 		<?php
 	}

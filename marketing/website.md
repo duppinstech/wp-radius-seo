@@ -9,6 +9,15 @@ Radius SEO is a WordPress plugin that turns a single page blueprint and a place 
 [Purchase single site — $9.99 per month](https://buy.stripe.com/6oU7sK8Yt9hag4f0iJ00007)
 [Purchase unlimited sites — $99 per month](https://buy.stripe.com/4gM5kCeiN9ha8BN6H700008)
 
+## How an owner sets it up
+
+The setup screenshots are in `screenshots/admin/`. Numbered arrows match `admin-walkthrough.md`.
+
+1. **Templates.** Write one blueprint. Put `{{place_name}}` in the title and body. Screenshot: `screenshots/admin/template-edit.jpg`.
+2. **Location library.** Import a CSV of places you serve. Radius does not download the list. A row needs a name, latitude, and longitude. Screenshot: `screenshots/admin/locations.jpg`.
+3. **Service areas.** Pick a center place and a radius in miles. Screenshot: `screenshots/admin/settings-areas.jpg`.
+4. **Deploy.** Open Deploy and run Deploy & update all places. Each place in range gets one page. Edit the template later and deploy again to update those pages. Screenshot: `screenshots/admin/deploy-run.jpg`.
+
 ## How it works
 
 1. **Add places.** Import a CSV or add cities in the location library. Each place needs a name and coordinates.
@@ -22,7 +31,7 @@ Radius SEO is a WordPress plugin that turns a single page blueprint and a place 
 - Site-wide replacers, with a different value inside each service-area circle
 - Optional Elementor and Beaver Builder layouts, copied from the template at deploy
 - Visit and click counts stored on your own site
-- A user manual on every Radius screen, and email support from inside wp-admin
+- A Help button on every Radius screen, linking to the user guide, and email support from inside wp-admin
 
 ## Example
 

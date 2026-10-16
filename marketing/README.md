@@ -9,9 +9,12 @@ Support for the product is support@duppinstech.com.
 ## Files
 
 - `website.md` — sections to place on a product page
+- `admin-walkthrough.md` — the page to publish at https://duppinstech.com/radius-seo/guide/
+- `wordpress-org.md` — admin screenshots and captions if the plugin is listed in the directory
 - `social.md` — posts that can be copied
 - `quick-guide.md` — a short how-it-works sheet
-- `screenshots/beeline-service-area-coltons-mill.png` — a service-area hub
-- `screenshots/beeline-landing-abert.png` — a city landing for one service
+- `screenshots/admin/` — wp-admin screens with numbered arrows (setup)
+- `screenshots/beeline-service-area-coltons-mill.png` — a published service-area hub
+- `screenshots/beeline-landing-abert.png` — a published city landing
 
 The homepage capture was not kept. The hero text did not show against the photo.

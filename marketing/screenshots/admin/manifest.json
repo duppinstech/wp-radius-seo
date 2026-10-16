@@ -1,0 +1,251 @@
+{
+  "plugins": {
+    "file": "plugins.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Radius SEO in the plugin list. This is the installed plugin."
+      },
+      {
+        "n": 2,
+        "text": "Deactivate opens the keep-or-delete choice. Cancel leaves the plugin on."
+      }
+    ]
+  },
+  "license": {
+    "file": "license.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Paste the signed license here, then Save. Check does not store the key."
+      }
+    ]
+  },
+  "dashboard": {
+    "file": "dashboard.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Templates is where you write the blueprint."
+      },
+      {
+        "n": 2,
+        "text": "Location library is where places are imported."
+      },
+      {
+        "n": 3,
+        "text": "Deploy publishes a page for each place after the template is ready."
+      }
+    ]
+  },
+  "analytics": {
+    "file": "analytics.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Analytics counts visits and outbound clicks on published landings. The numbers stay on this site."
+      }
+    ]
+  },
+  "templates": {
+    "file": "templates.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Add New Template starts a blueprint. One template is usually one service."
+      },
+      {
+        "n": 2,
+        "text": "Each row is a blueprint. Open it to put tokens in the title and body, then deploy it."
+      }
+    ]
+  },
+  "landings": {
+    "file": "landings.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Each landing is one deployed page for one template and one place."
+      },
+      {
+        "n": 2,
+        "text": "Deploy again to update these pages. It does not add a second copy of the same place."
+      }
+    ]
+  },
+  "service-areas": {
+    "file": "service-areas.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Service areas are hub pages. Their URLs use the prefix from Settings, General."
+      }
+    ]
+  },
+  "locations": {
+    "file": "locations.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Upload a CSV with columns name, lat, and lng. A name column is required."
+      },
+      {
+        "n": 2,
+        "text": "Leave this off to skip places you already imported. Turn it on to overwrite matches."
+      },
+      {
+        "n": 3,
+        "text": "Download CSV shows the column order: id, name, slug, country, region, state, zip, lat, lng."
+      }
+    ]
+  },
+  "deploy": {
+    "file": "deploy.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Open Settings, Service areas, and add a center place plus a radius in miles."
+      }
+    ]
+  },
+  "deploy-run": {
+    "file": "deploy-run.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "After the template is ready, Deploy and update all places writes one current landing per place in range."
+      },
+      {
+        "n": 2,
+        "text": "Edit template returns to the blueprint if the pages need different wording."
+      }
+    ]
+  },
+  "template-edit": {
+    "file": "template-edit.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Landing title pattern. Example: Towing in {{place_name}}. Deploy fills the place name."
+      }
+    ]
+  },
+  "import": {
+    "file": "import.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Import / export holds spintax, template slots, place CSV, and the Magic Page migration. Use migration only when moving an older library."
+      }
+    ]
+  },
+  "settings-general": {
+    "file": "settings-general.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Each settings job has its own tab. License, General, Service areas, Site replacers, Content and rotation, Database, Integrations."
+      },
+      {
+        "n": 2,
+        "text": "This prefix is only for hub URLs. Landings stay at the site root."
+      },
+      {
+        "n": 3,
+        "text": "Lower the deploy batch size when a host times out."
+      }
+    ]
+  },
+  "settings-areas": {
+    "file": "settings-areas.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Anchor place is the center of the circle. Pick it from the location library."
+      },
+      {
+        "n": 2,
+        "text": "Add another circle when you serve more than one region. Save to assign area codes."
+      }
+    ]
+  },
+  "settings-replacers": {
+    "file": "settings-replacers.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "A replacer fills a token such as {{company-name}} or {{phone-number}} on every deployed page."
+      }
+    ]
+  },
+  "settings-content": {
+    "file": "settings-content.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Leave scheduled rotation off unless you want spintax rewritten on a timer."
+      }
+    ]
+  },
+  "settings-database": {
+    "file": "settings-database.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Database is for leftover Magic Page options. Leave it alone on a new site."
+      }
+    ]
+  },
+  "settings-integrations": {
+    "file": "settings-integrations.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Turn on Elementor only when a template was built in Elementor. Save, then deploy."
+      },
+      {
+        "n": 2,
+        "text": "Turn on Beaver Builder only when a template was built in Beaver Builder. Save, then deploy."
+      }
+    ]
+  },
+  "logs": {
+    "file": "logs.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Open Logs when deploy or import reports a server error. The processing log is the run. The error log is the failure."
+      }
+    ]
+  },
+  "support": {
+    "file": "support.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Describe what you were trying to do."
+      },
+      {
+        "n": 2,
+        "text": "Describe what happened. Email support sends this to support@duppinstech.com and does not store a copy."
+      }
+    ]
+  },
+  "help": {
+    "file": "help.jpg",
+    "callouts": [
+      {
+        "n": 1,
+        "text": "Help sits at the bottom-right of every Radius screen. It is not a banner at the top."
+      },
+      {
+        "n": 2,
+        "text": "Open the user guide goes to the guide on duppinstech.com."
+      },
+      {
+        "n": 3,
+        "text": "Contact support opens Radius, Support, for administrators."
+      }
+    ]
+  }
+}

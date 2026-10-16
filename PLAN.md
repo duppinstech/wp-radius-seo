@@ -428,6 +428,15 @@ No open choice. The next item that needs a decision goes in the table at the top
 - **Do:** Hide that link on Radius → Support. Hold the lock before sending.
 - **Done when:** The Support screen has no self-link, and a second send inside a minute is refused even if the first send is still in flight.
 
+### P2-23 — Help panel Close is not a WordPress button
+
+- **Status:** done
+- **Evidence of close:** 2026-10-16. Close on the Help panel uses the WordPress `button` class. The guide link stays the primary action. Meeting: `.claude/memory/meetings/2026-10-16-0315.md`.
+- **Kind:** interface
+- **Evidence:** The Close control was a bare button with no admin button class and no focus style of its own.
+- **Do:** Add `button`, not `button-primary`.
+- **Done when:** Close matches other secondary admin buttons.
+
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.

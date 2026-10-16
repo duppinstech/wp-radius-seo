@@ -1,30 +1,79 @@
-.radius-screen-help {
-	margin: 12px 20px 0 2px;
-	padding: 10px 14px;
-	background: #fff;
-	border: 1px solid #c3c4c7;
-	border-left: 4px solid #2271b1;
-	max-width: 920px;
+.radius-help-launcher {
+	position: fixed;
+	right: 24px;
+	bottom: 24px;
+	z-index: 100000;
+	font-size: 13px;
 }
 
-.radius-screen-help summary {
-	cursor: pointer;
+.radius-help-launcher__button {
+	width: 64px;
+	height: 64px;
+	border: 0;
+	border-radius: 50%;
+	background: #2271b1;
+	color: #fff;
+	font-size: 15px;
 	font-weight: 600;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
-.radius-screen-help summary:focus {
-	outline: 2px solid #2271b1;
+.radius-help-launcher__button:hover,
+.radius-help-launcher__button:focus {
+	background: #135e96;
+	color: #fff;
+}
+
+.radius-help-launcher__button:focus {
+	outline: 2px solid #fff;
 	outline-offset: 2px;
+	box-shadow: 0 0 0 4px #2271b1;
 }
 
-.radius-screen-help ul {
-	margin: 8px 0 0 1.2em;
+.radius-help-panel {
+	position: absolute;
+	right: 0;
+	bottom: 76px;
+	width: 340px;
+	max-width: calc(100vw - 48px);
+	max-height: min(70vh, 520px);
+	overflow: auto;
+	background: #fff;
+	color: #1d2327;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+	padding: 14px 16px 16px;
 }
 
-.radius-screen-help__links {
-	margin: 10px 0 0;
+.radius-help-panel__bar {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
 }
 
-.radius-screen-help__links .button {
-	margin: 0 8px 4px 0;
+.radius-help-panel h2 {
+	margin: 0;
+	font-size: 15px;
+	line-height: 1.3;
+}
+
+.radius-help-panel__close {
+	flex: 0 0 auto;
+}
+
+.radius-help-panel ul {
+	margin: 10px 0 0 1.2em;
+}
+
+.radius-help-panel__links {
+	margin: 12px 0 0;
+}
+
+.radius-help-panel__links .button {
+	display: inline-block;
+	margin: 0 8px 8px 0;
 }
