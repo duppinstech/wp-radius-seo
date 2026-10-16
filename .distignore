@@ -15,6 +15,7 @@ docker-compose.yml
 tests/
 bin/
 docs/
+marketing/
 tools/
 CONTRIBUTING.md
 composer.json

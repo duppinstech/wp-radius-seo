@@ -1,0 +1,30 @@
+.radius-screen-help {
+	margin: 12px 20px 0 2px;
+	padding: 10px 14px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #2271b1;
+	max-width: 920px;
+}
+
+.radius-screen-help summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.radius-screen-help summary:focus {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
+.radius-screen-help ul {
+	margin: 8px 0 0 1.2em;
+}
+
+.radius-screen-help__links {
+	margin: 10px 0 0;
+}
+
+.radius-screen-help__links .button {
+	margin: 0 8px 4px 0;
+}

@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.6.115
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,10 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.7.0 =
+* **Help:** Every Radius screen has a Help for this screen disclosure and a download of the user manual (PDF).
+* **Support:** Radius → Support emails a ticket to support@duppinstech.com. The message includes your name, email, the screen, the subject, what you were trying to do, what happened, the site address, and the WordPress and Radius versions. Radius does not keep a copy.
 
 = 1.6.115 =
 * **Security:** Confirm delete drops the cached copy of Radius settings, including the license key, and removes operation logs from both the preferred log folder and the uploads fallback.

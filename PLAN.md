@@ -410,6 +410,24 @@ No open choice. The next item that needs a decision goes in the table at the top
 - **Choose one:** Remove "Priority email support" from both lists. Or add a sentence to `SUPPORT.md` that the unlimited plan includes priority email at that URL, and keep the bullets.
 - **Done when:** The card and `SUPPORT.md` agree with the choice recorded here.
 
+### P2-21 — The support disclosure omits fields that leave the site
+
+- **Status:** done
+- **Evidence of close:** 2026-10-15. The Support screen, help text, README, SUPPORT.md, readme changelog, and the user manual name the name, email, screen, subject, both descriptions, site address, and WordPress and Radius versions. The message is still not stored. Meeting: `.claude/memory/meetings/2026-10-15-2325.md`.
+- **Kind:** privacy
+- **Evidence:** The first form sentence named name, email, site address, and versions, and omitted the screen, subject, and both descriptions that `wp_mail` sends.
+- **Do:** Name every field in the email. Keep the sentence that Radius does not store a copy.
+- **Done when:** The form, help, and public docs list the same fields the email contains.
+
+### P2-22 — Contact support on the Support screen, and a late rate-limit lock
+
+- **Status:** done
+- **Evidence of close:** 2026-10-15. Contact support is omitted when the screen is Support. The one-minute lock is written before `wp_mail`. Meeting: `.claude/memory/meetings/2026-10-15-2325.md`.
+- **Kind:** interface and security
+- **Evidence:** The help bar linked Contact support to the same page. The transient was set only after a successful send, so two overlapping requests could both pass.
+- **Do:** Hide that link on Radius → Support. Hold the lock before sending.
+- **Done when:** The Support screen has no self-link, and a second send inside a minute is refused even if the first send is still in flight.
+
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.

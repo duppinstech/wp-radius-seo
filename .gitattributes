@@ -15,6 +15,9 @@ docker-compose.yml export-ignore
 tests/** export-ignore
 bin/** export-ignore
 docs/** export-ignore
+marketing/** export-ignore
+*.pdf binary
+*.png binary
 tools/** export-ignore
 CONTRIBUTING.md export-ignore
 composer.json export-ignore

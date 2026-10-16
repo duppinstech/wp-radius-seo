@@ -28,6 +28,10 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 ---
 
+## Help and support
+
+Every Radius screen has **Help for this screen** and **Download the user manual**. An administrator opens **Radius → Support** to email support@duppinstech.com. The message includes the name, email, screen, subject, both descriptions, the site address, and the WordPress and Radius versions. It is not stored on the site.
+
 ## Deactivate
 
 **Plugins → Deactivate** asks whether to keep Radius data or delete it. Cancel, Close, and a click outside leave the plugin active. **Keep all data and deactivate** does not remove pages or settings. **Delete all Radius data** shows the counts and runs only after **Confirm delete**. Deleting the plugin files later does not remove data that was kept. See `SUPPORT.md`.
