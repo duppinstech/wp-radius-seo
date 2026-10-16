@@ -36,6 +36,52 @@ final class Radius_Screen_Help {
 	}
 
 	/**
+	 * Guide address for this screen. The fragment matches marketing/guide/fragments.json.
+	 *
+	 * @param string $key Screen key.
+	 * @return string
+	 */
+	public static function guide_url_for_screen( $key ) {
+		$url      = self::guide_url();
+		$fragment = self::guide_fragment( $key );
+		if ( $fragment === '' ) {
+			return $url;
+		}
+		$base = preg_replace( '/#.*$/', '', $url );
+		return $base . '#' . $fragment;
+	}
+
+	/**
+	 * @param string $key Screen key.
+	 * @return string
+	 */
+	private static function guide_fragment( $key ) {
+		$map = array(
+			'dashboard'                  => 'dashboard',
+			'radius-analytics'           => 'analytics',
+			'radius_template-list'       => 'templates',
+			'radius_template-edit'       => 'template-editor',
+			'radius_landing-list'        => 'landings',
+			'radius_landing-edit'        => 'landing-editor',
+			'radius_service_area-list'   => 'service-area-hubs',
+			'radius_service_area-edit'   => 'service-area-hub',
+			'radius-locations'           => 'location-library',
+			'radius-deploy'              => 'deploy',
+			'radius-import'              => 'import-export',
+			'settings-license'           => 'license',
+			'settings-general'           => 'settings-general',
+			'settings-areas'             => 'settings-service-areas',
+			'settings-site_replacements' => 'settings-replacers',
+			'settings-content'           => 'settings-content',
+			'settings-database'          => 'settings-database',
+			'settings-integrations'      => 'settings-integrations',
+			'radius-logs'                => 'logs',
+			'radius-support'             => 'support',
+		);
+		return isset( $map[ $key ] ) ? $map[ $key ] : '';
+	}
+
+	/**
 	 * @return string
 	 */
 	public static function manual_url() {
@@ -92,7 +138,7 @@ final class Radius_Screen_Help {
 					<?php endforeach; ?>
 				</ul>
 				<p class="radius-help-panel__links">
-					<a class="button button-primary" href="<?php echo esc_url( self::guide_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open the user guide (opens in a new tab)', 'radius' ); ?></a>
+					<a class="button button-primary" href="<?php echo esc_url( self::guide_url_for_screen( $key ) ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open the user guide (opens in a new tab)', 'radius' ); ?></a>
 					<?php if ( current_user_can( 'manage_options' ) && 'radius-support' !== $key ) : ?>
 						<a class="button" href="<?php echo esc_url( $support ); ?>"><?php esc_html_e( 'Contact support', 'radius' ); ?></a>
 					<?php endif; ?>

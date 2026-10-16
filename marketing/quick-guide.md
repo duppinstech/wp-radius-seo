@@ -23,4 +23,4 @@ Open a landing and a service-area hub on the front of the site. The place name s
 
 ## When something fails
 
-Open **Radius → Logs**. Then **Radius → Support** and describe what you were trying to do and what the screen said. That email goes to support@duppinstech.com.
+Open **Radius → Logs**. Then **Radius → Support** and describe what you were trying to do and what the screen said. That email goes to support@duppinstech.com. Call (240) 397-8221.

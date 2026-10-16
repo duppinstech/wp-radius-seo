@@ -1,6 +1,6 @@
 # Radius SEO — setup walkthrough
 
-Publish this page at https://duppinstech.com/radius-seo/guide/ . The Help button in the plugin opens that address. The illustrated PDF to upload beside it is `assets/manual/radius-seo-user-manual.pdf` in the plugin.
+The full page-by-page guide is `marketing/guide/`. Publish that at https://duppinstech.com/radius-seo/guide/ . Help opens that address at the section for the current screen. The illustrated PDF in the plugin is `assets/manual/radius-seo-user-manual.pdf`, built from the same pages.
 
 Screenshots in `marketing/screenshots/admin/` are the wp-admin screens, with red numbers. They are not in the plugin zip.
 
@@ -31,7 +31,7 @@ Screenshots in `marketing/screenshots/admin/` are the wp-admin screens, with red
 | Settings → Database | `settings-database.jpg` | Leftover Magic Page options. Skip on a new site. |
 | Settings → Integrations | `settings-integrations.jpg` | Elementor or Beaver Builder, then save, then deploy. |
 | Logs | `logs.jpg` | The run, and the failure, after a server error. |
-| Support | `support.jpg` | Email support@duppinstech.com. Nothing is stored on the site. |
+| Support | `support.jpg` | Email support@duppinstech.com, or call (240) 397-8221. Nothing is stored on the site. |
 | Help button | `help.jpg` | Bottom-right. Notes for this screen, the guide, and support. |
 
 ## Where place data comes from

@@ -35,4 +35,4 @@ Site replacers fill `{{phone-number}}` on every page. An area override swaps tha
 
 The manual lives inside the plugin.
 
-Every Radius screen has help for the fields on that page, a PDF download, and a support form that emails support@duppinstech.com.
+Every Radius screen has help for the fields on that page, a PDF download, and a support form that emails support@duppinstech.com. Call (240) 397-8221.

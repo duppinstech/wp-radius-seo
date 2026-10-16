@@ -1,0 +1,22 @@
+{
+  "dashboard": "dashboard",
+  "radius-analytics": "analytics",
+  "radius_template-list": "templates",
+  "radius_template-edit": "template-editor",
+  "radius_landing-list": "landings",
+  "radius_landing-edit": "landing-editor",
+  "radius_service_area-list": "service-area-hubs",
+  "radius_service_area-edit": "service-area-hub",
+  "radius-locations": "location-library",
+  "radius-deploy": "deploy",
+  "radius-import": "import-export",
+  "settings-license": "license",
+  "settings-general": "settings-general",
+  "settings-areas": "settings-service-areas",
+  "settings-site_replacements": "settings-replacers",
+  "settings-content": "settings-content",
+  "settings-database": "settings-database",
+  "settings-integrations": "settings-integrations",
+  "radius-logs": "logs",
+  "radius-support": "support"
+}

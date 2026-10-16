@@ -60,4 +60,4 @@ No. You write the template once. Deploy fills a page for each place in range.
 No. The same template and place update the existing page.
 
 **Where do support requests go?**
-An administrator uses Radius → Support. The form emails support@duppinstech.com.
+An administrator uses Radius → Support. The form emails support@duppinstech.com. Call (240) 397-8221.

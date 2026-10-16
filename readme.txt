@@ -3,7 +3,7 @@ Contributors: duppinstech
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.7.1
+Stable tag: 1.7.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -35,7 +35,7 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 * `radius_legacy_import_slug_lookup_chunk` — max legacy slugs per `get_terms` lookup (default 25) to shorten SQL `IN` lists.
 * `radius_legacy_import_places_use_term_id_cursor` — return false to use SQL `OFFSET` for legacy place batches instead of `term_id` cursor pagination (default true; cursor avoids slow deep offsets).
 * `radius_legacy_import_places_batch_result` — filter the stats array after each legacy place import batch.
-* `radius_user_guide_url` — public URL opened by the Help button. Default `https://duppinstech.com/radius-seo/guide/`.
+* `radius_user_guide_url` — public URL opened by the Help button. Default `https://duppinstech.com/radius-seo/guide/`. The button adds a section id such as `#deploy` for the screen you are on.
 * `radius_github_updater_config` — adjust updater owner, repo, token, and check intervals. Do not ship a token in the plugin.
 * `radius_github_release_http_args` — adjust the GitHub latest-release request arguments.
 * `radius_maintenance_flush_object_cache` — return true to call `wp_cache_flush()` when using **Apply recommended updates** (default false).
@@ -90,6 +90,9 @@ Filters: `radius_github_updater_config`, `radius_github_release_http_args`.
 * `radius_multisite_allow_parallel_heavy_ops` — on multisite, return true to allow legacy import, deploy batches, or migration wizard heavy steps on multiple subsites at once (default false: second subsite gets HTTP 409 with an explanatory message).
 * `radius_deploy_health_cron_recurrence` — WP-Cron schedule for the daily deploy health check (default `daily`; also `hourly`, `twicedaily`, `weekly`).
 == Changelog ==
+
+= 1.7.2 =
+* **Guide:** The user manual walks every Radius screen: install, license, each menu item, each Settings tab, deploy, and deactivate. Help opens https://duppinstech.com/radius-seo/guide/ at the section for the screen you are on.
 
 = 1.7.1 =
 * **Help:** The top-of-page help banner is gone. A Help button at the bottom-right of every Radius screen opens notes for that screen, a link to the user guide at https://duppinstech.com/radius-seo/guide/ , and Contact support for administrators.

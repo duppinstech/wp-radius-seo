@@ -30,7 +30,7 @@ Or clone this repository into `wp-content/plugins/wp-radius-seo/` (or any folder
 
 ## Help and support
 
-Every Radius screen has a **Help** button at the bottom-right. It opens notes for that screen and a link to the user guide at https://duppinstech.com/radius-seo/guide/ . An administrator also gets **Contact support**, which opens **Radius → Support** and emails support@duppinstech.com. The message includes the name, email, screen, subject, both descriptions, the site address, and the WordPress and Radius versions. It is not stored on the site. The illustrated manual in the plugin is `assets/manual/radius-seo-user-manual.pdf`. Publish that file at the guide address. Filter: `radius_user_guide_url`.
+Every Radius screen has a **Help** button at the bottom-right. It opens notes for that screen and a link to the user guide at https://duppinstech.com/radius-seo/guide/ , on the section for that screen. If that page does not open, read the notes in the Help panel, then use **Radius → Support** or email support@duppinstech.com. Call (240) 397-8221. The same illustrated manual is `assets/manual/radius-seo-user-manual.pdf` inside the plugin folder. Help does not download it. An administrator also gets **Contact support**, which opens **Radius → Support**. The message includes the name, email, screen, subject, both descriptions, the site address, and the WordPress and Radius versions. It is not stored on the site. Filter: `radius_user_guide_url`.
 
 ## Deactivate
 

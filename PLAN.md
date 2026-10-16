@@ -437,6 +437,15 @@ No open choice. The next item that needs a decision goes in the table at the top
 - **Do:** Add `button`, not `button-primary`.
 - **Done when:** Close matches other secondary admin buttons.
 
+### P2-24 — Say what to do if the public guide is not published yet
+
+- **Status:** done
+- **Evidence of close:** 2026-10-16. `SUPPORT.md` item 2 and `README.md` tell the owner to use the Help notes, email support@duppinstech.com, or call (240) 397-8221, and name the PDF inside the plugin. Meeting: `.claude/memory/meetings/2026-10-16-1056.md`.
+- **Kind:** support
+- **Evidence:** Help opens https://duppinstech.com/radius-seo/guide/ and that page is not published yet.
+- **Do:** Name the on-screen notes, the support email, the phone, and the PDF path.
+- **Done when:** An owner who gets a 404 still has a next step written in SUPPORT.md.
+
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.
