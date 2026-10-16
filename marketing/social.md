@@ -1,6 +1,6 @@
 # Social posts
 
-Attach `screenshots/beeline-landing-abert.png` or `screenshots/beeline-service-area-coltons-mill.png`. Do not add Bee Line’s phone number or dispatch email to the post.
+Do not attach a customer’s published pages, phone number, or dispatch email.
 
 ## Post 1
 

@@ -40,8 +40,6 @@ Bee Line Transport Inc. uses Radius SEO on [beelinetransportinc.com](https://bee
 - Hub: https://beelinetransportinc.com/service-area/coltons-mill/
 - Landing: https://beelinetransportinc.com/semi-tire-abert/
 
-Use `screenshots/beeline-service-area-coltons-mill.png` beside the hub and `screenshots/beeline-landing-abert.png` beside the landing. Caption: “Published with Radius SEO on Bee Line Transport Inc.”
-
 ## Plans
 
 | Plan | Price | Includes |

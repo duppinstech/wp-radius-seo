@@ -3,7 +3,7 @@
  * Plugin Name:       Radius SEO
  * Plugin URI:        https://github.com/duppinstech/wp-radius-seo
  * Description:       Blueprint-first local landing page generator — multi-template deploy, efficient place library, tokens & spintax, CSV import, optional Elementor and Beaver Builder.
- * Version:           1.7.3
+ * Version:           1.7.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://github.com/duppinstech/wp-radius-seo
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'RADIUS_FILE', __FILE__ );
-define( 'RADIUS_VERSION', '1.7.3' );
+define( 'RADIUS_VERSION', '1.7.4' );
 define( 'RADIUS_PATH', plugin_dir_path( __FILE__ ) );
 define( 'RADIUS_URL', plugin_dir_url( __FILE__ ) );
 
@@ -34,8 +34,15 @@ Radius_GitHub_Updater::boot(
 		'owner'   => 'duppinstech',
 		'repo'    => 'wp-radius-seo',
 		'prefix'  => 'radius',
+		'banners' => array(
+			'low'  => plugins_url( 'assets/images/radius-banner-772x250.jpg', __FILE__ ),
+			'high' => plugins_url( 'assets/images/radius-banner-1544x500.jpg', __FILE__ ),
+		),
 	)
 );
+
+require_once RADIUS_PATH . 'includes/class-plugin-details.php';
+Radius_Plugin_Details::boot();
 
 require_once RADIUS_PATH . 'includes/class-data-registry.php';
 require_once RADIUS_PATH . 'includes/class-admin-maintenance.php';

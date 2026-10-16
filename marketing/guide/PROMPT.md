@@ -16,7 +16,7 @@ You may also create a child page per article. If you do, the main page sections 
 
 Use the markdown files as the words on the page. Keep the steps, button names, prices, and warnings. You may add headings, a sidebar, and “On this screen / Next” links. Do not add features, menus, or buttons that these files do not name.
 
-Place each screenshot beside the steps that refer to it. Articles are in `guide/`. An image written as `../screenshots/admin/dashboard.jpg` is the file `screenshots/admin/dashboard.jpg` in this pack. Red numbers drawn on an admin screenshot match the numbered list under that image in the markdown. Do not crop the numbers off. Admin screenshots show the configuration screens (the input). The two Bee Line images, if present under `screenshots/examples/`, are examples of a published page (the output). Caption those: “Published with Radius SEO on Bee Line Transport Inc.” Do not present Bee Line’s phone number or dispatch email as Radius support.
+Place each screenshot beside the steps that refer to it. Articles are in `guide/`. An image written as `../screenshots/admin/dashboard.jpg` is the file `screenshots/admin/dashboard.jpg` in this pack. Red numbers drawn on an admin screenshot match the numbered list under that image in the markdown. Do not crop the numbers off. Admin screenshots show the configuration screens. Do not add a customer’s published pages. Do not present a customer’s phone number or dispatch email as Radius support.
 
 Facts you must not change:
 

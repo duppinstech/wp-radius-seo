@@ -11,5 +11,3 @@ Use the files in `marketing/screenshots/admin/`. Suggested order and captions:
 5. `deploy-run.jpg` — Deploy and update all places writes one current page per place in range.
 6. `settings-general.jpg` — The service-area prefix is for hub URLs. Landings stay at the site root.
 7. `license.jpg` — Paste the license key, or purchase a plan, on Settings → License.
-
-Public examples of the result, not the setup, stay in `marketing/screenshots/beeline-landing-abert.png` and `beeline-service-area-coltons-mill.png`.

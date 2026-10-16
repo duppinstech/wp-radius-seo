@@ -455,6 +455,15 @@ No open choice. The next item that needs a decision goes in the table at the top
 - **Do:** Settings and Help beside Deactivate. Sponsor immediately after the author. Support at the end of that line.
 - **Done when:** An administrator can open settings, the install section of the guide, GitHub Sponsors, and Radius → Support from the plugin row.
 
+### P2-26 — Installation tab on View details
+
+- **Status:** done
+- **Evidence of close:** 2026-10-16. View details for Radius SEO has an Installation tab after Description. SUPPORT.md names that tab. The Bee Line front-end captures are not in the Screenshots list. Meeting: `.claude/memory/meetings/2026-10-16-1715.md`.
+- **Kind:** support
+- **Evidence:** The plugin information window had no install steps. Two published Bee Line pages were in the Screenshots list.
+- **Do:** Add the Installation section. Remove those two captures and do not replace them.
+- **Done when:** An administrator can read the zip, upload, activate, and license steps on that tab, and the Screenshots list has no Bee Line page capture.
+
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.
