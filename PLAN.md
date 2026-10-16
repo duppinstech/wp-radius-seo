@@ -446,6 +446,15 @@ No open choice. The next item that needs a decision goes in the table at the top
 - **Do:** Name the on-screen notes, the support email, the phone, and the PDF path.
 - **Done when:** An owner who gets a 404 still has a next step written in SUPPORT.md.
 
+### P2-25 — Plugins row links
+
+- **Status:** done
+- **Evidence of close:** 2026-10-16. On the local Plugins screen the Radius SEO row shows Settings, Help, then Deactivate. Sponsor follows the author and opens https://github.com/sponsors/oduppinsjr. Support is on that description line. Help’s screen-reader text includes a leading space. Meeting: `.claude/memory/meetings/2026-10-16-1620.md`.
+- **Kind:** interface
+- **Evidence:** The Plugins listing had no Settings, Help, Sponsor, or Support links.
+- **Do:** Settings and Help beside Deactivate. Sponsor immediately after the author. Support at the end of that line.
+- **Done when:** An administrator can open settings, the install section of the guide, GitHub Sponsors, and Radius → Support from the plugin row.
+
 ## Deferred on purpose
 
 - MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.

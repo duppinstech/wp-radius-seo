@@ -14,9 +14,10 @@ Visit and click counts stay on this site. The visitor IP is a short-lived rate-l
 
 1. **Radius → Support** — an administrator describes the problem and clicks **Email support**. The message sent to support@duppinstech.com includes the name, email, screen, subject, what they were trying to do, what happened, the site address, and the WordPress and Radius versions. It is not stored on the site. Wait a minute before sending another one. If the site cannot send mail, email that address directly.
 2. **Help** — the round button at the bottom-right of any Radius screen. It describes that screen and links to the user guide at https://duppinstech.com/radius-seo/guide/ , on the section for that screen. Close or Escape puts it away. If that page does not open, read the notes in the Help panel, then use **Radius → Support** or email support@duppinstech.com. Call (240) 397-8221. The same illustrated manual is the file `assets/manual/radius-seo-user-manual.pdf` inside the plugin folder. Help does not download it.
-3. **Search [existing issues](https://github.com/duppinstech/wp-radius-seo/issues)** — your question may already be answered.
-4. **Open an issue** — use the templates when possible (bug vs feature). Include WordPress version, PHP version, and Radius SEO version.
-5. **Updates** — ensure you are on a current release from [GitHub Releases](https://github.com/duppinstech/wp-radius-seo/releases); many reports are resolved by upgrading.
+3. **Plugins** — **Settings** opens Radius settings. **Help** opens https://duppinstech.com/radius-seo/guide/#install in a new tab. **Sponsor**, after the author, opens https://github.com/sponsors/oduppinsjr . **Support** on that line opens **Radius → Support**. If the guide page does not open, use **Support** on that row, email support@duppinstech.com, or call (240) 397-8221. The illustrated manual is in the plugin folder.
+4. **Search [existing issues](https://github.com/duppinstech/wp-radius-seo/issues)** — your question may already be answered.
+5. **Open an issue** — use the templates when possible (bug vs feature). Include WordPress version, PHP version, and Radius SEO version.
+6. **Updates** — ensure you are on a current release from [GitHub Releases](https://github.com/duppinstech/wp-radius-seo/releases); many reports are resolved by upgrading.
 
 ## Security
 

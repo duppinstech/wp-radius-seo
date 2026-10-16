@@ -33,6 +33,8 @@ class Radius_Admin {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ), 5 );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
+		add_filter( 'plugin_action_links_' . plugin_basename( RADIUS_FILE ), array( __CLASS__, 'plugin_action_links' ) );
+		add_filter( 'plugin_row_meta', array( __CLASS__, 'plugin_row_meta' ), 10, 3 );
 		Radius_Admin_Maintenance::init();
 		add_action( 'admin_init', array( 'Radius_Settings', 'register' ) );
 	}
@@ -98,6 +100,55 @@ class Radius_Admin {
 			),
 			admin_url( 'admin.php' )
 		);
+	}
+
+	/**
+	 * Settings and Help sit with Activate and Deactivate.
+	 *
+	 * @param string[] $links Existing action links.
+	 * @return string[]
+	 */
+	public static function plugin_action_links( $links ) {
+		$extra = array();
+		if ( current_user_can( 'manage_options' ) ) {
+			$extra[] = '<a href="' . esc_url( admin_url( 'admin.php?page=radius-settings' ) ) . '">' . esc_html__( 'Settings', 'radius' ) . '</a>';
+		}
+		$guide = class_exists( 'Radius_Screen_Help' ) ? Radius_Screen_Help::guide_url() : '';
+		if ( is_string( $guide ) && $guide !== '' ) {
+			$guide   = preg_replace( '/#.*$/', '', $guide ) . '#install';
+			$extra[] = '<a href="' . esc_url( $guide ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Help', 'radius' ) . '<span class="screen-reader-text">' . esc_html__( ' (opens in a new tab)', 'radius' ) . '</span></a>';
+		}
+		return array_merge( $extra, $links );
+	}
+
+	/**
+	 * Sponsor follows the author. Support stays at the end of that line.
+	 *
+	 * @param string[]             $meta        Existing meta links.
+	 * @param string               $file        Plugin basename.
+	 * @param array<string,string> $plugin_data Plugin header fields.
+	 * @return string[]
+	 */
+	public static function plugin_row_meta( $meta, $file, $plugin_data = array() ) {
+		if ( plugin_basename( RADIUS_FILE ) !== $file ) {
+			return $meta;
+		}
+		$sponsor = '<a href="' . esc_url( 'https://github.com/sponsors/oduppinsjr' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Sponsor', 'radius' ) . '<span class="screen-reader-text">' . esc_html__( ' (opens in a new tab)', 'radius' ) . '</span></a>';
+		$author  = isset( $plugin_data['AuthorURI'] ) ? (string) $plugin_data['AuthorURI'] : '';
+		$at      = count( $meta );
+		if ( $author !== '' ) {
+			foreach ( $meta as $index => $item ) {
+				if ( is_string( $item ) && strpos( $item, $author ) !== false ) {
+					$at = $index + 1;
+					break;
+				}
+			}
+		}
+		array_splice( $meta, $at, 0, array( $sponsor ) );
+		if ( current_user_can( 'manage_options' ) && class_exists( 'Radius_Support' ) ) {
+			$meta[] = '<a href="' . esc_url( admin_url( 'admin.php?page=' . Radius_Support::PAGE ) ) . '">' . esc_html__( 'Support', 'radius' ) . '</a>';
+		}
+		return $meta;
 	}
 
 	/**
