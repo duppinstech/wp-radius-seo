@@ -55,3 +55,11 @@ coverage/
 # languages/*.pot
 
 marketing/radius-seo-guide-pack.zip
+
+dist/
+__pycache__/
+.venv/
+.claude/worktrees/
+
+# `.env.*` above also matches the example. Keep that file tracked.
+!.env.example
