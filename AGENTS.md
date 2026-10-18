@@ -104,3 +104,25 @@ Run `workflows/department-review.md` before calling the change done. Every depar
 ## Not agents
 
 Hooks (`.claude/hooks/`) are shell, not models. Skills load instructions into the main session. Slash commands (`/review`, `/deploy`, `/scaffold`) are explicit workflows. Use those instead of a new agent when the work is a checklist rather than a separate context.
+
+## Commands
+
+- Install: `composer install`
+- Lint: `composer lint`
+- Test: `composer test`
+- Build: `bash bin/build-zip.sh`
+- Local site: `docker compose up -d` (http://127.0.0.1:8088). Stop with `docker compose down`.
+
+## Conventions
+
+- Classes use the `Radius_` prefix. Stored keys use `radius_*` or `_radius_*`. Text domain is `radius`.
+- Admin assets are `radius-*.js` and `radius-*.css`.
+- Follow the WordPress PHP coding standards where practical: escape output, check capabilities, verify nonces, and prepare SQL.
+- PHP indentation is tabs.
+
+## Do not touch
+
+- Do not change plugin behavior while editing docs, CI, or repo hygiene.
+- Do not read or commit `.env`, `CLAUDE.local.md`, `.claude/settings.local.json`, or `keys/license-private.pem`.
+- Do not store new data under `lf_` or `localeforge_*`.
+- Do not force-push `main`, hard-reset, or rewrite published tags.
