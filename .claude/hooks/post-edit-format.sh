@@ -13,10 +13,16 @@ if [[ ! -f "$path" ]]; then
   exit 0
 fi
 
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+standard="WordPress"
+if [[ -f "$root/phpcs.xml.dist" ]]; then
+  standard="$root/phpcs.xml.dist"
+fi
+
 if command -v phpcbf >/dev/null 2>&1; then
-  phpcbf --standard=WordPress "$path" >/dev/null 2>&1 || true
-elif [[ -x vendor/bin/phpcbf ]]; then
-  vendor/bin/phpcbf --standard=WordPress "$path" >/dev/null 2>&1 || true
+  phpcbf --standard="$standard" "$path" >/dev/null 2>&1 || true
+elif [[ -x "$root/vendor/bin/phpcbf" ]]; then
+  "$root/vendor/bin/phpcbf" --standard="$standard" "$path" >/dev/null 2>&1 || true
 fi
 
 exit 0

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<ruleset name="Radius SEO">
+	<description>WordPress coding standards for local PHP_CodeSniffer runs. phpcbf is not a Composer dependency and this file is not a CI gate.</description>
+
+	<arg name="extensions" value="php"/>
+
+	<file>.</file>
+
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/assets/vendor/*</exclude-pattern>
+	<exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+
+	<rule ref="WordPress"/>
+</ruleset>
