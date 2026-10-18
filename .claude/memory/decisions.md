@@ -32,7 +32,7 @@ Elementor JSON is copied only when `enable_elementor` is on. Beaver Builder `_fl
 
 ## Agent docs are not plugin runtime
 
-`.claude/`, `workflows/`, `CLAUDE.md`, `AGENTS.md`, and `.mcp.json` are committed for the team and excluded from `git archive` via `.gitattributes`. `CLAUDE.local.md` and `.claude/settings.local.json` are personal and gitignored.
+`.claude/`, `workflows/`, `CLAUDE.md`, and `AGENTS.md` are committed for the team and excluded from `git archive` via `.gitattributes`. `CLAUDE.local.md` and `.claude/settings.local.json` are personal and gitignored. No project MCP servers are configured, so `.mcp.json` and `.cursor/mcp.json` are omitted. Add both together when a server is chosen, and keep secrets in environment variables.
 
 ## Updater tests are PHPUnit; other behavior is still manual
 

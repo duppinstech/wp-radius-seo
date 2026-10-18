@@ -1,6 +1,6 @@
 ---
 name: testing-patterns
-description: Produce a Radius SEO verification checklist for places, templates, tokens, deploy, builders, or admin AJAX. Use when behavior changed and someone needs to prove it. Use when the user asks for tests. There is no PHPUnit suite yet.
+description: Produce a Radius SEO verification checklist for places, templates, tokens, deploy, builders, or admin AJAX. Use when behavior changed and someone needs to prove it. Use when the user asks for tests. Updater coverage is `composer test`. Add more automated tests only when the user asks.
 ---
 
 # Testing patterns

@@ -45,3 +45,8 @@ Optional `.mo` / `.po` files can live under `languages/`. String changes should 
 ## Questions
 
 Open a [discussion-style issue](https://github.com/duppinstech/wp-radius-seo/issues) or refer to [`README.md`](README.md) and [`readme.txt`](readme.txt).
+
+## Commit style
+
+- Use a conventional prefix: `feat:`, `fix:`, `chore:`, or `docs:`.
+- Write the subject in the imperative mood, with no trailing period.

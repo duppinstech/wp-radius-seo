@@ -34,7 +34,6 @@ Update this when a milestone lands. Keep the outstanding list to work that is st
 ### Needs a decision from the maintainer
 
 - No plan item is waiting on a decision. Stripe checkout links are the two prices the maintainer named. A cancelled subscription does not yet disable a saved key.
-- Which MCP servers belong in `.mcp.json`. The file is an empty `mcpServers` object so Claude Code does not try to start servers nobody configured. Candidates discussed in the structure map (GitHub, issue trackers, docs) are not wired.
 - Local WordPress is filled in `CLAUDE.local.md` (Docker at http://127.0.0.1:8088).
 - Whether places, deploy, and admin screens get a WordPress integration suite. The updater already has `composer test`.
 

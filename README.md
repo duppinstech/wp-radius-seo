@@ -77,3 +77,25 @@ WordPress.org–style metadata and hooks are documented in **`readme.txt`** (use
 | [`CHANGELOG.md`](CHANGELOG.md) | Points to `readme.txt` + GitHub Releases (single changelog source) |
 
 **Issues & PRs:** [github.com/duppinstech/wp-radius-seo](https://github.com/duppinstech/wp-radius-seo). Use the issue templates under **.github/ISSUE_TEMPLATE/** when reporting bugs or requesting features.
+
+## Local development
+
+From the repo root:
+
+```bash
+docker compose up -d
+composer install
+```
+
+The local site is http://127.0.0.1:8088. Stop it with `docker compose down`.
+
+## Tests
+
+```bash
+composer lint
+composer test
+```
+
+## Release
+
+Maintainers ship from the **Maintainers — shipping a version** steps under [Updates](#updates).

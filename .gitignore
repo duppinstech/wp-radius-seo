@@ -3,7 +3,7 @@
 Thumbs.db
 
 # --- Plugin packaging (do not ship in wp-radius-seo.zip) ---
-# Excluded from `git archive` via .gitattributes (`export-ignore`): .cursor/** .github/** .claude/** workflows/** CLAUDE.md AGENTS.md .mcp.json INTENT.md PLAN.md
+# Excluded from `git archive` via .gitattributes (`export-ignore`): .cursor/** .github/** .claude/** workflows/** CLAUDE.md AGENTS.md INTENT.md PLAN.md
 # Also listed in .distignore for wp-cli style builds.
 # Do NOT gitignore .github/ or the shared Claude files here — they stay on the default branch.
 # Personal Claude overrides are gitignored below.
@@ -26,7 +26,6 @@ CLAUDE.local.md
 # Dependencies / build (root only — assets/vendor may ship bundled JS)
 /node_modules/
 /vendor/
-composer.lock
 
 # WordPress / local
 *.log
@@ -55,3 +54,11 @@ coverage/
 # languages/*.pot
 
 marketing/radius-seo-guide-pack.zip
+
+dist/
+__pycache__/
+.venv/
+.claude/worktrees/
+
+# `.env.*` above also matches the example. Keep that file tracked.
+!.env.example

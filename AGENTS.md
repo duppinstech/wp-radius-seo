@@ -88,7 +88,7 @@ Run `workflows/department-review.md` before calling the change done. Every depar
 - **Department:** Quality
 - **Job:** Turn a behavior change into a verification checklist. Add automated tests only when the user asks for a harness.
 - **Use when:** After the edit, when behavior changed, or when the user asks how to prove a fix.
-- **Returns:** Steps a person can run in wp-admin and on the front end, plus the gaps (no PHPUnit suite today).
+- **Returns:** Steps a person can run in wp-admin and on the front end, plus any coverage gaps. Updater tests are `composer test`.
 - **Does not:** Invent a passing test by weakening the assertion, or mark work verified without running it.
 
 ## Handoff
@@ -104,3 +104,25 @@ Run `workflows/department-review.md` before calling the change done. Every depar
 ## Not agents
 
 Hooks (`.claude/hooks/`) are shell, not models. Skills load instructions into the main session. Slash commands (`/review`, `/deploy`, `/scaffold`) are explicit workflows. Use those instead of a new agent when the work is a checklist rather than a separate context.
+
+## Commands
+
+- Install: `composer install`
+- Lint: `composer lint`
+- Test: `composer test`
+- Build: `bash bin/build-zip.sh`
+- Local site: `docker compose up -d` (http://127.0.0.1:8088). Stop with `docker compose down`.
+
+## Conventions
+
+- Classes use the `Radius_` prefix. Stored keys use `radius_*` or `_radius_*`. Text domain is `radius`.
+- Admin assets are `radius-*.js` and `radius-*.css`.
+- Follow the WordPress PHP coding standards where practical: escape output, check capabilities, verify nonces, and prepare SQL.
+- PHP indentation is tabs.
+
+## Do not touch
+
+- Do not change plugin behavior while editing docs, CI, or repo hygiene.
+- Do not read or commit `.env`, `CLAUDE.local.md`, `.claude/settings.local.json`, or `keys/license-private.pem`.
+- Do not store new data under `lf_` or `localeforge_*`.
+- Do not force-push `main`, hard-reset, or rewrite published tags.

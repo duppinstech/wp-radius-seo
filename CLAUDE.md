@@ -48,7 +48,7 @@ Read these before planning or editing, then update `progress.md` when a mileston
 
 ## Ship
 
-User-facing plugin changes get a patch bump for a small fix (`1.6.x`), a minor bump for a larger behavior change (`1.7.0`), and a major bump only for a breaking change (`2.0.0`). Bump the header and `RADIUS_VERSION` together, plus `readme.txt` Stable tag and changelog. Push `main`, tag `vX.Y.Z`, and let `.github/workflows/release.yml` attach `wp-radius-seo.zip` from `bin/build-zip.sh`.
+User-facing plugin changes get a patch bump for a small fix (`1.6.x`), a minor bump for a larger behavior change (`1.7.0`), and a major bump only for a breaking change (`2.0.0`). Bump the header and `RADIUS_VERSION` together, plus `readme.txt` Stable tag and changelog, on the working branch. When the user asks to release, push `main` and tag `vX.Y.Z` so `.github/workflows/release.yml` can attach `wp-radius-seo.zip` from `bin/build-zip.sh`.
 
 Sites using `Radius_GitHub_Updater` (standard v1.0.0) see an update when the latest release on `duppinstech/wp-radius-seo` is newer and includes `wp-radius-seo.zip`. Updater tests run with `composer test`. Before committing a runtime change, start the local stack with `docker compose up -d`, prove the change at http://127.0.0.1:8088, then `docker compose down`. Do not leave those containers running. Say what you could not run.
 
