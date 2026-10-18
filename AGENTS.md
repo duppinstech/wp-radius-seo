@@ -88,7 +88,7 @@ Run `workflows/department-review.md` before calling the change done. Every depar
 - **Department:** Quality
 - **Job:** Turn a behavior change into a verification checklist. Add automated tests only when the user asks for a harness.
 - **Use when:** After the edit, when behavior changed, or when the user asks how to prove a fix.
-- **Returns:** Steps a person can run in wp-admin and on the front end, plus the gaps (no PHPUnit suite today).
+- **Returns:** Steps a person can run in wp-admin and on the front end, plus any coverage gaps. Updater tests are `composer test`.
 - **Does not:** Invent a passing test by weakening the assertion, or mark work verified without running it.
 
 ## Handoff

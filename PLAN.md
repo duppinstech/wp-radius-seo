@@ -475,6 +475,6 @@ No open choice. The next item that needs a decision goes in the table at the top
 
 ## Deferred on purpose
 
-- MCP servers in `.mcp.json` are unrelated to a production WordPress deploy.
+- No project MCP servers. A production deploy does not need them. If one is added, put it in both `.mcp.json` and `.cursor/mcp.json` and keep secrets in environment variables.
 - `phpcbf` is not vendored. Formatting is not a launch blocker.
 - Deploy does not purge LiteSpeed or WP Rocket. Default landings are stored HTML, so the host page cache can keep them until the post is updated. A purge integration waits until a named host needs it.

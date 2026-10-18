@@ -1,16 +1,18 @@
 ---
-description: After plugin code changes, push to GitHub and cut a new versioned release
+description: When a plugin change should ship, prepare the version bump on the branch and release only if asked
 alwaysApply: true
 ---
 
 # Ship changes to GitHub and releases
 
-When this project’s code is changed in a way that would ship to users (any non-trivial fix or feature, including small follow-ups), the agent should **not** stop at a local commit only. **Do not wait for a separate “commit it” request** — ship to `main` + GitHub Release so the user can test on live/staging sites via the updater.
+User-facing plugin changes (a fix or feature that sites should receive through the updater) need a version bump. Do that work on the current branch. Do not commit straight to `main`. Push, merge, and tag only when the user asks. Never force-push, hard-reset, or rewrite a published tag.
 
-1. **Commit** on `main` with a clear message.
-2. **Push** to `origin` (`git push origin main`).
-3. **Bump** `radius.php` / `RADIUS_VERSION` and `readme.txt` (Stable tag + Changelog) for the new patch (or minor) version.
-4. **Tag** an annotated release tag matching the version (e.g. `v1.6.5`).
-5. **Push the tag.** `.github/workflows/release.yml` creates the GitHub Release and attaches `wp-radius-seo.zip` from `bin/build-zip.sh` (one top-level folder `wp-radius-seo/`). Do not attach a `git archive` ZIP.
+When a release is requested:
 
-Use `gh release create` when the GitHub CLI is available and authenticated.
+1. Bump the `Version` header and `RADIUS_VERSION` in `radius.php`, and the Stable tag plus changelog in `readme.txt`, to the same version.
+2. Commit that bump on the branch.
+3. Push and merge to `main` only if the user asked.
+4. Create an annotated tag `vX.Y.Z` that matches the version, then push the tag.
+5. `.github/workflows/release.yml` checks the tag and attaches `wp-radius-seo.zip` from `bin/build-zip.sh` (one top-level folder `wp-radius-seo/`). Do not attach a `git archive` ZIP.
+
+Use `gh release create` when the GitHub CLI is available and the workflow has not already published the release.
