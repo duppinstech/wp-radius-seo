@@ -21,7 +21,7 @@ The repo objective is `INTENT.md`. Ownership is `OWNERSHIP.md`. Read both before
 - A stored `site_replacements` value of `[]` clears inflated defaults and falls back to per-template `_radius_xfields`.
 - Do not commit secrets, license keys, or customer site data.
 - The installable ZIP is one folder, `wp-radius-seo/`, containing `radius.php`. Agent docs are `export-ignore` and must not be required at runtime.
-- This is a Duppins Technology product. Odell Duppins is the author. WhiteRail is the beta client and does not own the source. Copyright, `Author` headers, license files, and package metadata name Duppins Technology only. See `OWNERSHIP.md`.
+- This is a Duppins Technology product. WhiteRail is the beta client and does not own the source. Copyright, `Author` headers, license files, and package metadata name Duppins Technology only. See `OWNERSHIP.md`.
 
 ## Session reading
 

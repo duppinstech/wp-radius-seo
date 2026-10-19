@@ -10,7 +10,7 @@ Read `OWNERSHIP.md`, `LICENSE.md`, the `License` and `Copyright` headers in `rad
 
 Check:
 
-- Copyright, `Author`, and license metadata name **Duppins Technology**. Odell Duppins is the author. WhiteRail is the beta client and is never the owner or author.
+- Copyright, `Author`, and license metadata name **Duppins Technology**. WhiteRail is the beta client and is never the owner or author.
 - New or copied code stays **GPL-2.0-or-later**. A bundled library, font, image, or snippet with another license is a finding.
 - A new PHP file keeps the project license. It does not add a second license or drop the copyright.
 - User-facing warranty or disclaimer text still matches `LICENSE.md` (no warranty of merchantability or fitness). Do not add a warranty.

@@ -1,6 +1,6 @@
 # License
 
-**Copyright:** Duppins Technology (https://duppinstech.com). Odell Duppins is the author. Radius SEO is a Duppins Technology product.
+**Copyright:** Duppins Technology (https://duppinstech.com). Duppins Technology is the author. Radius SEO is a Duppins Technology product.
 
 **SPDX-License-Identifier:** `GPL-2.0-or-later`
 

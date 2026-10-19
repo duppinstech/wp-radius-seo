@@ -11,7 +11,7 @@ A maintainer writes a template once, imports places, and deploys. Each selected 
 ## Who this is for
 
 - Operators who need local landing pages and service-area hubs at batch scale, without hand-building a post per city.
-- Duppins Technology owns this product. Odell Duppins is the author. WhiteRail is the beta client and does not own the product or the source. See `OWNERSHIP.md`.
+- Duppins Technology owns this product and is the author named on it. WhiteRail is the beta client and does not own the product or the source. See `OWNERSHIP.md`.
 
 ## What we intend to do
 
